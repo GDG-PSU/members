@@ -34,6 +34,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+# local operator artifacts (one-time links, scratch output)
+.local/
+
 # logs
 *.log
 npm-debug.log*

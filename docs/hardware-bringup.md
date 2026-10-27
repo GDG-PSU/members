@@ -18,7 +18,7 @@ never holds a Supabase key, member email or the member database.
 | PN532 NFC breakout | 2 | **Not supplied** — I²C/SPI/UART variant and DIP-switch layout unknown |
 | NTAG21x cards (NTAG213/215/216) | At least 3 test cards + production batch | **Not supplied** — batch capacity/lock state unverified |
 | USB data cables | 2 | Unknown |
-| Approved network | 1 SSID for both lanes | **Blocked on PSU IT** (see [psu-network-validation.md](psu-network-validation.md)) |
+| Approved network | 1 SSID for both lanes | **Approval confirmed by the organizer**; record SSID/EAP before flashing (see [psu-network-validation.md](psu-network-validation.md)) |
 | Deployed HTTPS origin | `GDG_API_HOST` | Must be deployed with a trusted certificate |
 
 Do **not** assume every cheap PN532 breakout has identical wiring, power or logic

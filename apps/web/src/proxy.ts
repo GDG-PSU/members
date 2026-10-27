@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { getEnv, supabaseApiKey } from '@/lib/env';
+import { getEnv, supabasePublicKey } from '@/lib/env';
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   const env = getEnv();
 
-  const supabase = createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, supabaseApiKey(), {
+  const supabase = createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, supabasePublicKey(), {
     cookies: {
       getAll() {
         return request.cookies.getAll();

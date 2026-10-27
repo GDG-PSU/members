@@ -8,7 +8,7 @@ Member / Admin browser
                 ├── Supabase Auth (email + password, invitation/recovery links)
                 ├── Postgres via Supabase (RLS + transactional SQL functions)
                 ├── Supabase Storage (`avatars` bucket, server-side uploads)
-                └── Email delivery (Supabase Auth templates / configured SMTP)
+                └── Admin copies one-time auth links (no SMTP; email is manual)
 
 ESP32 + PN532 lane A ─┐
 ESP32 + PN532 lane B ─┼── HTTPS, device ID + per-device secret → /api/device/v1/*
@@ -34,24 +34,21 @@ The repository is a pnpm workspace with Turborepo:
 4. **Admin → attendance/points.** A tap creates only a `pending` scan. A human admin must confirm check-in, then check-out, before points exist. A card link (`/c/...`) is a routing identifier, never an authentication factor.
 5. **Public → data.** Public pages read explicit projections (`public_profiles`, `leaderboard`) with column-level visibility. No public query serializes a table row or Auth user.
 
-## Current authentication implementation and trade-off
+## Current authentication implementation
 
-The Supabase project supplied for this build exposes a server-side secret key but no publishable/anon key. The app therefore uses `@supabase/ssr` with the secret key **only on the server**:
-
-- `apps/web/src/lib/supabase/server.ts` creates a cookie-bound client; the key is never placed in `NEXT_PUBLIC_*` and never reaches browser bundles.
+- `apps/web/src/lib/supabase/server.ts` creates a cookie-bound client with the **publishable** key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`), so every query is subject to RLS. The secret key is used only by the admin client.
 - After `signInWithPassword` / invite callback, requests carry the user's access token. PostgREST then evaluates RLS as that user, so member isolation is exercised by the database, not just app code.
 - Unauthenticated/public reads use `apps/web/src/lib/supabase/admin.ts` against the explicit public views. RLS is bypassed for those reads, so these queries must never select from base tables or serialize arbitrary rows.
 - Invitations use Supabase's Admin API. The member lands on `/auth/callback`, where a small client component forwards the URL-fragment tokens to `POST /api/auth/session`; the server sets the session cookies and redirects. This avoids requiring a browser Supabase key.
-- Recovery is admin-initiated from the admin portal; members are directed to email `gdg@psu.edu`.
-
-**Follow-up:** add a publishable key and switch `createSupabaseServer()` to it. That restores the standard defense-in-depth model (no privileged key in the web tier) without changing application code beyond the key selection. Until then, the server key's blast radius is the entire database, so server-side authorization checks and secret handling are critical.
+- Invitations and recovery are admin-initiated and **manual**: the admin API generates a one-time link, the portal returns it to a client form, and the admin copies it into their own mail client. No email provider is involved. Members without a link are directed to email `gdg@psu.edu`.
+- The secret key remains server-only and is limited to `createSupabaseAdmin()` call sites (auth-admin link generation, cross-member reads, device jobs, public-projection reads). Those call sites must authorize the actor first and must never serialize arbitrary rows.
 
 ## Request flows
 
 ### Member sign-in and setup
 
-1. Admin records dues and creates an invitation (server-only, idempotent per email).
-2. Supabase sends an invite link. The link verifies with Supabase Auth and redirects to `/auth/callback#access_token=…&refresh_token=…`.
+1. Admin records dues and generates an invitation link (server-only, idempotent per pending email). The admin copies it to the member manually.
+2. The link verifies with Supabase Auth and redirects to `/auth/callback#access_token=…&refresh_token=…`.
 3. `/api/auth/session` sets HttpOnly session cookies. The member lands on `/invite/accept`.
 4. The member sets a password (`auth.updateUser`), uploads a photo (server validates/re-encodes with `sharp`), and submits name/bio/consent.
 5. `complete_member_setup(...)` atomically creates `members`, `member_private`, `member_profiles`, generates the permanent slug and member number, and marks the invitation accepted. It is safe against retries.

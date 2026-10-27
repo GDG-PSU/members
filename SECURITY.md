@@ -34,9 +34,10 @@ Only the current `main` branch is supported. There are no maintained release bra
 
 ## Known limitations (not a clean bill of health)
 
-- The app currently uses a server-side Supabase secret key because no publishable key was supplied. A server compromise has full database impact; adding a publishable key is the planned hardening step.
-- The device middleware API, firmware build and hardware behavior are not yet verified in this checkout/at the time of writing.
-- No production deployment, SMTP provider, custom domain, PSU network approval, dependency audit, secret scan or backup/restore drill has been completed.
-- Automated E2E, accessibility and load tests have not been run.
+- The SSR client uses the publishable key, so user/anonymous queries are bound by RLS. A server compromise can still reach the secret key used for admin operations (auth-admin link generation, cross-member reads, device jobs).
+- Invitations and recovery are delivered manually: an admin copies a one-time Supabase link into their own mail client. The link is as sensitive as a password until used and expires per the project's Auth OTP setting.
+- The device middleware API is auth-tested, but the firmware build and hardware behavior are not verified in this environment.
+- No production deployment, custom domain, dependency audit, secret scan or backup/restore drill has been completed.
+- Authenticated admin/member E2E, accessibility and load tests have not been run; admin TOTP enrollment is still pending.
 
 See `docs/threat-model.md` for the threat table and the ASVS mapping with tested/untested controls, and `docs/test-plan.md` for exact recorded results.

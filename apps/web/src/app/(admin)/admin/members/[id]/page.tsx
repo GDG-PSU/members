@@ -22,10 +22,10 @@ import {
   correctAttendanceAction,
   prepareCardAction,
   revokeCardAction,
-  sendRecoveryAction,
   setMemberStatusAction,
 } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { RecoveryForm } from '@/components/admin/recovery-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -355,16 +355,10 @@ export default async function AdminMemberDetailPage({
                   Account recovery
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                  Sends a Supabase recovery email to the registered address. Token never appears here or in
-                  logs.
+                  Generates a one-time Supabase link for the registered address. No email is sent; copy
+                  the link and deliver it privately. It is never stored or logged.
                 </Typography>
-                <Box component="form" action={sendRecoveryAction}>
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <input type="hidden" name="email" value={(priv?.email as string) ?? ''} />
-                  <SubmitButton size="small" variant="outlined" pendingLabel="Sending…">
-                    Send recovery link
-                  </SubmitButton>
-                </Box>
+                <RecoveryForm email={(priv?.email as string) ?? ''} />
               </CardContent>
             </Card>
           </Stack>

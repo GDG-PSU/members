@@ -31,8 +31,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'That sign-in link is invalid or expired.' }, { status: 401 });
   }
 
+  // Send existing members/admins to their home instead of the setup screen when
+  // they used a generic invitation/recovery callback.
+  let redirectTo = safeNext;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const [{ data: member }, { data: role }] = await Promise.all([
+      supabase.from('members').select('id').eq('auth_user_id', user.id).maybeSingle(),
+      supabase
+        .from('user_roles')
+        .select('role')
+        .eq('auth_user_id', user.id)
+        .is('revoked_at', null)
+        .maybeSingle(),
+    ]);
+    if (member) redirectTo = '/member';
+    else if (role?.role === 'admin') redirectTo = '/admin';
+  }
+
   const cookieStore = await cookies();
-  const response = NextResponse.json({ redirectTo: safeNext });
+  const response = NextResponse.json({ redirectTo });
   for (const cookie of cookieStore.getAll()) {
     response.cookies.set(cookie);
   }

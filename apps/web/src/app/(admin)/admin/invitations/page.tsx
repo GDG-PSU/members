@@ -5,14 +5,15 @@ import CardContent from '@mui/material/CardContent';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { DataTable, EmptyState, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDate, formatDateTime } from '@/lib/format';
-import { createInvitationAction, invitationAction } from '@/app/(admin)/admin/actions';
+import { revokeInvitationAction } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { InviteForm } from '@/components/admin/invite-form';
+import { RegenerateInvitationLink } from '@/components/admin/regenerate-invitation-link';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,27 +50,10 @@ export default async function InvitationsPage({
                 Invite a member
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-                Record the date dues were paid, then send a Supabase invitation. No profile exists until
-                the member completes setup.
+                Record the date dues were paid, then generate a one-time invitation link and send it
+                yourself. No profile exists until the member completes setup.
               </Typography>
-              <Stack component="form" action={createInvitationAction} spacing={2} noValidate>
-                <input type="hidden" name="returnTo" value="/admin/invitations" />
-                <TextField label="Email" name="email" type="email" required fullWidth autoComplete="off" />
-                <TextField
-                  label="Member since (paid date)"
-                  name="paidSince"
-                  type="date"
-                  required
-                  fullWidth
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-                <TextField label="Internal note" name="note" fullWidth multiline minRows={2} slotProps={{ htmlInput: { maxLength: 300 } }} />
-                <SubmitButton pendingLabel="Sending…">Send invitation</SubmitButton>
-              </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Duplicate pending invitations are blocked. Invitations expire after 14 days and can be
-                revoked or resent.
-              </Typography>
+              <InviteForm />
             </CardContent>
           </Card>
         </Grid>
@@ -122,19 +106,11 @@ export default async function InvitationsPage({
                   header: 'Actions',
                   render: (row) =>
                     row.status === 'pending' ? (
-                      <Stack direction="row" spacing={1}>
-                        <Box component="form" action={invitationAction}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <RegenerateInvitationLink invitationId={row.id as string} />
+                        <Box component="form" action={revokeInvitationAction}>
                           <input type="hidden" name="returnTo" value="/admin/invitations" />
                           <input type="hidden" name="invitationId" value={row.id as string} />
-                          <input type="hidden" name="action" value="resend" />
-                          <SubmitButton size="small" variant="outlined" pendingLabel="Sending…">
-                            Resend
-                          </SubmitButton>
-                        </Box>
-                        <Box component="form" action={invitationAction}>
-                          <input type="hidden" name="returnTo" value="/admin/invitations" />
-                          <input type="hidden" name="invitationId" value={row.id as string} />
-                          <input type="hidden" name="action" value="revoke" />
                           <SubmitButton
                             size="small"
                             variant="text"

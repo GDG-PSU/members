@@ -81,14 +81,14 @@ Limitation: the limiter bucket is per token, not per client IP. Cycling many val
 - `GET /api/admin/kiosk/pending` — poll the pending scan queue; returns member name/photo, event/session and suggested action. Requires an admin cookie session.
 - `POST /api/admin/kiosk/confirm` — body `{ scanId, action: 'check_in'|'check_out'|'reject', reason? }`; calls `confirm_scan` atomically, applies a per-admin rate limit (60/min), and returns `{ ok, attendanceId }`. A scan is never awarded automatically.
 
-All other admin mutations are Server Actions (below). They require `getViewer().isAdmin` on the server and write an `audit_log` row; most finish with `redirect()` to the originating page with a notice/error query parameter.
+All other admin mutations are Server Actions (below). They require `getViewer().isAdmin` on the server and write an `audit_log` row; most finish with `redirect()` to the originating page with a notice/error query parameter. Link-returning actions instead return `{ ok, email, link }` to a client form (never a redirect URL), so tokens are not placed in browser history or server logs. Delivery is manual: the admin copies the link, sends it privately, and the app never calls an email provider.
 
 ### Admin Server Actions
 
 | Area | Actions |
 | --- | --- |
-| Invitations | `createInvitationAction`, `invitationAction` (resend/revoke) — duplicate pending emails blocked; provider errors surfaced; Auth user rolled back if the invitation row fails. |
-| Members | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction` — reasoned and audited; recovery never returns a token. |
+| Invitations | `createInvitationAction` (returns a one-time link), `regenerateInvitationLinkAction` (new link, 14-day record window), `revokeInvitationAction`. Duplicate pending invitations blocked; the Auth user is rolled back if the invitation row fails. **No email is sent.** |
+| Members | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction` (returns a one-time link; no email). Reasoned and audited. |
 | Cards | `prepareCardAction` (new token + revoke previous + encrypted one-time write job), `revokeCardAction`, `completeWriteJobAction` (cancel). |
 | Events | `saveEventAction` (event + exactly one main session + optional bonus), `setEventStatusAction`. |
 | Kiosk | `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions. |

@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
  * Grants the `admin` role to an existing (or newly created) Supabase Auth user
- * and sends a recovery email so they can set their own password.
+ * and generates a one-time recovery link so they can set their own password.
+ * No email is sent; the link is written to --out for the operator to deliver.
  *
- *   node scripts/bootstrap-admin.mjs --email you@psu.edu
+ *   node scripts/bootstrap-admin.mjs --email you@psu.edu --out .local/admin-link.txt
  *
  * Requires SUPABASE_SECRET_KEY (or legacy service role key) and DATABASE_URL.
  * No password is generated, printed or stored by this script.
  */
 import process from 'node:process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { Client } from 'pg';
 import { loadEnv } from './lib/env.mjs';
@@ -101,16 +104,28 @@ await client.query(
 );
 await client.end();
 
-const recovery = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+const recovery = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
   method: 'POST',
   headers,
-  body: JSON.stringify({ email, redirect_to: `${siteUrl}/auth/callback?next=/admin` }),
+  body: JSON.stringify({ type: 'recovery', email, redirect_to: `${siteUrl}/auth/callback?next=/admin` }),
 });
 
 console.log(`Granted admin role to ${email}.`);
 if (recovery.ok) {
-  console.log('Recovery email requested. Set a password from that link, then enroll TOTP at /admin-mfa.');
+  const body = await recovery.json();
+  const link = body.action_link ?? body.properties?.action_link;
+  const outIndex = process.argv.indexOf('--out');
+  const outPath = outIndex >= 0 ? process.argv[outIndex + 1] : '';
+  if (link && outPath) {
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, `${link}\n`, { mode: 0o600 });
+    console.log(`Recovery link written to ${outPath}. Send it privately, then delete the file.`);
+  } else if (link) {
+    console.log('Recovery link generated but not printed. Re-run with --out <path> to save it.');
+  } else {
+    console.log('No recovery link was returned. Generate one from the admin member page once signed in.');
+  }
 } else {
-  console.log('Admin role granted, but the recovery email request failed. Configure Supabase SMTP and resend from the login screen.');
+  console.log('Admin role granted, but the recovery link could not be generated. Set a password in Supabase.');
 }
-console.log('The user must enroll an authenticator before /admin becomes available.');
+console.log('The user must set a password, then enroll TOTP at /admin-mfa before /admin opens.');

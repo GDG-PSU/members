@@ -15,7 +15,7 @@ Assets ranked by impact:
 | Threat | Example | Mitigations in this repository | Residual risk |
 | --- | --- | --- | --- |
 | **Spoofing** | Forged device posts scans | Per-device high-entropy secret, verifier stored as hash, device allowlist + enabled status, scoped endpoints, TLS-only contract, constant-time comparison helper; secrets shown once and rotatable | Device API routes are being implemented; until they exist, this control is contractual, not exercised |
-| Spoofing | Member impersonates another account | Supabase Auth PKCE/session cookies; server derives member from verified user; no client-supplied member IDs for self-service; RLS on member tables | The server uses a secret key, so a server compromise is high-impact until a publishable key is added |
+| Spoofing | Member impersonates another account | Supabase Auth PKCE/session cookies; server derives member from verified user; no client-supplied member IDs for self-service; RLS on member tables | Publishable key is used for user queries; the server still holds a secret key for admin operations, so server compromise remains high-impact |
 | Spoofing | Card UID copied | UID is never used as a credential; the NDEF URI token is resolved server-side; card possession grants only profile routing | A copied card link can be shared; it still cannot authorize attendance/points |
 | **Tampering** | Client edits points/balance | No browser write policies; ledger tables append-only (triggers); all grants/debits through `security definer` functions restricted to `service_role`; balances derived from sums | None known in DB layer |
 | Tampering | Admin edits event config to inflate historical rewards | Reward rule snapshots on ledger and attendance; completed attendance stores reward points | An admin can still correct future/current attendance; audit records capture it |
@@ -64,15 +64,15 @@ This is a working checklist, not a certification. "Tested" means an automated ch
 | V10 Malicious code | Not tested | Dependency audit and secret scanning not run yet. |
 | V11 Business logic | Tested (DB) | Idempotent grants, attendance thresholds, no checkout → no points, bonus independence, inventory/balance locks. |
 | V12 Files/resources | Partial | 2 MB limit, MIME + decode validation, random object paths, metadata stripped. Storage policy review pending. |
-| V13 API/web service | Partial | Schema validation, method/content-type checks, rate limiter, no-store; device API implementation pending. |
+| V13 API/web service | Partial | Schema validation, method/content-type checks, rate limiter, no-store; device API implemented and auth-tested. |
 | V14 Configuration | Partial | Security headers configured in `next.config.ts`; deployment/env hardening not performed. |
 
 ## Explicitly not verified
 
 - Physical NFC read/write, read-back, locked/full tag behavior, two-lane hardware concurrency.
 - Campus network (eduroam/PSU IT) connectivity and certificate trust on the device.
-- Vercel production deployment, custom domain, cookies on the production origin, SMTP delivery.
-- Browser E2E, axe/WCAG audit, visual review at target widths, load test.
+- Vercel production deployment, custom domain, cookies on the production origin, manual link delivery and Auth link expiry.
+- Authenticated browser E2E, axe/WCAG audit, visual review at target widths, load test.
 - Dependency vulnerability audit, secret scan over Git history, backup/restore drill.
 
 These are tracked as blockers in `README.md` and `docs/test-plan.md`.

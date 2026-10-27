@@ -1,10 +1,12 @@
 # Penn State network validation — ESP32 lanes
 
-> **Status: BLOCKED.** No Penn State network policy, device registration or
-> approval was available to this implementation. Nothing was bypassed, guessed or
-> worked around. The firmware defaults to a standard WPA2-PSK station connection
-> to an **approved** SSID; do not interpret that as PSU authorization for eduroam
-> or any enterprise network.
+> **Status: approval confirmed by the organizer; details still to record.** The
+> organization reports that PSU IT approved an ESP32 network method. The approved
+> SSID/VLAN, EAP method, identity/onboarding process and hardware test window are
+> not recorded in this checkout, so do not flash production units until they are.
+> Nothing was bypassed, guessed or worked around. The firmware defaults to a
+> standard WPA2-PSK station connection to an **approved** SSID; that default is not
+> itself authorization for eduroam or any enterprise network.
 
 The Seneca tutorial referenced in `PLAN.md` is a general ESP32/eduroam example, not
 Penn State policy. Penn State's wireless requirements, EAP methods, device
@@ -18,10 +20,10 @@ certificates or per-device registration. Firmware cannot "just connect" to
 eduroam without an approved identity and EAP method, and it must never embed a
 student's personal credentials or reuse a member password.
 
-## Exact questions/actions for PSU IT
+## Exact details to capture from the approval
 
-Send these to the appropriate PSU IT contact (wireless/network onboarding) before
-purchasing or configuring the event hardware:
+The organizer confirmed approval; record the following from PSU IT before
+configuring the event hardware (these are the questions the approval should answer):
 
 1. **Allowed device class:** Are ESP32-based, headless IoT devices permitted on
    the campus wireless network for a registered student organization event? If

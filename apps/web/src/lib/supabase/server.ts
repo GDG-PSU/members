@@ -1,19 +1,19 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { getEnv, supabaseApiKey } from '@/lib/env';
+import { getEnv, supabasePublicKey } from '@/lib/env';
 
 /**
  * Cookie-bound Supabase client used for all interactive/user-scoped requests.
  *
- * The project currently exposes only a server-side secret key (no publishable
- * key), so the key never leaves the server. Once a user signs in, the SDK sends
- * the user's access token instead, and Postgres RLS applies normally.
+ * Uses the publishable key, so every query is subject to Postgres RLS; signed-in
+ * requests carry the user's access token. Privileged operations that legitimately
+ * need to bypass RLS use `createSupabaseAdmin()` instead.
  */
 export async function createSupabaseServer() {
   const cookieStore = await cookies();
   const env = getEnv();
 
-  return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, supabaseApiKey(), {
+  return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, supabasePublicKey(), {
     cookies: {
       getAll() {
         return cookieStore.getAll();

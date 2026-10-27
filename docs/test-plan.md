@@ -6,7 +6,8 @@ Last updated: 2026-10-27. A check is only marked **PASS** when it was run and it
 
 - Windows 11, Git Bash
 - Node v24.3.0, pnpm 11.5.1, Git 2.56.0
-- Supabase project `potjjlmgnrqxseeendmx` (hosted; Postgres via IPv4 pooler)
+- Supabase project `potjjlmgnrqxseeendmx` (hosted; Postgres via IPv4 pooler), publishable key configured, `gdg@psu.edu` bootstrapped as admin
+- Email delivery is manual (no SMTP; the app never sends mail)
 - Docker Desktop installed; Supabase CLI and PlatformIO **not installed**
 - No physical ESP32/PN532 hardware available
 
@@ -23,7 +24,11 @@ Last updated: 2026-10-27. A check is only marked **PASS** when it was run and it
 | Production build | `pnpm build` | PASS — Next.js 16 build, all routes; Turborepo build clean |
 | Format check | `pnpm format:check` | NOT RUN |
 | Playwright E2E (public smoke) | `pnpm e2e` | PASS — **16 passed** (desktop 1440 + Pixel 7): home, leaderboard, mobile overflow, theme toggle persistence, auth redirects, unknown card, device 401, public projection allowlist |
-| Playwright authenticated admin/member flows | `pnpm e2e` | BLOCKED — requires a real admin account, SMTP capture and card writer; not written as automated specs yet |
+| Playwright authenticated admin/member flows | `pnpm e2e` | BLOCKED — requires a signed-in admin session, MFA enrollment and a card writer; not written as automated specs yet |
+| Supabase Auth admin API | `/auth/v1/admin/users` | PASS after repair — legacy rows had NULL token columns, which made GoTrue fail every list/read; normalized to empty tokens, then list returned 200 |
+| Admin bootstrap (`gdg@psu.edu`) | `node scripts/bootstrap-admin.mjs` | PASS — role granted; password sign-in 200; `admin/generate_link` 200 |
+| Publishable-key login + AAL2 gate | Playwright (Chromium) against built app | PASS — admin signs in, lands on `/admin-mfa`; `/admin` and `/admin/invitations` redirect there; no client key errors |
+| Generated recovery-link flow | Playwright against built app + hosted Auth | PASS — admin generate_link → verify → `/auth/callback` → session cookies → role-aware redirect → `/admin-mfa` |
 | Accessibility (axe) | — | NOT RUN |
 | Manual keyboard/visual review | — | NOT RUN |
 | Load/concurrency API test | — | NOT RUN (concurrent redemption/locking at SQL level is covered below) |
@@ -31,7 +36,7 @@ Last updated: 2026-10-27. A check is only marked **PASS** when it was run and it
 | Secret scan | gitleaks/trufflehog | NOT RUN |
 | Firmware host parser tests | `g++ -Wall -Wextra -Werror` | PASS — `ndef_url: all checks passed (ok)` |
 | Firmware compile (ESP32) | `pio run -d firmware/kiosk-reader` | BLOCKED — PlatformIO/toolchain not installed |
-| Hardware-in-the-loop | actual PN532 + cards + network | BLOCKED — no hardware or PSU network approval |
+| Hardware-in-the-loop | actual PN532 + cards + network | BLOCKED — no hardware available; PSU network approval confirmed by the organizer |
 | Live HTTP smoke | `curl` against built app | PASS — public routes 200; `/admin`, `/member` 307 → login; unsigned device heartbeat 401 |
 
 ## What `db-verify` proved
@@ -122,7 +127,7 @@ g++ -std=c++17 -I firmware/kiosk-reader/lib/ndef_url \
 
 Compile check: `pio run -d firmware/kiosk-reader` (PlatformIO not installed here).
 
-Hardware checklist (BLOCKED): PN532 responds on the documented interface; a phone opens the exact written URL; reader parses it; writer writes, reads back and compares; locked/full tag fails clearly; two devices authenticate independently; disabling one blocks it; duplicate taps/retries/reboots/Wi-Fi loss do not award points; writer mode pauses attendance on that unit; deployed HTTPS works with certificate validation and the PSU-approved network.
+Hardware checklist (BLOCKED — approval confirmed, hardware not yet available): PN532 responds on the documented interface; a phone opens the exact written URL; reader parses it; writer writes, reads back and compares; locked/full tag fails clearly; two devices authenticate independently; disabling one blocks it; duplicate taps/retries/reboots/Wi-Fi loss do not award points; writer mode pauses attendance on that unit; deployed HTTPS works with certificate validation and the PSU-approved network.
 
 ## Security and operational checks
 
@@ -134,13 +139,14 @@ Not run yet: `pnpm audit`, lockfile review, secret scan over Git history, securi
 | --- | --- |
 | Clean migration from zero | PASS (hosted project, 0001–0004) |
 | RLS/domain invariants | PASS (38 assertions) |
-| Lint/typecheck/build | NOT RUN |
-| Unit/component tests | NOT RUN (no tests present) |
-| Playwright E2E | NOT RUN |
+| Lint/typecheck/build | PASS (local) |
+| Unit/component tests | PASS (23 unit tests) |
+| Playwright E2E | PASS (16 public smoke tests) |
 | Accessibility/visual review | NOT RUN |
-| Device API / firmware compile | BLOCKED (implementation/PlatformIO) |
-| Hardware-in-the-loop | BLOCKED (no hardware/network approval) |
-| Vercel/Supabase production config, SMTP, DNS | BLOCKED (credentials/authorization) |
+| Device API / firmware compile | API implemented and auth-tested; PlatformIO compile NOT RUN |
+| Hardware-in-the-loop | BLOCKED (no hardware available) |
+| Supabase configuration, admin bootstrap, publishable key | DONE (hosted project) |
+| Vercel deployment, DNS | BLOCKED (authorization) |
 | Backup/restore drill | NOT RUN |
 
 No production sign-off should be given until the unrun gates are executed or explicitly accepted with documented risk.

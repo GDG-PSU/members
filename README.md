@@ -7,7 +7,7 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 - Backend: Supabase Postgres/Auth/Storage with transactional, ledger-derived points and append-only audit history.
 - Firmware: ESP32 + PN532 reader/writer that talks only to a narrow HTTPS device API.
 
-> **Status: feature-complete locally, not a production sign-off.** Public, auth, member, admin/kiosk, card-writer, device API and firmware slices are implemented and the production build, unit tests, Playwright smoke suite and database checks pass. Still blocked on external items: Vercel/Supabase deployment, production SMTP, custom domain, a real admin identity, PSU network approval and physical hardware. See [Current status](#current-status) and [docs/test-plan.md](docs/test-plan.md).
+> **Status: feature-complete locally, not a production sign-off.** Public, auth, member, admin/kiosk, card-writer, device API and firmware slices are implemented and the production build, unit tests, Playwright smoke suite and database checks pass. The hosted Supabase project has the publishable key, migrations and a bootstrapped admin; invitations and recovery are delivered manually (no SMTP by design). Still blocked on external items: the Vercel deployment, custom domain and physical hardware. See [Current status](#current-status) and [docs/test-plan.md](docs/test-plan.md).
 
 ## Stack
 
@@ -35,10 +35,15 @@ As of 2026-10-27.
 | Admin portal: invitations, members, cards, events, kiosk, rewards, devices, audit; TOTP MFA gate at `/admin-mfa` | Implemented; not exercised with a real admin account yet |
 | Device middleware API `/api/device/v1/*` | Implemented; hardware flow untested |
 | Public JSON endpoints `/api/public/*` | Implemented |
+| Publishable key wired into the SSR client; secret key limited to admin operations | Done |
+| Admin `gdg@psu.edu` bootstrapped in hosted Supabase (role granted, password sign-in verified) | Done; TOTP enrollment pending |
+| Manual invitation/recovery links generated in the admin UI (no SMTP dependency) | Implemented |
+| PSU network approval for ESP32 lanes | Confirmed by organizer; exact SSID/EAP still to record |
+| License | MIT |
 | Unit tests (23), Playwright smoke suite (16 across desktop/mobile), CI workflow | Implemented and passing locally |
 | Admin bootstrap + guarded demo seed scripts, local `seed.sql` | Implemented |
 
-Hardware-in-the-loop, production SMTP delivery, admin MFA enrollment and authenticated admin/member Playwright flows remain unverified. Treat the platform as ready for staging, not for live member data.
+Hardware-in-the-loop, admin MFA enrollment and authenticated admin/member Playwright flows remain unverified. Treat the platform as ready for staging, not for live member data until the admin enrolls TOTP and the hardware lane is validated.
 
 ## Quick start
 
@@ -63,13 +68,13 @@ Copy [.env.example](.env.example). Names only:
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin used for callbacks/links |
 | `NEXT_PUBLIC_SUPPORT_EMAIL` | Support address (`gdg@psu.edu`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (public) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional today; recommended for hardening |
-| `SUPABASE_SECRET_KEY` | **Server only**; never `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key (`sb_publishable_…`); used by the SSR client and subject to RLS |
+| `SUPABASE_SECRET_KEY` | **Server only**; admin/auth-admin operations only, never `NEXT_PUBLIC_` |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server only**; legacy fallback |
 | `CARD_WRITE_ENCRYPTION_KEY` | **Server only**; 32-byte base64 for AES-GCM card payloads |
 | `DATABASE_URL` | Migration/verification scripts only |
 
-The supplied Supabase project has no publishable key, so the app uses the secret key server-side via `@supabase/ssr`. It never reaches the browser. Signed-in requests still use the user JWT, so RLS applies. Add a publishable key and switch `createSupabaseServer()` when available — see [docs/architecture.md](docs/architecture.md).
+The publishable key backs the cookie-bound SSR client, so every user and anonymous query is subject to RLS. The secret key is used only by `createSupabaseAdmin()` for explicitly authorized admin operations (auth-admin link generation, cross-member reads, device jobs) and never reaches the browser.
 
 ### Admin bootstrap
 
@@ -83,13 +88,13 @@ where lower(email) = lower('REPLACE_WITH_REAL_ADMIN_EMAIL')
 on conflict (auth_user_id, role) do update set revoked_at = null;
 ```
 
-Or let the script create/find the Auth user and send a recovery email:
+Or let the script create/find the Auth user and write a one-time recovery link:
 
 ```bash
-pnpm db:bootstrap-admin --email you@psu.edu
+pnpm db:bootstrap-admin --email you@psu.edu --out .local/admin-link.txt
 ```
 
-The script prints no passwords. The new admin must enroll an authenticator at `/admin-mfa` before `/admin` opens.
+The script prints no passwords or links: it writes a one-time recovery link to the `--out` file (gitignored under `.local/`). Deliver it privately and delete the file. The new admin must set a password and enroll an authenticator at `/admin-mfa` before `/admin` opens. Without SMTP there is no automatic email anywhere: invitation and recovery links are generated in the admin UI and copied by hand.
 
 ## Commands
 
@@ -104,7 +109,7 @@ The script prints no passwords. The new admin must enroll an authenticator at `/
 | `pnpm db:migrate` | Apply SQL migrations in order |
 | `pnpm db:verify` | Rollback-safe DB/RLS/ledger checks |
 | `pnpm e2e` | Playwright public smoke suite (requires `pnpm e2e:install` and a running app) |
-| `pnpm db:bootstrap-admin` | Grant the admin role + send recovery email for an existing/new Auth user |
+| `pnpm db:bootstrap-admin` | Grant the admin role and write a one-time recovery link (`--out`) for an existing/new Auth user |
 | `pnpm db:seed` | Guarded, fictional local demo fixtures (`SEED_CONFIRM=yes SEED_ALLOWED=1`) |
 
 Firmware host parser test (no hardware, no PlatformIO):
@@ -162,18 +167,17 @@ Recorded on 2026-10-27:
 - Playwright against the built app — PASS, **16/16** across desktop + mobile viewports
 - Firmware NDEF parser host test — PASS (`g++ -Wall -Wextra -Werror`)
 - Live HTTP smoke: `/`, `/leaderboard`, `/events`, `/privacy`, `/login` return 200; `/admin` and `/member` redirect to login; unsigned device heartbeat returns 401
+- Publishable-key sign-in smoke: admin session is accepted and `/admin/*` redirects to `/admin-mfa` until TOTP enrollment
+- Generated recovery-link flow: verify → callback → session → role-aware redirect → `/admin-mfa`
 
-Not run: axe-core, manual screen-reader review, load test, dependency audit, secret scan, PlatformIO compile, hardware-in-the-loop, authenticated admin/member Playwright flows (need a real admin account + SMTP). See [docs/test-plan.md](docs/test-plan.md).
+Not run: axe-core, manual screen-reader review, load test, dependency audit, secret scan, PlatformIO compile, hardware-in-the-loop, authenticated admin/member Playwright flows (need a signed-in admin session and a card writer). See [docs/test-plan.md](docs/test-plan.md).
 
 ## External blockers (need a human/organization)
 
-1. **Vercel + production Supabase publishable key:** authorize a Vercel project and provide a publishable key (or approve switching to one) so the web tier no longer needs the secret key.
-2. **SMTP:** choose and authorize a transactional email provider; verify sender domain (SPF/DKIM/DMARC) and configure Supabase Auth templates.
-3. **DNS:** authorize `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
-4. **Admin identity:** provide the real admin email for role bootstrap and require TOTP enrollment.
-5. **PSU network:** obtain PSU IT approval for ESP32 access (approved SSID/EAP or dedicated network). Do not use personal credentials or bypass TLS/captive controls.
-6. **Hardware:** provide the exact PN532 boards, writable NFC tags, USB access and an event environment for two-lane testing.
-7. **License:** choose a license with the organization's approval before distributing the repository.
+1. **Vercel:** authorize creating the project and setting the production environment variables (the publishable key is already supplied).
+2. **DNS:** authorize `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
+3. **Admin enrollment:** `gdg@psu.edu` has the admin role; someone must sign in, change the bootstrap password, and enroll TOTP at `/admin-mfa`.
+4. **Hardware:** provide the exact PN532 boards, writable NFC tags, USB access and an event environment for two-lane testing, and record the PSU-approved SSID/EAP (approval confirmed; configuration details still needed).
 
 ## Documentation
 
@@ -192,4 +196,4 @@ Not run: axe-core, manual screen-reader review, load test, dependency audit, sec
 
 ## License
 
-No license has been chosen. Per the project plan, pick a license with the organization's approval before distributing or accepting outside contributions.
+[MIT](LICENSE) © Google Developer Group at Penn State.

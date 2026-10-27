@@ -34,6 +34,6 @@ GDG@PSU needs a member identity portal, a privacy-aware public profile and leade
 ## Consequences
 
 - Positive: strong audit trail, testable invariants, database-enforced isolation, one deployable web app, minimal infrastructure.
-- Negative: more SQL surface to maintain; every new value operation needs a transactional function and tests. Server actions plus a privileged key mean the web server must remain uncompromised; adding a publishable key and using user-scoped clients for non-admin reads is the planned hardening step.
+- Negative: more SQL surface to maintain; every new value operation needs a transactional function and tests. Server actions plus a privileged key mean the web server must remain uncompromised for admin operations. Update (2026-10-27): a publishable key is now wired into the cookie-bound SSR client; the secret key is limited to admin-only call sites.
 - Operational: migrations must be applied intentionally; device secrets/card recovery require admin runbooks; no offline attendance is permitted by design.
 - Device work remains hardware-dependent: the API/firmware contract is defined, but physical read/write, campus networking and two-lane concurrency still require hardware and PSU IT approval.

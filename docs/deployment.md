@@ -2,7 +2,7 @@
 
 Target: Next.js app on Vercel, Supabase Postgres/Auth/Storage, custom domain `member.gdgpsu.dev`.
 
-**Nothing in this document has been executed against Vercel, DNS or production SMTP.** It is the procedure and the prerequisite list, not evidence of a deployment. No production deployment exists for this build.
+The Supabase project, migrations, publishable key and admin role are configured. **Nothing in this document has been executed against Vercel or DNS.** It is the procedure and the prerequisite list, not evidence of a deployment. No production deployment exists for this build. Email is manual by design: the app never sends mail, so there is no SMTP dependency.
 
 ## 1. Prerequisites (user/operator action)
 
@@ -10,10 +10,10 @@ Target: Next.js app on Vercel, Supabase Postgres/Auth/Storage, custom domain `me
 | --- | --- | --- |
 | Vercel account/project with access to the repo | Hosting | BLOCKED — not provided |
 | DNS control for `gdgpsu.dev` | `member.gdgpsu.dev` | BLOCKED |
-| Supabase project ownership + a publishable key | Auth/DB; see key note below | Project exists; publishable key not supplied |
-| Transactional email provider (SMTP) with SPF/DKIM/DMARC | Invitations, recovery, card-ready notices | BLOCKED |
-| PSU IT approval for ESP32 network access | Hardware lanes | BLOCKED |
-| Admin bootstrap identity (real email) | First admin | BLOCKED — do not invent one |
+| Supabase project ownership + a publishable key | Auth/DB; see key note below | Done — key supplied and wired |
+| Invitation/recovery delivery | Link delivery | Manual — an admin copies links into their own mail client; no SMTP |
+| PSU IT approval for ESP32 network access | Hardware lanes | Confirmed by organizer; record the approved SSID/EAP before flashing |
+| Admin bootstrap identity (real email) | First admin | Done — `gdg@psu.edu` role granted |
 
 ## 2. Environment variables (names only)
 
@@ -24,7 +24,7 @@ Set these in Vercel → Project → Settings → Environment Variables for **Pro
 | `NEXT_PUBLIC_SITE_URL` | Public | Canonical origin for callbacks/links (`https://member.gdgpsu.dev`) |
 | `NEXT_PUBLIC_SUPPORT_EMAIL` | Public | Support address shown to members (`gdg@psu.edu`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Publishable/anon key — currently empty; see note |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Publishable key (`sb_publishable_…`) for the RLS-bound SSR client |
 | `SUPABASE_SECRET_KEY` | **Server only** | New-format secret key; never `NEXT_PUBLIC_` |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | Legacy fallback if no secret key |
 | `CARD_WRITE_ENCRYPTION_KEY` | **Server only** | 32-byte base64 key for AES-GCM card payloads; rotating it invalidates stored encrypted tokens |
@@ -35,7 +35,7 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
 
 ### Key note (important)
 
-The supplied project has a server-side secret key but no publishable key. The app therefore runs Supabase SSR with the secret key on the server only. This works, but it means the web tier can bypass RLS. **Recommended hardening:** create a publishable key in Supabase and set `NEXT_PUBLIC_SUPABASE_ANON_KEY`, then switch `createSupabaseServer()` to prefer the publishable key. Keep the secret key for admin-only operations. Do not expose the secret key to the browser to work around the missing key.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` holds the publishable key. `createSupabaseServer()` and the request proxy use it, so all user/anonymous queries are subject to RLS. `SUPABASE_SECRET_KEY` is used only by `createSupabaseAdmin()` for explicitly authorized admin operations (auth-admin link generation, cross-member reads, device jobs). Never expose the secret key to the browser or firmware.
 
 ## 3. Supabase configuration
 
@@ -50,15 +50,15 @@ The supplied project has a server-side secret key but no publishable key. The ap
 2. **Auth settings:**
    - Site URL: `https://member.gdgpsu.dev`
    - Additional redirect URLs: `https://member.gdgpsu.dev/auth/callback`, `http://localhost:3000/auth/callback` (local only). Add preview origins only if previews need sign-in.
-   - Disable public signup. Accounts are created by invitation through the Admin API.
-   - Enable TOTP MFA for admin accounts. The app's `/admin-mfa` gate is pending implementation at time of writing; once present, admins without AAL2 cannot use admin routes.
-   - Configure a production SMTP provider and branded invitation/recovery templates. The built-in sender is rate-limited and unsuitable for an invitation drive.
+   - Disable public signup. Accounts are created by the Admin API through generated invitation links. (The initial admin was created through signup and then confirmed; disable signup after that.)
+   - Enable TOTP MFA for admin accounts. Admins without AAL2 cannot use `/admin/*` and are redirected to `/admin-mfa`.
+   - **Email:** no SMTP is configured and the app sends no mail. Admin → Invitations generates a one-time link with `generateLink`; the admin copies it into their own mail client. The same applies to member recovery on the member detail page. Generated links expire per the project's **Email OTP Expiration** setting (default 1 hour); raise it to fit your sending workflow, and regenerate a link if it expires. Do not reduce this setting.
 3. **Storage:** bucket `avatars` (public read, server-side uploads only). Do not create a second bucket; `photo_path` values reference this bucket.
 4. **Backups:** enable plan-appropriate backups/PITR in the dashboard and record retention. See `docs/backup-restore.md`.
 
 ## 4. Admin bootstrap
 
-There is no public admin creation path. Run `pnpm db:bootstrap-admin --email you@psu.edu`; it finds or creates the Auth user, grants the `admin` role and requests a recovery email. No password is printed. Equivalent reviewed SQL (after creating the Auth user in Supabase):
+There is no public admin creation path. Run `pnpm db:bootstrap-admin --email you@psu.edu --out .local/admin-link.txt`; it finds or creates the Auth user, grants the `admin` role and writes a one-time recovery link to the output file (gitignored). No email is sent and no password is printed — deliver the link privately, then delete the file. Equivalent reviewed SQL (after creating the Auth user in Supabase):
 
 ```sql
 insert into public.user_roles (auth_user_id, role, note)
@@ -85,7 +85,7 @@ Then sign in and enroll TOTP. Do not put the admin's email or credentials in thi
 
 1. `GET /` renders (200) and no CSP/console errors.
 2. Sign-in flow works on the real origin; cookies are Secure/HttpOnly; callback redirects to `/invite/accept`.
-3. A test invitation email arrives; link works once; expired/revoked link shows a neutral state.
+3. An admin-generated invitation link works once; expired/revoked link shows a neutral state.
 4. Setup creates a member, `/m/<slug>` loads, leaderboard excludes private profiles.
 5. `/c/<token>` redirects (307) to `/m/<slug>`; a revoked token shows `/card-unavailable`.
 6. Admin routes require MFA (AAL2) and redirect to `/admin-mfa` when unenrolled; member routes reject anonymous requests.
@@ -97,17 +97,15 @@ Then sign in and enroll TOTP. Do not put the admin's email or credentials in thi
 - **App:** Vercel → Deployments → promote the last known-good deployment. Environment variable changes require a redeploy.
 - **Database:** migrations are forward-only and there are no down migrations. For a bad migration, stop deploys, restore the pre-migration dump into a disposable project to investigate, then write a corrective migration. Do not delete ledger/attendance rows.
 - **Secrets:** if a Supabase secret key or device secret is exposed, rotate in Supabase/Vercel, redeploy, disable affected devices, and review `audit_log`.
-- **Domain/email:** reverting DNS or SMTP affects all auth links; coordinate with the organizers before changing.
+- **Domain/links:** reverting DNS changes auth callbacks; generated invitation/recovery links are one-time, so reissue them after a domain change.
 
 ## 8. Exact blockers to resolve before production
 
-1. Provide a Vercel project (or authorize creating one) and a Supabase publishable key.
-2. Approve the production origin and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
-3. Provide/authorize a transactional email provider and sender domain.
-4. Approve DNS changes for `member.gdgpsu.dev`.
-5. Provide the real admin email for role bootstrap and require TOTP enrollment.
-6. Confirm PSU IT's approved ESP32 network method; do not use personal credentials or bypass TLS.
-7. Decide whether production admin MFA is mandatory before any member data is entered (recommended: yes).
+1. Authorize creating the Vercel project and setting the production environment variables (the publishable key is supplied).
+2. Approve DNS changes for `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
+3. Have `gdg@psu.edu` sign in, change the bootstrap password, and enroll TOTP before any member data is entered.
+4. Record PSU IT's approved ESP32 SSID/EAP method and hardware test window; do not use personal credentials or bypass TLS.
+5. Confirm whether preview deployments may use a staging Supabase project (recommended) or must stay offline.
 
 ## 9. Database branching for pull requests (not configured)
 
