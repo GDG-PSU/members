@@ -88,9 +88,9 @@ Then sign in and enroll TOTP. Do not put the admin's email or credentials in thi
 3. A test invitation email arrives; link works once; expired/revoked link shows a neutral state.
 4. Setup creates a member, `/m/<slug>` loads, leaderboard excludes private profiles.
 5. `/c/<token>` redirects (307) to `/m/<slug>`; a revoked token shows `/card-unavailable`.
-6. Admin routes require MFA (once implemented); member routes reject anonymous requests.
+6. Admin routes require MFA (AAL2) and redirect to `/admin-mfa` when unenrolled; member routes reject anonymous requests.
 7. Security headers present; no secret appears in the HTML/JS bundle.
-8. Device API rejects unknown/disabled devices and oversized payloads (once implemented).
+8. Device API rejects unknown/disabled devices and oversized payloads (`/api/device/v1/heartbeat` without valid credentials returns 401).
 
 ## 7. Rollback and recovery
 
@@ -108,3 +108,17 @@ Then sign in and enroll TOTP. Do not put the admin's email or credentials in thi
 5. Provide the real admin email for role bootstrap and require TOTP enrollment.
 6. Confirm PSU IT's approved ESP32 network method; do not use personal credentials or bypass TLS.
 7. Decide whether production admin MFA is mandatory before any member data is entered (recommended: yes).
+
+## 9. Database branching for pull requests (not configured)
+
+The Supabase project is `potjjlmgnrqxseeendmx`. Preview database branching follows [Supabase: Branching with GitHub integration](https://supabase.com/docs/guides/deployment/branching/github-integration) and is **not enabled**: it needs a human to install the Supabase GitHub app and authorize the organization, which the database password/API keys alone cannot do.
+
+To enable it:
+
+1. In the Supabase dashboard, open the project → **Branching** → connect GitHub and install the Supabase integration for `GDG-PSU/members`.
+2. Choose `main` as the production branch and enable a preview branch per pull request (or per selected branch).
+3. Apply `supabase/migrations/*.sql` to each branch (the integration can run migrations, or the CI job can call `supabase db push` against `SUPABASE_DB_URL`).
+4. Add the branch's API URL and keys to the Vercel Preview environment; never reuse the production `SUPABASE_SECRET_KEY` in previews.
+5. Seed preview branches only with fictional data (`SEED_CONFIRM=yes SEED_ALLOWED=1 pnpm db:seed`).
+
+Without branching, keep Vercel previews read-only against a dedicated staging project; do not point them at production member data.

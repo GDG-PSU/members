@@ -147,4 +147,4 @@ Scan responses: `{ scanId, status, action, expiresAt }`; claim returns `{ job: n
 | `POST /api/device/v1/write-jobs/claim` | Claim one queued write job bound to this device |
 | `POST /api/device/v1/write-jobs/:jobId/complete` | Report written/failed with read-back result |
 
-Headers: `x-device-id`, `x-device-secret`, `x-request-id`. TLS certificate validation is mandatory. These endpoints must validate device status, payload size/content type, idempotency and rate limits before touching data. They are not implemented in this checkout, so the firmware cannot complete a live flow yet.
+TLS certificate validation is mandatory; payload size/content type, idempotency and rate limits are checked before any database write.
