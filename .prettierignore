@@ -1,0 +1,9 @@
+pnpm-lock.yaml
+.next
+dist
+coverage
+turbo.json
+playwright-report
+test-results
+supabase/migrations
+firmware/**

@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# environment / secrets
+.env
+.env.*
+!.env.example
+!.env.vars.example
+*.pem
+*.key
+secrets.h
+firmware/**/include/secrets.h
+supabase/.branches/
+supabase/.temp/
+supabase/seed.local.sql
+
+# editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# local tooling
+.vercel
+.eslintcache
+.freebuff/
+
+# generated test artifacts
+test-results/
+playwright-report/

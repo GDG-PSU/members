@@ -1,0 +1,34 @@
+{
+  "name": "gdgpsu-members",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GDG@PSU member identity, NFC card, points and event platform",
+  "packageManager": "pnpm@11.5.1",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@gdg/web",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:unit": "pnpm --filter @gdg/web test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:verify": "node scripts/db-verify.mjs",
+    "db:seed": "node scripts/db-seed.mjs",
+    "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "dotenv": "17.2.3",
+    "pg": "8.16.3",
+    "prettier": "3.9.10",
+    "turbo": "2.11.10",
+    "typescript": "5.9.3"
+  }
+}
