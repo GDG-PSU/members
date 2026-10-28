@@ -19,7 +19,7 @@ Only the current `main` branch is supported. There are no maintained release bra
 - **Cards:** NFC cards store a single opaque HTTPS URL. Card tokens are hashed at rest (SHA-256); an AES-256-GCM encrypted copy exists only for the owner's authenticated digital ID and one-time write jobs. Card possession never authorizes attendance, spending or account access.
 - **Devices:** separate identity from users. Per-device high-entropy secret, only a hash stored, rotatable/revocable, scoped endpoints, TLS required. Firmware never receives Supabase keys.
 - **Public data:** explicit allowlisted projection views; email private by default; internal UUIDs, card data and admin notes never public.
-- **Auditing:** append-only audit and attendance-audit tables with actor, reason and redacted before/after values.
+- **Auditing:** append-only audit and attendance-audit tables with actor, reason and redacted before/after values. Audit rows retain the actor UUID after an account is deleted; the log itself cannot be edited or removed.
 - **Secrets:** server-only Supabase secret/service key, encryption key and database URL live in ignored env files (Vercel env in deployment). `.env.example` contains placeholders only. Firmware secrets are ignored; only `secrets.example.h` belongs in Git.
 - **Headers:** CSP, `X-Content-Type-Options`, `Referrer-Policy`, framing denial and a permissions policy are configured in `apps/web/next.config.ts`. HSTS must be enabled at the edge/production host.
 
@@ -38,6 +38,7 @@ Only the current `main` branch is supported. There are no maintained release bra
 - Invitations and recovery are delivered manually: an admin copies a one-time Supabase link into their own mail client. The link is as sensitive as a password until used and expires per the project's Auth OTP setting.
 - The device middleware API is auth-tested, but the firmware build and hardware behavior are not verified in this environment.
 - No production deployment, custom domain, dependency audit, secret scan or backup/restore drill has been completed.
-- Authenticated admin/member E2E, accessibility and load tests have not been run; admin TOTP enrollment is still pending.
+- The authenticated invitation and member-setup flow is automated end to end. Remaining admin surfaces (cards, kiosk, events, devices), accessibility and load tests have not been run.
+- The admin TOTP factor is enrolled, but the bootstrap password still needs rotating before live member data.
 
 See `docs/threat-model.md` for the threat table and the ASVS mapping with tested/untested controls, and `docs/test-plan.md` for exact recorded results.

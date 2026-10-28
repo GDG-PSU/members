@@ -53,10 +53,10 @@ This is a working checklist, not a certification. "Tested" means an automated ch
 | ASVS area | Status | Evidence / gap |
 | --- | --- | --- |
 | V1 Encoding / injection | Partial | Parameterized Supabase queries and SQL functions; public text rendered as text. No dedicated XSS test. |
-| V2 Authentication | Partial | Supabase Auth, no public signup, invitation-only setup, password minimum 12 with letter+digit. No E2E login/MFA test yet. |
+| V2 Authentication | Partial | Supabase Auth, no public signup, invitation-only setup, password minimum 12 with letter+digit. Admin TOTP enrollment and the invitation/setup flow are E2E-tested; lockout and rate-limit behavior are not. |
 | V3 Session management | Partial | HttpOnly Supabase SSR cookies, server-side `getUser()`; cookie flags/refresh behavior not E2E-tested. |
 | V4 Access control | Tested (DB) | RLS member isolation, private profile exclusion, anon ledger denial (38/38 db checks). Route-level IDOR tests pending. |
-| V5 Validation/serialization | Partial | Zod at server boundaries, size caps, `https://` link validation, image re-encode, explicit public API projections. Authenticated admin/member HTTP flows are covered only by typecheck and code review, not automated tests. |
+| V5 Validation/serialization | Partial | Zod at server boundaries, size caps, `https://` link validation, image re-encode, explicit public API projections. The invitation/setup flow is automated; other authenticated admin endpoints are covered by typecheck and code review only. |
 | V6 Cryptography | Partial | SHA-256 token hashing, AES-256-GCM encrypted card payloads, 256-bit tokens, constant-time comparison helper; key management relies on env secrets. |
 | V7 Error/logging | Partial | Stable API error codes, request IDs, redacted audit JSON; no centralized log shipping or redaction test. |
 | V8 Data protection | Partial | Email separate and private by default, public allowlist view, no secrets in client bundles by construction. Retention/deletion policy not automated. |
@@ -71,8 +71,8 @@ This is a working checklist, not a certification. "Tested" means an automated ch
 
 - Physical NFC read/write, read-back, locked/full tag behavior, two-lane hardware concurrency.
 - Campus network (eduroam/PSU IT) connectivity and certificate trust on the device.
-- Vercel production deployment, custom domain, cookies on the production origin, manual link delivery and Auth link expiry.
-- Authenticated browser E2E, axe/WCAG audit, visual review at target widths, load test.
+- Vercel preview/production deployment, custom domain, cookies on the production origin, manual link delivery and Auth link expiry.
+- Remaining authenticated admin browser flows (cards, kiosk, events, devices), axe/WCAG audit, visual review at target widths, load test.
 - Dependency vulnerability audit, secret scan over Git history, backup/restore drill.
 
 These are tracked as blockers in `README.md` and `docs/test-plan.md`.

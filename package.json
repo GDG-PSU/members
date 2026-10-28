@@ -21,11 +21,13 @@
     "db:verify": "node scripts/db-verify.mjs",
     "db:seed": "node scripts/db-seed.mjs",
     "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
+    "admin:enroll-totp": "node scripts/admin-enroll-totp.mjs",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
+    "@supabase/supabase-js": "2.118.0",
     "dotenv": "17.2.3",
     "pg": "8.16.3",
     "prettier": "3.9.10",

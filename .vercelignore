@@ -1,0 +1,6 @@
+.env
+.env.*
+.local
+test-results
+playwright-report
+apps/web/.next

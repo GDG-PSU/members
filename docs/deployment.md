@@ -8,7 +8,7 @@ The Supabase project, migrations, publishable key and admin role are configured.
 
 | Item | Needed for | Status |
 | --- | --- | --- |
-| Vercel account/project with access to the repo | Hosting | BLOCKED — not provided |
+| Vercel account/project with access to the repo | Hosting | BLOCKED — CLI has no authenticated session; anonymous temporary deployments are refused |
 | DNS control for `gdgpsu.dev` | `member.gdgpsu.dev` | BLOCKED |
 | Supabase project ownership + a publishable key | Auth/DB; see key note below | Done — key supplied and wired |
 | Invitation/recovery delivery | Link delivery | Manual — an admin copies links into their own mail client; no SMTP |
@@ -46,7 +46,7 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
    # or, without the CLI:
    DATABASE_URL="postgresql://…pooler…" pnpm db:migrate
    ```
-   Migration `0003_rls.sql` creates the public `avatars` bucket with a 2 MB limit and JPEG/PNG/WebP MIME allowlist. Verify it exists after the first deploy.
+   Migration `0003_rls.sql` creates the public `avatars` bucket with a 2 MB limit and JPEG/PNG/WebP MIME allowlist. Verify it exists after the first deploy. Migration `0005_audit_actor_retention.sql` drops the audit actor foreign key so account deletion does not collide with the append-only trigger; audit rows keep the actor UUID.
 2. **Auth settings:**
    - Site URL: `https://member.gdgpsu.dev`
    - Additional redirect URLs: `https://member.gdgpsu.dev/auth/callback`, `http://localhost:3000/auth/callback` (local only). Add preview origins only if previews need sign-in.
@@ -68,9 +68,11 @@ where lower(email) = lower('REPLACE_WITH_REAL_ADMIN_EMAIL')
 on conflict (auth_user_id, role) do update set revoked_at = null;
 ```
 
-Then sign in and enroll TOTP. Do not put the admin's email or credentials in this repository.
+Then enroll TOTP with `pnpm admin:enroll-totp` (it completes the real `/admin-mfa` flow and writes the manual key to a gitignored file without printing it) or manually on `/admin-mfa`. Do not put the admin's email or credentials in this repository.
 
 ## 5. Vercel
+
+The repository includes `vercel.json`, which sets the Next.js framework, the frozen-lockfile install, the `@gdg/web` build and the `apps/web/.next` output. Import the project, then confirm these values:
 
 - Import the repository as a monorepo project.
 - Root directory: repository root (`./`).
@@ -80,6 +82,7 @@ Then sign in and enroll TOTP. Do not put the admin's email or credentials in thi
 - Add the environment variables above for Production and Preview. Preview must not point at the production database or use production member data.
 - Add the custom domain `member.gdgpsu.dev` only after DNS authorization. Enable HSTS at the domain level once HTTPS is confirmed.
 - Function duration/region: default is fine; requests are short and use the Postgres pooler. Do not add a persistent server.
+- Anonymous `vercel deploy --temporary` is disabled for this project; authenticate the CLI (`npx vercel login`) before deploying. A preview must use its own `NEXT_PUBLIC_SITE_URL` (the deployment origin) so invitation/recovery links return to the right host.
 
 ## 6. Post-deploy verification
 
@@ -101,9 +104,9 @@ Then sign in and enroll TOTP. Do not put the admin's email or credentials in thi
 
 ## 8. Exact blockers to resolve before production
 
-1. Authorize creating the Vercel project and setting the production environment variables (the publishable key is supplied).
+1. Sign in to Vercel (`npx vercel login`), create/import the project and set the production environment variables (the publishable key is supplied). Anonymous temporary deployments are not available.
 2. Approve DNS changes for `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
-3. Have `gdg@psu.edu` sign in, change the bootstrap password, and enroll TOTP before any member data is entered.
+3. Have `gdg@psu.edu` change the bootstrap password before any member data is entered; the TOTP factor is already enrolled, so add its manual key to the organizer's authenticator first.
 4. Record PSU IT's approved ESP32 SSID/EAP method and hardware test window; do not use personal credentials or bypass TLS.
 5. Confirm whether preview deployments may use a staging Supabase project (recommended) or must stay offline.
 

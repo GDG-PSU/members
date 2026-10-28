@@ -92,6 +92,8 @@ Points are loyalty value and attendance is an attendance record. Editing or dele
 - reward rules and costs are snapshotted onto the transaction that used them;
 - aggregate read models (`member_balances`, `public_profiles`, `leaderboard`) are views, so they cannot drift.
 
+Audit rows outlive the accounts they name. `audit_log.actor_auth_id` is a UUID without a foreign key (migration 0005): the append-only trigger blocks the `ON DELETE SET NULL` update an FK would perform, so retaining the historical actor id both preserves the trail and lets account deletion complete.
+
 ## Serverless constraints
 
 Vercel functions are short-lived and stateless, so the design avoids:

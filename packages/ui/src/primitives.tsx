@@ -15,12 +15,6 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 
@@ -306,58 +300,5 @@ export function VisibilityControl({
         slotProps={{ input: { 'aria-label': label } }}
       />
     </Stack>
-  );
-}
-
-export interface DataTableColumn<T> {
-  key: string;
-  header: string;
-  render: (row: T) => ReactNode;
-  align?: 'left' | 'right' | 'center';
-  width?: number | string;
-}
-
-export function DataTable<T>({
-  columns,
-  rows,
-  getRowKey,
-  emptyMessage = 'Nothing here yet.',
-  caption,
-}: {
-  columns: DataTableColumn<T>[];
-  rows: T[];
-  getRowKey: (row: T) => string;
-  emptyMessage?: string;
-  caption?: string;
-}) {
-  if (rows.length === 0) {
-    return <EmptyState title={emptyMessage} />;
-  }
-  return (
-    <TableContainer sx={{ overflowX: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
-      <Table size="small" aria-label={caption}>
-        {caption ? <caption style={{ captionSide: 'top', textAlign: 'left' }}>{caption}</caption> : null}
-        <TableHead>
-          <TableRow>
-            {columns.map((column) => (
-              <TableCell key={column.key} align={column.align} sx={{ width: column.width }}>
-                {column.header}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={getRowKey(row)} hover>
-              {columns.map((column) => (
-                <TableCell key={column.key} align={column.align}>
-                  {column.render(row)}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
   );
 }
