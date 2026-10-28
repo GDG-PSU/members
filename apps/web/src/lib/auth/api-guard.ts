@@ -24,5 +24,6 @@ export async function getApiViewer(): Promise<ApiViewer | null> {
     .is('revoked_at', null)
     .maybeSingle();
 
-  return { supabase, user, isAdmin: role?.role === 'admin' };
+  const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  return { supabase, user, isAdmin: role?.role === 'admin' && assurance?.currentLevel === 'aal2' };
 }

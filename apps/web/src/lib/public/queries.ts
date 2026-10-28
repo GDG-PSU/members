@@ -1,7 +1,7 @@
 import 'server-only';
 import type { LeaderboardEntry, PublicProfile } from '@gdg/contracts';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 
 export interface PublicEventSummary {
   id: string;
@@ -36,7 +36,7 @@ export async function listLeaderboard(limit = 25, offset = 0): Promise<Leaderboa
     rank: row.rank as number,
     slug: row.slug as string,
     displayName: row.display_name as string,
-    photoUrl: publicPhotoUrl(row.photo_path as string | null),
+    photoUrl: profilePhotoUrl(row.photo_path as string | null),
     memberNumber: (row.member_number as string | null) ?? null,
     points: row.points as number,
   }));
@@ -44,7 +44,9 @@ export async function listLeaderboard(limit = 25, offset = 0): Promise<Leaderboa
 
 export async function countLeaderboard(): Promise<number> {
   const supabase = createSupabaseAdmin();
-  const { count } = await supabase.from('leaderboard').select('slug', { count: 'exact', head: true });
+  const { count } = await supabase
+    .from('leaderboard')
+    .select('slug', { count: 'exact', head: true });
   return count ?? 0;
 }
 
@@ -137,7 +139,7 @@ export async function getPublicProfile(slug: string): Promise<PublicProfile | nu
   return {
     slug: data.slug as string,
     displayName: (data.display_name as string | null) ?? null,
-    photoUrl: publicPhotoUrl((data.photo_path as string | null) ?? null),
+    photoUrl: profilePhotoUrl((data.photo_path as string | null) ?? null),
     about: (data.about as string | null) ?? null,
     links,
     memberNumber: (data.member_number as string | null) ?? null,

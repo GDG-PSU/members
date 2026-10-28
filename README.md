@@ -7,7 +7,7 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 - Backend: Supabase Postgres/Auth/Storage with transactional, ledger-derived points and append-only audit history.
 - Firmware: ESP32 + PN532 reader/writer that talks only to a narrow HTTPS device API.
 
-> **Status: feature-complete locally, not a production sign-off.** Public, auth, member, admin/kiosk, card-writer, device API and firmware slices are implemented and the production build, unit tests, public + authenticated Playwright flows and database checks pass. The hosted Supabase project has the publishable key, migrations, a bootstrapped admin with TOTP enrolled, and manual (no-SMTP) invitation/recovery links. Still blocked on external items: the Vercel deployment (CLI not authenticated), custom domain and physical hardware. See [Current status](#current-status) and [docs/test-plan.md](docs/test-plan.md).
+> **Status: development only; not production ready.** Local database and browser tests cover manual invitation links, MFA, privacy and signed device requests. The hosted project's settings and migration state could not be verified with the connected account. Hardware, offline scanning, deployment, and several release gates remain unverified. Static NFC URLs can be cloned; staff must confirm attendance.
 
 ## Stack
 
@@ -20,30 +20,30 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 
 ## Current status
 
-As of 2026-10-28.
+The table below records earlier work and is not evidence of the current hosted project state. Re-run all release checks before deployment.
 
-| Area | State |
-| --- | --- |
-| Migrations 0001–0005 applied to the hosted Supabase project | Done |
-| Database invariant/RLS verification (`db:verify`) | **38 passed, 0 failed** |
-| Public pages: `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[slug]`, `/c/[token]`, `/privacy` | Implemented |
-| Auth: login, invite callback, one-time setup, sign out, password-help page | Implemented |
-| Member portal: dashboard, activity, rewards + cancel, profile edit/photo, privacy toggles, digital ID QR | Implemented |
-| Design system: MUI theme, primitives, theme toggle (System/Light/Dark) | Implemented |
-| Audit log, rate-limit function, token hashing/encryption, server-side photo processing | Implemented |
-| ESP32/PN532 firmware project + host-testable NDEF parser | Present; not compiled or hardware-tested |
+| Area                                                                                                             | State                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Hosted Supabase migrations                                                                                       | Unverified; connected account returned 403. Migrations 0006–0008 tested locally only                                     |
+| Database invariant/RLS verification (`db:verify`)                                                                | 43 assertions passed locally                                                                                             |
+| Public pages: `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[slug]`, `/c/[token]`, `/privacy`            | Implemented                                                                                                              |
+| Auth: login, invite callback, one-time setup, sign out, password-help page                                       | Implemented                                                                                                              |
+| Member portal: dashboard, activity, rewards + cancel, profile edit/photo, privacy toggles, digital ID QR         | Implemented                                                                                                              |
+| Design system: MUI theme, primitives, theme toggle (System/Light/Dark)                                           | Implemented                                                                                                              |
+| Audit log, rate-limit function, token hashing/encryption, server-side photo processing                           | Implemented                                                                                                              |
+| ESP32/PN532 firmware project + host-testable NDEF parser                                                         | Compiled for esp32dev with example configuration; physical hardware untested                                             |
 | Admin portal: invitations, members, cards, events, kiosk, rewards, devices, audit; TOTP MFA gate at `/admin-mfa` | Implemented; invitation/member setup flow exercised through the real UI; remaining admin surfaces not yet browser-tested |
-| Device middleware API `/api/device/v1/*` | Implemented; hardware flow untested |
-| Public JSON endpoints `/api/public/*` | Implemented |
-| Publishable key wired into the SSR client; secret key limited to admin operations | Done |
-| Admin `gdg@psu.edu` bootstrapped in hosted Supabase (role granted, TOTP enrolled, AAL2 verified) | Done; rotate the bootstrap password |
-| Manual invitation/recovery links generated in the admin UI (no SMTP dependency) | Implemented |
-| PSU network approval for ESP32 lanes | Confirmed by organizer; exact SSID/EAP still to record |
-| License | MIT |
-| Unit tests (23), Playwright suite (17 passing + 1 deliberate mobile skip), CI workflow | Implemented and passing locally |
-| Admin bootstrap + guarded demo seed scripts, local `seed.sql` | Implemented |
+| Device middleware API `/api/device/v1/*`                                                                         | Implemented; hardware flow untested                                                                                      |
+| Public JSON endpoints `/api/public/*`                                                                            | Implemented                                                                                                              |
+| Publishable key wired into the SSR client; secret key limited to admin operations                                | Done                                                                                                                     |
+| Hosted first admin and MFA                                                                                       | Unverified in the specified project                                                                                      |
+| Manual invitation/recovery links generated in the admin UI (no SMTP dependency)                                  | Implemented                                                                                                              |
+| PSU network approval for ESP32 lanes                                                                             | Not independently verified                                                                                               |
+| License                                                                                                          | MIT                                                                                                                      |
+| Unit tests and browser tests                                                                                     | 25 unit tests; public smoke, manual invitation/privacy, and device-signature checks passed locally                       |
+| Admin bootstrap + guarded demo seed scripts, local `seed.sql`                                                    | Implemented                                                                                                              |
 
-Hardware-in-the-loop and browser coverage for the remaining admin surfaces (cards, kiosk, events, devices) remain unverified. Admin TOTP is enrolled; the bootstrap password still needs rotating before live member data. Treat the platform as ready for staging until the hardware lane is validated.
+Hardware-in-the-loop and browser coverage for remaining admin surfaces (cards, kiosk, events, devices) remain unverified. Offline scan persistence and the full release gates are not implemented. Do not use for live members or events until the outstanding security and operational checks are completed. `pnpm verify` exits nonzero while required release gates remain incomplete; it does not certify a release.
 
 ## Quick start
 
@@ -63,16 +63,16 @@ pnpm dev                     # http://localhost:3000
 
 Copy [.env.example](.env.example). Names only:
 
-| Variable | Notes |
-| --- | --- |
-| `NEXT_PUBLIC_SITE_URL` | Canonical origin used for callbacks/links |
-| `NEXT_PUBLIC_SUPPORT_EMAIL` | Support address (`gdg@psu.edu`) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (public) |
+| Variable                        | Notes                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`          | Canonical origin used for callbacks/links                                       |
+| `NEXT_PUBLIC_SUPPORT_EMAIL`     | Support address (`gdg@psu.edu`)                                                 |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL (public)                                                   |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key (`sb_publishable_…`); used by the SSR client and subject to RLS |
-| `SUPABASE_SECRET_KEY` | **Server only**; admin/auth-admin operations only, never `NEXT_PUBLIC_` |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server only**; legacy fallback |
-| `CARD_WRITE_ENCRYPTION_KEY` | **Server only**; 32-byte base64 for AES-GCM card payloads |
-| `DATABASE_URL` | Migration/verification scripts only |
+| `SUPABASE_SECRET_KEY`           | **Server only**; admin/auth-admin operations only, never `NEXT_PUBLIC_`         |
+| `SUPABASE_SERVICE_ROLE_KEY`     | **Server only**; legacy fallback                                                |
+| `CARD_WRITE_ENCRYPTION_KEY`     | **Server only**; 32-byte base64 for AES-GCM card payloads                       |
+| `DATABASE_URL`                  | Migration/verification scripts only                                             |
 
 The publishable key backs the cookie-bound SSR client, so every user and anonymous query is subject to RLS. The secret key is used only by `createSupabaseAdmin()` for explicitly authorized admin operations (auth-admin link generation, cross-member reads, device jobs) and never reaches the browser.
 
@@ -98,20 +98,20 @@ The script prints no passwords or links: it writes a one-time recovery link to t
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm dev` | Run the web app |
-| `pnpm build` | Production build (Turborepo) |
-| `pnpm typecheck` | Strict TypeScript across packages |
-| `pnpm lint` | ESLint (Next core-web-vitals + TS) |
-| `pnpm test` | Vitest unit tests (23) |
-| `pnpm format` / `pnpm format:check` | Prettier |
-| `pnpm db:migrate` | Apply SQL migrations in order |
-| `pnpm db:verify` | Rollback-safe DB/RLS/ledger checks |
-| `pnpm e2e` | Playwright public + authenticated invitation/setup suite (requires `pnpm e2e:install`, a running app and Supabase admin credentials; disposable fixtures are removed automatically) |
-| `pnpm db:bootstrap-admin` | Grant the admin role and write a one-time recovery link (`--out`) for an existing/new Auth user |
-| `pnpm admin:enroll-totp` | Enroll the admin authenticator through `/admin-mfa`; writes the manual key to a gitignored file without printing it |
-| `pnpm db:seed` | Guarded, fictional local demo fixtures (`SEED_CONFIRM=yes SEED_ALLOWED=1`) |
+| Command                             | Purpose                                                                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                          | Run the web app                                                                                                                                                                     |
+| `pnpm build`                        | Production build (Turborepo)                                                                                                                                                        |
+| `pnpm typecheck`                    | Strict TypeScript across packages                                                                                                                                                   |
+| `pnpm lint`                         | ESLint (Next core-web-vitals + TS)                                                                                                                                                  |
+| `pnpm test`                         | Vitest unit tests (23)                                                                                                                                                              |
+| `pnpm format` / `pnpm format:check` | Prettier                                                                                                                                                                            |
+| `pnpm db:migrate`                   | Apply SQL migrations in order                                                                                                                                                       |
+| `pnpm db:verify`                    | Rollback-safe DB/RLS/ledger checks                                                                                                                                                  |
+| `pnpm e2e`                          | Playwright public + authenticated invitation/setup suite (requires `pnpm e2e:install`, a running app and Supabase admin credentials; disposable fixtures are removed automatically) |
+| `pnpm db:bootstrap-admin`           | Grant the admin role and write a one-time recovery link (`--out`) for an existing/new Auth user                                                                                     |
+| `pnpm admin:enroll-totp`            | Enroll the admin authenticator through `/admin-mfa`; writes the manual key to a gitignored file without printing it                                                                 |
+| `pnpm db:seed`                      | Guarded, fictional local demo fixtures (`SEED_CONFIRM=yes SEED_ALLOWED=1`)                                                                                                          |
 
 Firmware host parser test (no hardware, no PlatformIO):
 
@@ -150,7 +150,7 @@ docs/                     Architecture, data model, API, threat model, deploymen
 - `grant_points`, `redeem_reward`, `confirm_scan` and card functions are `SECURITY DEFINER`, `search_path = ''`, granted only to `service_role`; the server authorizes the actor first.
 - A scan creates only a pending row; attendance requires admin-confirmed check-in **and** check-out with a threshold.
 - Card tokens are 256-bit, hashed for lookup, encrypted for owner-only display/write; NFC UID is never a credential.
-- Public data uses explicit projection views; email is private by default.
+- Public data uses explicit projection views; email is public by default and can be hidden during setup or later.
 - Photos are validated/re-encoded server-side (2 MB, JPEG/PNG/WebP) and stored under random paths.
 - Security headers (CSP, nosniff, referrer policy, frame denial) are configured in `apps/web/next.config.ts`.
 
@@ -162,23 +162,22 @@ Recorded on 2026-10-28:
 
 - `pnpm typecheck` — PASS (web, ui, contracts)
 - `pnpm lint` — PASS
-- `pnpm test` — PASS, **23/23** unit tests
+- `pnpm test` — PASS, **25/25** unit tests
 - `pnpm build` — PASS (Next.js production build, all routes)
-- `node scripts/db-verify.mjs` — PASS, **38/38** database assertions
-- Playwright against the built app — PASS, **17 passed + 1 deliberate mobile skip** (public smoke + authenticated invitation/setup)
+- `pnpm db:verify` — PASS, **43/43** database assertions against local Supabase
+- Playwright against local development services — 16 public smoke cases and 2 focused invitation/device-security cases passed
 - Authenticated flow: disposable admin enrolls TOTP → generates invitation → link copied from the UI → separate member browser accepts it → profile/photo/password setup → database assertions. Fixtures are deleted afterwards.
-- Admin `gdg@psu.edu`: TOTP enrolled, fresh password + code sign-in reaches `/admin`, invitation page renders
-- Firmware NDEF parser host test — PASS (`g++ -Wall -Wextra -Werror`)
+- Firmware NDEF parser host test and `esp32dev` build — PASS with example-only configuration
 - Live HTTP smoke: `/`, `/leaderboard`, `/events`, `/privacy`, `/login` return 200; `/admin` and `/member` redirect to login; unsigned device heartbeat returns 401
 
-Not run: axe-core, manual screen-reader review, load test, dependency audit, secret scan, PlatformIO compile, hardware-in-the-loop, remaining admin surfaces (cards, kiosk, events, devices), Vercel preview. See [docs/test-plan.md](docs/test-plan.md).
+Not run: axe-core, manual screen-reader review, load test, comprehensive secret scan, hardware-in-the-loop, remaining admin surfaces (cards, kiosk, events, devices), Vercel preview. See [docs/test-plan.md](docs/test-plan.md).
 
 ## External blockers (need a human/organization)
 
 1. **Vercel:** the CLI has no authenticated session and anonymous temporary deployments are refused. Run `npx vercel login`, then deploy; `vercel.json` already encodes the monorepo build and environment-variable list is in `docs/deployment.md`.
 2. **DNS:** authorize `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
-3. **Admin credentials:** `gdg@psu.edu` has the role and a verified TOTP factor. Add the manual key from `.local/gdg-admin-totp.txt` to the organizer's authenticator, change the bootstrap password, then delete the local credential files.
-4. **Hardware:** provide the exact PN532 boards, writable NFC tags, USB access and an event environment for two-lane testing, and record the PSU-approved SSID/EAP (approval confirmed; configuration details still needed).
+3. **Admin credentials:** verify or bootstrap the intended first admin in the target project and enroll TOTP; do not assume an existing account is configured.
+4. **Hardware:** provide the exact PN532 boards, writable NFC tags, USB access and an event environment for two-lane testing, and obtain PSU network approval and the correct SSID/EAP settings.
 
 ## Documentation
 

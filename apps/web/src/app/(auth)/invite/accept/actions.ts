@@ -29,7 +29,10 @@ export interface SetupState {
   error?: string;
 }
 
-export async function completeSetupAction(_prev: SetupState, formData: FormData): Promise<SetupState> {
+export async function completeSetupAction(
+  _prev: SetupState,
+  formData: FormData,
+): Promise<SetupState> {
   const viewer = await requireUser();
   if (viewer.member) redirect('/member');
 
@@ -72,7 +75,7 @@ export async function completeSetupAction(_prev: SetupState, formData: FormData)
   let lastError = 'Could not complete membership setup.';
 
   for (let attempt = 0; attempt < 4 && !memberId; attempt += 1) {
-    const { data, error } = await admin.rpc('complete_member_setup', {
+    const { data, error } = await admin.rpc('complete_member_setup_with_privacy', {
       p_auth_user_id: viewer.user.id,
       p_email: email,
       p_display_name: parsed.data.displayName,
@@ -81,6 +84,8 @@ export async function completeSetupAction(_prev: SetupState, formData: FormData)
       p_public_number: generateMemberNumber(),
       p_about: parsed.data.about ?? '',
       p_links: [],
+      p_public_profile: formData.get('publicProfile') === 'on',
+      p_show_email: formData.get('showEmail') === 'on',
     });
     if (!error && typeof data === 'string') {
       memberId = data;

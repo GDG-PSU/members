@@ -15,7 +15,7 @@ import Typography from '@mui/material/Typography';
 import { EmptyState, MemberAvatar, MetricCard, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
   adjustMemberPointsAction,
@@ -80,7 +80,11 @@ export default async function AdminMemberDetailPage({
       .select('id, status, issued_at, created_at, revoke_reason')
       .eq('member_id', id)
       .order('created_at', { ascending: false }),
-    admin.from('devices').select('id, device_id, lane_label, mode, status').eq('mode', 'writer').eq('status', 'active'),
+    admin
+      .from('devices')
+      .select('id, device_id, lane_label, mode, status')
+      .eq('mode', 'writer')
+      .eq('status', 'active'),
   ]);
 
   const activeCard = (cards.data ?? []).find((card) => card.status === 'active');
@@ -98,8 +102,16 @@ export default async function AdminMemberDetailPage({
         <Grid size={{ xs: 12, md: 8 }}>
           <Card sx={{ mb: 3 }}>
             <CardContent sx={{ p: 3 }}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} sx={{ alignItems: { sm: 'center' } }}>
-                <MemberAvatar name={(profile?.display_name as string) ?? 'Member'} photoUrl={publicPhotoUrl((profile?.photo_path as string) ?? null)} size={72} />
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2.5}
+                sx={{ alignItems: { sm: 'center' } }}
+              >
+                <MemberAvatar
+                  name={(profile?.display_name as string) ?? 'Member'}
+                  photoUrl={profilePhotoUrl((profile?.profile_slug as string) ?? null)}
+                  size={72}
+                />
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h3">{profile?.display_name ?? 'Member'}</Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -154,22 +166,42 @@ export default async function AdminMemberDetailPage({
               ) : (
                 <Stack spacing={2} divider={<Divider flexItem />}>
                   {(attendance.data ?? []).map((record) => {
-                    const session = Array.isArray(record.event_sessions) ? record.event_sessions[0] : record.event_sessions;
-                    const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
+                    const session = Array.isArray(record.event_sessions)
+                      ? record.event_sessions[0]
+                      : record.event_sessions;
+                    const event = Array.isArray(session?.events)
+                      ? session.events[0]
+                      : session?.events;
                     return (
-                      <Stack key={record.id as string} direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: { md: 'center' } }}>
+                      <Stack
+                        key={record.id as string}
+                        direction={{ xs: 'column', md: 'row' }}
+                        spacing={1.5}
+                        sx={{ alignItems: { md: 'center' } }}
+                      >
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="subtitle2">
-                            {(event?.name as string) ?? 'Event'} · {(session?.name as string) ?? 'Session'}
+                            {(event?.name as string) ?? 'Event'} ·{' '}
+                            {(session?.name as string) ?? 'Session'}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {formatDateTime(record.checked_in_at as string)} →{' '}
-                            {record.checked_out_at ? formatDateTime(record.checked_out_at as string) : 'no check-out'}
-                            {record.duration_minutes !== null ? ` · ${record.duration_minutes as number} min` : ''}
+                            {record.checked_out_at
+                              ? formatDateTime(record.checked_out_at as string)
+                              : 'no check-out'}
+                            {record.duration_minutes !== null
+                              ? ` · ${record.duration_minutes as number} min`
+                              : ''}
                           </Typography>
                         </Box>
-                        <StatusChip status={record.qualified ? 'qualified' : (record.state as string)} />
-                        <Box component="form" action={correctAttendanceAction} sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <StatusChip
+                          status={record.qualified ? 'qualified' : (record.state as string)}
+                        />
+                        <Box
+                          component="form"
+                          action={correctAttendanceAction}
+                          sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}
+                        >
                           <input type="hidden" name="returnTo" value={returnTo} />
                           <input type="hidden" name="attendanceId" value={record.id as string} />
                           <TextField
@@ -179,8 +211,20 @@ export default async function AdminMemberDetailPage({
                             label="Check-out (NY)"
                             slotProps={{ inputLabel: { shrink: true } }}
                           />
-                          <TextField name="reason" size="small" label="Reason" required slotProps={{ htmlInput: { minLength: 5 } }} />
-                          <TextField select name="action" size="small" label="Action" defaultValue={record.qualified ? 'disqualify' : 'set_checkout'}>
+                          <TextField
+                            name="reason"
+                            size="small"
+                            label="Reason"
+                            required
+                            slotProps={{ htmlInput: { minLength: 5 } }}
+                          />
+                          <TextField
+                            select
+                            name="action"
+                            size="small"
+                            label="Action"
+                            defaultValue={record.qualified ? 'disqualify' : 'set_checkout'}
+                          >
                             <MenuItem value="set_checkout">Set check-out</MenuItem>
                             <MenuItem value="clear_checkout">Clear check-out</MenuItem>
                             <MenuItem value="qualify">Qualify</MenuItem>
@@ -208,7 +252,12 @@ export default async function AdminMemberDetailPage({
               ) : (
                 <Stack spacing={1.5} divider={<Divider flexItem />}>
                   {(ledger.data ?? []).map((entry) => (
-                    <Stack key={entry.id as number} direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Stack
+                      key={entry.id as number}
+                      direction="row"
+                      spacing={2}
+                      sx={{ alignItems: 'center' }}
+                    >
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="subtitle2">{entry.description as string}</Typography>
                         <Typography variant="caption" color="text.secondary">
@@ -217,7 +266,10 @@ export default async function AdminMemberDetailPage({
                       </Box>
                       <Typography
                         variant="subtitle2"
-                        sx={{ fontVariantNumeric: 'tabular-nums', color: (entry.delta as number) > 0 ? 'success.main' : 'text.primary' }}
+                        sx={{
+                          fontVariantNumeric: 'tabular-nums',
+                          color: (entry.delta as number) > 0 ? 'success.main' : 'text.primary',
+                        }}
                       >
                         {(entry.delta as number) > 0 ? '+' : ''}
                         {entry.delta as number}
@@ -240,8 +292,19 @@ export default async function AdminMemberDetailPage({
                 <Stack component="form" action={adjustMemberPointsAction} spacing={1.5}>
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <input type="hidden" name="memberId" value={id} />
-                  <TextField name="points" type="number" label="Points" required slotProps={{ htmlInput: { min: 1, max: 10000 } }} />
-                  <TextField name="reason" label="Reason (audited)" required slotProps={{ htmlInput: { minLength: 3, maxLength: 300 } }} />
+                  <TextField
+                    name="points"
+                    type="number"
+                    label="Points"
+                    required
+                    slotProps={{ htmlInput: { min: 1, max: 10000 } }}
+                  />
+                  <TextField
+                    name="reason"
+                    label="Reason (audited)"
+                    required
+                    slotProps={{ htmlInput: { minLength: 3, maxLength: 300 } }}
+                  />
                   <SubmitButton size="small" pendingLabel="Awarding…">
                     Award points + stars
                   </SubmitButton>
@@ -257,20 +320,31 @@ export default async function AdminMemberDetailPage({
                 <Stack component="form" action={setMemberStatusAction} spacing={1.5}>
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <input type="hidden" name="memberId" value={id} />
-                  <TextField select name="status" label="Status" defaultValue={row.status as string} size="small">
+                  <TextField
+                    select
+                    name="status"
+                    label="Status"
+                    defaultValue={row.status as string}
+                    size="small"
+                  >
                     <MenuItem value="active">Active</MenuItem>
                     <MenuItem value="suspended">Suspended</MenuItem>
                     <MenuItem value="archived">Archived</MenuItem>
                   </TextField>
-                  <TextField name="reason" label="Reason (audited)" required slotProps={{ htmlInput: { minLength: 3, maxLength: 300 } }} />
+                  <TextField
+                    name="reason"
+                    label="Reason (audited)"
+                    required
+                    slotProps={{ htmlInput: { minLength: 3, maxLength: 300 } }}
+                  />
                   <SubmitButton size="small" variant="outlined" pendingLabel="Saving…">
                     Update status
                   </SubmitButton>
                 </Stack>
                 <Divider sx={{ my: 2 }} />
                 <Typography variant="caption" color="text.secondary">
-                  Suspending blocks member API use immediately; already-issued JWTs are re-checked against
-                  server-side role and member state.
+                  Suspending blocks member API use immediately; already-issued JWTs are re-checked
+                  against server-side role and member state.
                 </Typography>
               </CardContent>
             </Card>
@@ -280,22 +354,37 @@ export default async function AdminMemberDetailPage({
                 <Typography variant="h6" sx={{ mb: 1 }}>
                   Cards
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                  Cards contain only an opaque URL. Issuing a new card revokes the previous one; the profile
-                  URL never changes.
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', mb: 1.5 }}
+                >
+                  Cards contain only an opaque URL. Issuing a new card revokes the previous one; the
+                  profile URL never changes.
                 </Typography>
                 <Stack spacing={1} sx={{ mb: 2 }}>
                   {(cards.data ?? []).map((card) => (
-                    <Stack key={card.id as string} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    <Stack
+                      key={card.id as string}
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: 'center' }}
+                    >
                       <StatusChip status={card.status as string} />
                       <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-                        {card.issued_at ? `Issued ${formatDate(card.issued_at as string)}` : 'Not written'}
+                        {card.issued_at
+                          ? `Issued ${formatDate(card.issued_at as string)}`
+                          : 'Not written'}
                       </Typography>
                       {card.status === 'active' ? (
                         <Box component="form" action={revokeCardAction}>
                           <input type="hidden" name="returnTo" value={returnTo} />
                           <input type="hidden" name="cardId" value={card.id as string} />
-                          <input type="hidden" name="reason" value="Reported lost or replaced by organizer" />
+                          <input
+                            type="hidden"
+                            name="reason"
+                            value="Reported lost or replaced by organizer"
+                          />
                           <SubmitButton
                             size="small"
                             variant="text"
@@ -318,7 +407,14 @@ export default async function AdminMemberDetailPage({
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <input type="hidden" name="memberId" value={id} />
                   <Stack spacing={1.5}>
-                    <TextField select name="deviceId" label="Writer lane" size="small" required defaultValue="">
+                    <TextField
+                      select
+                      name="deviceId"
+                      label="Writer lane"
+                      size="small"
+                      required
+                      defaultValue=""
+                    >
                       {(writerDevices.data ?? []).length === 0 ? (
                         <MenuItem value="" disabled>
                           No active writer device
@@ -342,8 +438,14 @@ export default async function AdminMemberDetailPage({
                   </Stack>
                 </Box>
                 {activeCard ? (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-                    Active card issued {activeCard.issued_at ? formatDate(activeCard.issued_at as string) : 'recently'}.
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block', mt: 1.5 }}
+                  >
+                    Active card issued{' '}
+                    {activeCard.issued_at ? formatDate(activeCard.issued_at as string) : 'recently'}
+                    .
                   </Typography>
                 ) : null}
               </CardContent>
@@ -354,9 +456,13 @@ export default async function AdminMemberDetailPage({
                 <Typography variant="h6" sx={{ mb: 1 }}>
                   Account recovery
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                  Generates a one-time Supabase link for the registered address. No email is sent; copy
-                  the link and deliver it privately. It is never stored or logged.
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', mb: 1.5 }}
+                >
+                  Generates a one-time Supabase link for the registered address. No email is sent;
+                  copy the link and deliver it privately. It is never stored or logged.
                 </Typography>
                 <RecoveryForm email={(priv?.email as string) ?? ''} />
               </CardContent>

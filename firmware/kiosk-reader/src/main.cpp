@@ -7,11 +7,12 @@
 
 #include <Arduino.h>
 #include <esp_system.h>
+#include <time.h>
 
 #include <string>
 
 #include "api_client.h"
-#include "config.h"
+#include "gdg_config.h"
 #include "lane_state.h"
 #include "ndef_url.h"
 #include "nfc_lane.h"
@@ -210,6 +211,7 @@ void setup() {
   nfc.Begin();
   lastNfcInitMs = millis();
 
+  configTime(0, 0, GDG_NTP_SERVER);
   wifi.Begin(GDG_WIFI_SSID, GDG_WIFI_PASSWORD);
   if (wifi.EnsureConnected(GDG_WIFI_CONNECT_TIMEOUT_MS)) {
     DoHeartbeat();

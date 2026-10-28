@@ -33,7 +33,9 @@ export async function getViewer(): Promise<Viewer> {
   const [{ data: memberRow }, { data: roleRow }] = await Promise.all([
     supabase
       .from('members')
-      .select('id, status, public_number, member_since, member_profiles!inner(profile_slug, display_name, photo_path)')
+      .select(
+        'id, status, public_number, member_since, member_profiles!inner(profile_slug, display_name, photo_path)',
+      )
       .eq('auth_user_id', user.id)
       .maybeSingle(),
     supabase
@@ -83,5 +85,7 @@ export async function requireAdmin(): Promise<Viewer & { user: User; isAdmin: tr
   if (!viewer.isAdmin) {
     redirect('/?notice=admin-required');
   }
+  const { data: assurance } = await viewer.supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assurance?.currentLevel !== 'aal2') redirect('/admin-mfa');
   return viewer as Viewer & { user: User; isAdmin: true };
 }

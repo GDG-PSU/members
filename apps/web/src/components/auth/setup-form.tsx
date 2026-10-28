@@ -22,7 +22,8 @@ export function SetupForm({ email }: { email: string }) {
   return (
     <Stack component="form" action={action} spacing={2.5} noValidate encType="multipart/form-data">
       <Alert severity="info">
-        Status: {email} is invited. Your name and photo are required; you can hide them later.
+        Status: {email} is invited. Your name and photo are required; you can hide them later.{' '}
+        <Link href="#privacy-settings">Review privacy settings before creating your profile</Link>.
       </Alert>
       <TextField
         label="Display name"
@@ -109,12 +110,28 @@ export function SetupForm({ email }: { email: string }) {
         autoComplete="new-password"
       />
 
+      <Box id="privacy-settings">
+        <Typography variant="h6">Privacy before you join</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Your profile and email are public by default. Choose what is visible now; you can change
+          these settings later. A private profile hides all fields, regardless of individual
+          choices.
+        </Typography>
+        <FormControlLabel
+          control={<Checkbox name="publicProfile" defaultChecked />}
+          label="Make my profile public"
+        />
+        <FormControlLabel
+          control={<Checkbox name="showEmail" defaultChecked />}
+          label="Show my email on my public profile"
+        />
+      </Box>
       <FormControlLabel
         control={<Checkbox name="acceptTerms" required />}
         label={
           <Typography variant="body2" color="text.secondary">
-            I understand my profile is public by default (email stays private), and that my card is an
-            identifier, not a password. See the{' '}
+            I understand my privacy choices above and that my card is an identifier, not a password.
+            See the{' '}
             <Link href="/privacy" target="_blank">
               privacy note
             </Link>

@@ -9,6 +9,7 @@
     "node": ">=20.9.0"
   },
   "scripts": {
+    "verify": "node scripts/verify.mjs",
     "dev": "turbo run dev --filter=@gdg/web",
     "build": "turbo run build",
     "lint": "turbo run lint",

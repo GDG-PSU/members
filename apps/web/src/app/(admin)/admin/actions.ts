@@ -34,6 +34,8 @@ async function requireAdminActor() {
   if (!viewer.user || !viewer.isAdmin) {
     throw new Error('forbidden');
   }
+  const { data: assurance } = await viewer.supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assurance?.currentLevel !== 'aal2') throw new Error('forbidden');
   return { ...viewer, user: viewer.user };
 }
 
@@ -98,7 +100,10 @@ export type LinkState = {
  * provider. Supabase generates a one-time link and the admin copies it into
  * their own mail client. Nothing is sent by the app.
  */
-export async function createInvitationAction(_prev: LinkState, formData: FormData): Promise<LinkState> {
+export async function createInvitationAction(
+  _prev: LinkState,
+  formData: FormData,
+): Promise<LinkState> {
   const { user } = await requireAdminActor();
   const parsed = invitationCreateSchema.safeParse({
     email: readString(formData, 'email'),
@@ -153,12 +158,16 @@ export async function createInvitationAction(_prev: LinkState, formData: FormDat
       options: { redirectTo },
     });
     if (recovery.error || !recovery.data?.user) {
-      return { error: `Could not create a sign-in link: ${recovery.error?.message ?? 'unknown error'}` };
+      return {
+        error: `Could not create a sign-in link: ${recovery.error?.message ?? 'unknown error'}`,
+      };
     }
     authUser = recovery.data.user;
     link = recovery.data.properties?.action_link;
   } else {
-    return { error: `Could not create the invitation: ${invited.error?.message ?? 'unknown error'}` };
+    return {
+      error: `Could not create the invitation: ${invited.error?.message ?? 'unknown error'}`,
+    };
   }
 
   if (!authUser || !link) {
@@ -222,9 +231,17 @@ export async function regenerateInvitationLinkAction(
 
   const expiresAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
   await admin.from('member_invitations').update({ expires_at: expiresAt }).eq('id', invitation.id);
-  await audit(user.id, 'invitation.link_regenerated', 'member_invitation', invitation.id, null, null, {
-    expires_at: expiresAt,
-  });
+  await audit(
+    user.id,
+    'invitation.link_regenerated',
+    'member_invitation',
+    invitation.id,
+    null,
+    null,
+    {
+      expires_at: expiresAt,
+    },
+  );
   revalidatePath('/admin/invitations');
   return { ok: true, email: invitation.email, link };
 }
@@ -245,7 +262,15 @@ export async function revokeInvitationAction(formData: FormData) {
   if (invitation.status !== 'pending') fail(returnTo, 'Only pending invitations can be revoked.');
 
   await admin.from('member_invitations').update({ status: 'revoked' }).eq('id', invitation.id);
-  await audit(user.id, 'invitation.revoked', 'member_invitation', invitation.id, null, { status: 'pending' }, { status: 'revoked' });
+  await audit(
+    user.id,
+    'invitation.revoked',
+    'member_invitation',
+    invitation.id,
+    null,
+    { status: 'pending' },
+    { status: 'revoked' },
+  );
   succeed(returnTo, 'Invitation revoked.');
 }
 
@@ -261,7 +286,8 @@ export async function setMemberStatusAction(formData: FormData) {
     status: formData.get('status'),
     reason: readString(formData, 'reason'),
   });
-  if (!parsed.success) fail(returnTo, parsed.error.issues[0]?.message ?? 'Invalid member status change.');
+  if (!parsed.success)
+    fail(returnTo, parsed.error.issues[0]?.message ?? 'Invalid member status change.');
 
   const admin = createSupabaseAdmin();
   const { data: current } = await admin
@@ -313,10 +339,18 @@ export async function adjustMemberPointsAction(formData: FormData) {
   });
   if (error) fail(returnTo, `Award failed: ${error.message}`);
 
-  await audit(user.id, 'points.interaction_awarded', 'member', parsed.data.memberId, parsed.data.reason, null, {
-    points: parsed.data.points,
-    stars: parsed.data.points,
-  });
+  await audit(
+    user.id,
+    'points.interaction_awarded',
+    'member',
+    parsed.data.memberId,
+    parsed.data.reason,
+    null,
+    {
+      points: parsed.data.points,
+      stars: parsed.data.points,
+    },
+  );
   succeed(returnTo, `Awarded ${parsed.data.points} points and stars.`, ['/member']);
 }
 
@@ -362,7 +396,9 @@ export async function prepareCardAction(formData: FormData) {
     .select('id, status, member_profiles(profile_slug)')
     .eq('id', parsed.data.memberId)
     .maybeSingle();
-  const profile = Array.isArray(member?.member_profiles) ? member?.member_profiles[0] : member?.member_profiles;
+  const profile = Array.isArray(member?.member_profiles)
+    ? member?.member_profiles[0]
+    : member?.member_profiles;
   if (!member || member.status !== 'active' || !profile?.profile_slug) {
     fail(returnTo, 'That member is not active or has no profile.');
   }
@@ -427,7 +463,15 @@ export async function revokeCardAction(formData: FormData) {
   });
   if (error) fail(returnTo, error.message);
 
-  await audit(user.id, 'card.revoked', 'member', card.member_id, parsed.data.reason, { status: card.status }, { status: 'lost' });
+  await audit(
+    user.id,
+    'card.revoked',
+    'member',
+    card.member_id,
+    parsed.data.reason,
+    { status: card.status },
+    { status: 'lost' },
+  );
   succeed(returnTo, 'Card revoked. The member profile URL is unchanged.', ['/member']);
 }
 
@@ -599,27 +643,56 @@ export async function saveEventAction(formData: FormData) {
     }
   }
 
-  await audit(user.id, eventId ? 'event.updated' : 'event.created', 'event', id ?? null, null, null, {
-    name: parsed.data.name,
-    status: parsed.data.status,
-    sessions: parsed.data.sessions.length,
-  });
-  succeed(returnTo, 'Event saved.', ['/events', `/events/${parsed.data.slug}`, `/admin/events/${id}`]);
+  await audit(
+    user.id,
+    eventId ? 'event.updated' : 'event.created',
+    'event',
+    id ?? null,
+    null,
+    null,
+    {
+      name: parsed.data.name,
+      status: parsed.data.status,
+      sessions: parsed.data.sessions.length,
+    },
+  );
+  succeed(returnTo, 'Event saved.', [
+    '/events',
+    `/events/${parsed.data.slug}`,
+    `/admin/events/${id}`,
+  ]);
 }
 
 export async function setEventStatusAction(formData: FormData) {
   const { user } = await requireAdminActor();
   const returnTo = readReturnTo(formData);
   const eventId = z.uuid().safeParse(formData.get('eventId'));
-  const status = z.enum(['draft', 'published', 'cancelled', 'completed']).safeParse(formData.get('status'));
+  const status = z
+    .enum(['draft', 'published', 'cancelled', 'completed'])
+    .safeParse(formData.get('status'));
   if (!eventId.success || !status.success) fail(returnTo, 'Invalid status change.');
 
   const admin = createSupabaseAdmin();
-  const { data: event } = await admin.from('events').select('id, slug, status').eq('id', eventId.data).maybeSingle();
+  const { data: event } = await admin
+    .from('events')
+    .select('id, slug, status')
+    .eq('id', eventId.data)
+    .maybeSingle();
   if (!event) fail(returnTo, 'Event not found.');
-  const { error } = await admin.from('events').update({ status: status.data }).eq('id', eventId.data);
+  const { error } = await admin
+    .from('events')
+    .update({ status: status.data })
+    .eq('id', eventId.data);
   if (error) fail(returnTo, error.message);
-  await audit(user.id, 'event.status_changed', 'event', event.id, null, { status: event.status }, { status: status.data });
+  await audit(
+    user.id,
+    'event.status_changed',
+    'event',
+    event.id,
+    null,
+    { status: event.status },
+    { status: status.data },
+  );
   succeed(returnTo, `Event marked ${status.data}.`, ['/events', `/events/${event.slug}`]);
 }
 
@@ -713,7 +786,15 @@ export async function saveRewardAction(formData: FormData) {
     ? await admin.from('rewards').update(payload).eq('id', parsed.data.id)
     : await admin.from('rewards').insert({ ...payload, created_by: user.id });
   if (error) fail(returnTo, `Reward save failed: ${error.message}`);
-  await audit(user.id, parsed.data.id ? 'reward.updated' : 'reward.created', 'reward', parsed.data.id ?? parsed.data.name, null, null, payload);
+  await audit(
+    user.id,
+    parsed.data.id ? 'reward.updated' : 'reward.created',
+    'reward',
+    parsed.data.id ?? parsed.data.name,
+    null,
+    null,
+    payload,
+  );
   succeed(returnTo, 'Reward saved.', ['/member/rewards']);
 }
 
@@ -788,6 +869,7 @@ export async function createDeviceAction(
       device_id: parsed.data.deviceId,
       lane_label: parsed.data.laneLabel,
       secret_hash: hashToken(secret),
+      secret_ciphertext: encryptSecret(secret),
       mode: parsed.data.mode,
       event_id: parsed.data.eventId || null,
       session_id: parsed.data.sessionId || null,
@@ -847,19 +929,26 @@ export async function updateDeviceAction(
   if (parsed.data.rotateSecret) {
     secret = generateDeviceSecret();
     update.secret_hash = hashToken(secret);
+    update.secret_ciphertext = encryptSecret(secret);
     update.rotated_at = new Date().toISOString();
   }
 
   const { error } = await admin.from('devices').update(update).eq('id', parsed.data.deviceId);
   if (error) return { error: `Update failed: ${error.message}` };
 
-  await audit(user.id, 'device.updated', 'device', parsed.data.deviceId, null, { status: device.status }, {
-    mode: parsed.data.mode,
-    enabled: parsed.data.enabled,
-    rotated: Boolean(parsed.data.rotateSecret),
-  });
+  await audit(
+    user.id,
+    'device.updated',
+    'device',
+    parsed.data.deviceId,
+    null,
+    { status: device.status },
+    {
+      mode: parsed.data.mode,
+      enabled: parsed.data.enabled,
+      rotated: Boolean(parsed.data.rotateSecret),
+    },
+  );
   revalidatePath('/admin/devices');
   return { secret, deviceId: device.device_id };
 }
-
-

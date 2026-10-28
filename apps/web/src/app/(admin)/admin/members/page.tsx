@@ -8,7 +8,7 @@ import Typography from '@mui/material/Typography';
 import { DataTable, EmptyState, MemberAvatar, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate } from '@/lib/format';
 import { Flash } from '@/components/admin/ui';
 
@@ -39,7 +39,9 @@ export default async function MembersPage({
   const needle = q.trim().toLowerCase();
   const members = (rows ?? [])
     .map((row) => {
-      const profile = Array.isArray(row.member_profiles) ? row.member_profiles[0] : row.member_profiles;
+      const profile = Array.isArray(row.member_profiles)
+        ? row.member_profiles[0]
+        : row.member_profiles;
       const priv = Array.isArray(row.member_private) ? row.member_private[0] : row.member_private;
       return {
         id: row.id as string,
@@ -49,7 +51,7 @@ export default async function MembersPage({
         createdAt: row.created_at as string,
         name: (profile?.display_name as string) ?? 'Unknown',
         slug: (profile?.profile_slug as string) ?? '',
-        photo: publicPhotoUrl((profile?.photo_path as string) ?? null),
+        photo: profilePhotoUrl((profile?.profile_slug as string) ?? null),
         email: (priv?.email as string) ?? '',
       };
     })
@@ -64,7 +66,11 @@ export default async function MembersPage({
   return (
     <Container maxWidth="xl" sx={{ pb: 8 }}>
       <Flash notice={notice} error={error} />
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+      >
         <Box>
           <Typography variant="overline" color="primary">
             People
@@ -91,7 +97,11 @@ export default async function MembersPage({
       {members.length === 0 ? (
         <EmptyState
           title={needle ? 'No matches' : 'No active members yet'}
-          description={needle ? 'Try a different name, email or member number.' : 'Accepted invitations appear here.'}
+          description={
+            needle
+              ? 'Try a different name, email or member number.'
+              : 'Accepted invitations appear here.'
+          }
         />
       ) : (
         <DataTable
@@ -129,7 +139,9 @@ export default async function MembersPage({
             {
               key: 'since',
               header: 'Member since',
-              render: (row) => <Typography variant="body2">{formatDate(row.memberSince)}</Typography>,
+              render: (row) => (
+                <Typography variant="body2">{formatDate(row.memberSince)}</Typography>
+              ),
             },
             {
               key: 'status',

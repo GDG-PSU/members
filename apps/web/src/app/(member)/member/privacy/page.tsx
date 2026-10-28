@@ -59,12 +59,12 @@ export default async function PrivacySettingsPage() {
               Privacy settings
             </Typography>
             <Typography color="text.secondary">
-              Everything here can be changed at any time. Email is private unless you explicitly choose
-              to show it. Turning off the public profile hides every field at once.
+              Everything here can be changed at any time. Email is public by default, but you can
+              hide it. Turning off the public profile hides every field at once.
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
-              The leaderboard only includes public profiles with both points and leaderboard visibility
-              enabled.
+              The leaderboard only includes public profiles with both points and leaderboard
+              visibility enabled.
             </Typography>
           </Stack>
         </Grid>

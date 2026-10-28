@@ -36,7 +36,7 @@ export async function storeProfilePhoto(file: File, ownerId: string): Promise<st
   const supabase = createSupabaseAdmin();
   const { error } = await supabase.storage.from('avatars').upload(path, output, {
     contentType: 'image/webp',
-    cacheControl: '31536000',
+    cacheControl: '0',
     upsert: false,
   });
   if (error) {
@@ -46,8 +46,8 @@ export async function storeProfilePhoto(file: File, ownerId: string): Promise<st
   return path;
 }
 
-export function publicPhotoUrl(path: string | null): string | null {
-  if (!path) return null;
-  const supabase = createSupabaseAdmin();
-  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+// The slug is an opaque public identifier, never the storage path or auth ID.
+// The endpoint checks current visibility (or owner/admin authorization) on every request.
+export function profilePhotoUrl(slug: string | null): string | null {
+  return slug ? `/api/profile-photo/${encodeURIComponent(slug)}` : null;
 }

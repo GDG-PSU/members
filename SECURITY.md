@@ -18,7 +18,7 @@ Only the current `main` branch is supported. There are no maintained release bra
 - **Attendance:** device scans only create pending rows. A human admin must confirm check-in and check-out; rewards require a server-computed duration threshold.
 - **Cards:** NFC cards store a single opaque HTTPS URL. Card tokens are hashed at rest (SHA-256); an AES-256-GCM encrypted copy exists only for the owner's authenticated digital ID and one-time write jobs. Card possession never authorizes attendance, spending or account access.
 - **Devices:** separate identity from users. Per-device high-entropy secret, only a hash stored, rotatable/revocable, scoped endpoints, TLS required. Firmware never receives Supabase keys.
-- **Public data:** explicit allowlisted projection views; email private by default; internal UUIDs, card data and admin notes never public.
+- **Public data:** explicit allowlisted projection views; email public by default and member-controlled; internal UUIDs, card data and admin notes never public.
 - **Auditing:** append-only audit and attendance-audit tables with actor, reason and redacted before/after values. Audit rows retain the actor UUID after an account is deleted; the log itself cannot be edited or removed.
 - **Secrets:** server-only Supabase secret/service key, encryption key and database URL live in ignored env files (Vercel env in deployment). `.env.example` contains placeholders only. Firmware secrets are ignored; only `secrets.example.h` belongs in Git.
 - **Headers:** CSP, `X-Content-Type-Options`, `Referrer-Policy`, framing denial and a permissions policy are configured in `apps/web/next.config.ts`. HSTS must be enabled at the edge/production host.

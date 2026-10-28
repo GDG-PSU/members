@@ -4,12 +4,12 @@ The schema source of truth is `supabase/migrations/`. Never edit the hosted sche
 
 Current migration order:
 
-| File | Purpose |
-| --- | --- |
-| `0001_schema.sql` | Tables, constraints, indexes, updated-at triggers, append-only guards, helper functions |
-| `0002_functions.sql` | Transactional domain functions and public projections |
-| `0003_rls.sql` | Row Level Security, grants, storage bucket and policies |
-| `0004_rate_limits.sql` | Postgres-backed fixed-window rate limiting |
+| File                   | Purpose                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `0001_schema.sql`      | Tables, constraints, indexes, updated-at triggers, append-only guards, helper functions |
+| `0002_functions.sql`   | Transactional domain functions and public projections                                   |
+| `0003_rls.sql`         | Row Level Security, grants, storage bucket and policies                                 |
+| `0004_rate_limits.sql` | Postgres-backed fixed-window rate limiting                                              |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -47,7 +47,7 @@ Visibility flags (all boolean, stored as columns):
 
 `public_profile`, `show_display_name`, `show_photo`, `show_about`, `show_links`, `show_member_number`, `show_member_since`, `show_points`, `show_stars`, `show_events`, `show_on_leaderboard`, `show_email`.
 
-Defaults are public for everything except `show_email`. The public projection nulls fields according to these flags rather than relying on API filtering.
+Defaults are public, including `show_email`; members can hide email during setup. The public projection nulls fields according to these flags rather than relying on API filtering.
 
 ## Cards and one-time writes
 
@@ -137,11 +137,11 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 ## Views
 
-| View | Security | Exposure |
-| --- | --- | --- |
-| `public_profiles` | Definer (owner `postgres`), explicit column projection | `anon`, `authenticated` |
-| `leaderboard` | Definer, filtered by public profile + points + leaderboard + display-name flags | `anon`, `authenticated` |
-| `member_balances` | Security invoker, so base-table RLS applies | `authenticated` |
+| View              | Security                                                                        | Exposure                |
+| ----------------- | ------------------------------------------------------------------------------- | ----------------------- |
+| `public_profiles` | Definer (owner `postgres`), explicit column projection                          | `anon`, `authenticated` |
+| `leaderboard`     | Definer, filtered by public profile + points + leaderboard + display-name flags | `anon`, `authenticated` |
+| `member_balances` | Security invoker, so base-table RLS applies                                     | `authenticated`         |
 
 `public_profiles` returns only: slug, conditional display name/photo/about/links/member number/member-since/points/stars/attended-events/email, and `created_at`. It never returns internal UUIDs, Auth IDs, card data, notes or role information. Profiles with `public_profile = false` and non-active members are excluded.
 
@@ -157,26 +157,26 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 ## Functions
 
-| Function | Access | Notes |
-| --- | --- | --- |
-| `set_updated_at()` | trigger | Sets `updated_at` |
-| `prevent_mutation()` | trigger | Raises `append_only_relation` |
-| `is_admin(uid)` | anon/authenticated/service | Role check |
-| `current_member_id()` | authenticated/service | Resolves active member |
-| `log_audit(...)` | service_role | Inserts audit row |
-| `grant_points(...)` | service_role | Idempotent points + stars |
-| `reverse_grant(...)` | service_role | Compensating reversal |
-| `redeem_reward(...)` | service_role | Atomic balance/inventory debit |
-| `decide_redemption(...)` | service_role | Status transitions + refund |
-| `prepare_card(...)` | service_role | Revokes previous, creates pending card |
-| `activate_card(...)` | service_role | Activates one card, supersedes others |
-| `revoke_card(...)` | service_role | Revokes pending/active card |
-| `queue_write_job(...)` | service_role | One-use encrypted URL payload |
-| `claim_write_job(...)` | service_role | Device-scoped claim with locking |
-| `complete_write_job(...)` | service_role | Read-back gate, payload destruction |
-| `complete_member_setup(...)` | service_role | Idempotent invite acceptance |
-| `confirm_scan(...)` | service_role | Admin-confirmed attendance state machine |
-| `correct_attendance(...)` | service_role | Audited corrections/reversals |
-| `consume_rate_limit(...)` | service_role | Atomic fixed-window limiter |
+| Function                     | Access                     | Notes                                    |
+| ---------------------------- | -------------------------- | ---------------------------------------- |
+| `set_updated_at()`           | trigger                    | Sets `updated_at`                        |
+| `prevent_mutation()`         | trigger                    | Raises `append_only_relation`            |
+| `is_admin(uid)`              | anon/authenticated/service | Role check                               |
+| `current_member_id()`        | authenticated/service      | Resolves active member                   |
+| `log_audit(...)`             | service_role               | Inserts audit row                        |
+| `grant_points(...)`          | service_role               | Idempotent points + stars                |
+| `reverse_grant(...)`         | service_role               | Compensating reversal                    |
+| `redeem_reward(...)`         | service_role               | Atomic balance/inventory debit           |
+| `decide_redemption(...)`     | service_role               | Status transitions + refund              |
+| `prepare_card(...)`          | service_role               | Revokes previous, creates pending card   |
+| `activate_card(...)`         | service_role               | Activates one card, supersedes others    |
+| `revoke_card(...)`           | service_role               | Revokes pending/active card              |
+| `queue_write_job(...)`       | service_role               | One-use encrypted URL payload            |
+| `claim_write_job(...)`       | service_role               | Device-scoped claim with locking         |
+| `complete_write_job(...)`    | service_role               | Read-back gate, payload destruction      |
+| `complete_member_setup(...)` | service_role               | Idempotent invite acceptance             |
+| `confirm_scan(...)`          | service_role               | Admin-confirmed attendance state machine |
+| `correct_attendance(...)`    | service_role               | Audited corrections/reversals            |
+| `consume_rate_limit(...)`    | service_role               | Atomic fixed-window limiter              |
 
 All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions are revoked from `public` and granted only to `service_role`; the web server authorizes the actor before calling them.

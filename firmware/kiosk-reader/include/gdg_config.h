@@ -15,6 +15,10 @@
 #define GDG_NFC_INTERFACE GDG_NFC_INTERFACE_I2C
 #endif
 
+#if GDG_NFC_INTERFACE != GDG_NFC_INTERFACE_I2C
+#error "Only the I2C PN532 adapter is implemented; do not flash with a different interface."
+#endif
+
 // I2C wiring (ESP32 default bus). PN532 breakout DIP switches must be set for I2C.
 #define GDG_NFC_I2C_SDA 21
 #define GDG_NFC_I2C_SCL 22
@@ -34,6 +38,10 @@
 #define GDG_STATUS_LED 2
 
 // Timing and bounded-operation limits.
+// Use an approved time source. Signed requests fail closed until time is synchronized.
+#ifndef GDG_NTP_SERVER
+#define GDG_NTP_SERVER "pool.ntp.org"
+#endif
 #define GDG_HTTP_TIMEOUT_MS 8000
 #define GDG_HTTP_CONNECT_TIMEOUT_MS 5000
 #define GDG_WIFI_CONNECT_TIMEOUT_MS 15000

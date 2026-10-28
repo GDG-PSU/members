@@ -13,11 +13,11 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: 'What we store',
-    body: 'Your Penn State email (never public by default), display name, profile photo, optional bio and links, membership-since date, membership number, event attendance, points and stars, card status and audit records of organizer actions.',
+    body: 'Your Penn State email (public by default), display name, profile photo, optional bio and links, membership-since date, membership number, event attendance, points and stars, card status and audit records of organizer actions.',
   },
   {
     title: 'What is public',
-    body: 'Profiles are public by default. Name, photo, bio, links, member number, member-since date, points, stars and attended-event count can each be hidden independently. Email is private unless you explicitly opt in. Your internal account identifier and card token never appear publicly.',
+    body: 'Profiles are public by default. Name, photo, bio, links, member number, member-since date, points, stars and attended-event count can each be hidden independently. Email is public by default and can be hidden at any time. Your internal account identifier and card token never appear publicly.',
   },
   {
     title: 'Your card',

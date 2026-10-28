@@ -9,7 +9,7 @@ import Typography from '@mui/material/Typography';
 import { StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDateTime } from '@/lib/format';
 import { KioskQueue } from '@/components/admin/kiosk-queue';
 
@@ -28,7 +28,7 @@ export default async function KioskPage() {
     admin
       .from('device_scans')
       .select(
-        'id, action, status, created_at, expires_at, member_id, members(public_number, member_profiles(display_name, photo_path)), event_sessions(name, events(name)), devices(device_id, lane_label)',
+        'id, action, status, created_at, expires_at, member_id, members(public_number, member_profiles(display_name, profile_slug)), event_sessions(name, events(name)), devices(device_id, lane_label)',
       )
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())
@@ -42,8 +42,12 @@ export default async function KioskPage() {
 
   const initialScans = (scans.data ?? []).map((scan) => {
     const member = Array.isArray(scan.members) ? scan.members[0] : scan.members;
-    const profile = Array.isArray(member?.member_profiles) ? member.member_profiles[0] : member?.member_profiles;
-    const session = Array.isArray(scan.event_sessions) ? scan.event_sessions[0] : scan.event_sessions;
+    const profile = Array.isArray(member?.member_profiles)
+      ? member.member_profiles[0]
+      : member?.member_profiles;
+    const session = Array.isArray(scan.event_sessions)
+      ? scan.event_sessions[0]
+      : scan.event_sessions;
     const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
     const device = Array.isArray(scan.devices) ? scan.devices[0] : scan.devices;
     return {
@@ -51,7 +55,7 @@ export default async function KioskPage() {
       memberId: scan.member_id as string,
       memberName: (profile?.display_name as string) ?? 'Member',
       memberNumber: (member?.public_number as string) ?? '',
-      photoUrl: publicPhotoUrl((profile?.photo_path as string) ?? null),
+      photoUrl: profilePhotoUrl((profile?.profile_slug as string) ?? null),
       eventName: (event?.name as string) ?? 'Event',
       sessionName: (session?.name as string) ?? 'Session',
       suggestedAction: (scan.action as string) ?? 'check_in',
@@ -63,7 +67,11 @@ export default async function KioskPage() {
 
   return (
     <Container maxWidth="xl" sx={{ pb: 8 }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+      >
         <Box>
           <Typography variant="overline" color="primary">
             Human confirmation required
@@ -75,7 +83,10 @@ export default async function KioskPage() {
             Scans queue here. A tap never awards points; confirm check-in and check-out in person.
           </Typography>
         </Box>
-        <StatusChip status={initialScans.length > 0 ? 'active' : 'pending'} label={`${initialScans.length} pending`} />
+        <StatusChip
+          status={initialScans.length > 0 ? 'active' : 'pending'}
+          label={`${initialScans.length} pending`}
+        />
       </Stack>
 
       <Grid container spacing={3}>
@@ -90,8 +101,15 @@ export default async function KioskPage() {
               </Typography>
               <Stack spacing={1.5}>
                 {(devices.data ?? []).map((device) => (
-                  <Box key={device.id as string} sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box
+                    key={device.id as string}
+                    sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}
+                  >
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+                    >
                       <Typography variant="subtitle2">{device.lane_label as string}</Typography>
                       <StatusChip status={device.status as string} />
                     </Stack>
@@ -99,7 +117,10 @@ export default async function KioskPage() {
                       {device.device_id as string} · {device.mode as string}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Last seen: {device.last_seen_at ? formatDateTime(device.last_seen_at as string) : 'never'}
+                      Last seen:{' '}
+                      {device.last_seen_at
+                        ? formatDateTime(device.last_seen_at as string)
+                        : 'never'}
                       {device.firmware_version ? ` · ${device.firmware_version as string}` : ''}
                     </Typography>
                   </Box>

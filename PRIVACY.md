@@ -17,7 +17,7 @@ Payment processing is out of scope. Do not send payment-card details to organize
 
 - **Public (by default):** display name, photo, bio, links, member number, member-since date, points, stars and attended-event count — each toggleable. Profiles are public by default after setup. Your stable profile URL is `/m/<random-slug>`.
 - **Leaderboard:** only if your profile is public and both points and leaderboard visibility are enabled. Hidden members are excluded, not shown as zero.
-- **Email:** private by default. It appears publicly only if you explicitly enable "Email address" in Privacy settings.
+- **Email:** public by default. You can hide it during setup or at any time in Privacy settings.
 - **Never public:** internal account identifiers, card token/hash, admin notes, invitations, device credentials, audit metadata and private attendance details beyond your visibility choices.
 - **Organizers (admins):** member records, attendance, ledgers, card status and audit history, as needed to run events and resolve issues. Admin actions are audited. Admin access requires MFA.
 
@@ -28,7 +28,7 @@ The NFC card stores only an HTTPS link (`/c/<opaque-token>`), which redirects to
 ## Your choices
 
 - Hide any profile field, or make the entire profile private, at any time in **Member → Privacy**.
-- Show your email publicly only if you choose to.
+- Hide your email during setup or at any time in Privacy settings.
 - Cancel a pending reward request; points are refunded through an audited ledger entry.
 - Request a correction to attendance by emailing **gdg@psu.edu** from your registered address. Corrections require an organizer reason and are audited; history is not deleted, it is compensated.
 

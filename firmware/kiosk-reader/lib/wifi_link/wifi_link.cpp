@@ -2,7 +2,7 @@
 
 #include <WiFi.h>
 
-#include "config.h"
+#include "gdg_config.h"
 
 void WifiLink::Begin(const char* ssid, const char* password) {
   ssid_ = ssid;

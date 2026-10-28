@@ -17,7 +17,7 @@ import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import { EmptyState, MemberAvatar, MetricCard, StatusChip } from '@gdg/ui';
 import { requireMember } from '@/lib/auth/viewer';
 import { getBalances, getCardStatus, getRecentAttendance, getLedger } from '@/lib/member/queries';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate, formatDateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -85,17 +85,25 @@ export default async function MemberDashboard({
 
       <Grid container spacing={{ xs: 3, md: 4 }}>
         <Grid size={{ xs: 12, md: 8 }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} sx={{ alignItems: { sm: 'center' }, mb: 4 }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2.5}
+            sx={{ alignItems: { sm: 'center' }, mb: 4 }}
+          >
             <MemberAvatar
               name={member.displayName}
-              photoUrl={publicPhotoUrl(member.photoPath)}
+              photoUrl={profilePhotoUrl(member.slug)}
               size={72}
             />
             <Box sx={{ flex: 1 }}>
               <Typography variant="overline" color="text.secondary">
                 Member since {formatDate(member.memberSince)}
               </Typography>
-              <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.6rem' } }}>
+              <Typography
+                variant="h2"
+                component="h1"
+                sx={{ fontSize: { xs: '2rem', md: '2.6rem' } }}
+              >
                 {member.displayName}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -136,9 +144,17 @@ export default async function MemberDashboard({
 
           <Card sx={{ mb: 4 }}>
             <CardContent sx={{ p: 3 }}>
-              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Stack
+                direction="row"
+                sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
+              >
                 <Typography variant="h5">Recent activity</Typography>
-                <Button component="a" href="/member/activity" size="small" endIcon={<ArrowForwardIcon />}>
+                <Button
+                  component="a"
+                  href="/member/activity"
+                  size="small"
+                  endIcon={<ArrowForwardIcon />}
+                >
                   All activity
                 </Button>
               </Stack>
@@ -168,7 +184,12 @@ export default async function MemberDashboard({
                     </Stack>
                   ))}
                   {ledger.slice(0, 2).map((row) => (
-                    <Stack key={`ledger-${row.id}`} direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Stack
+                      key={`ledger-${row.id}`}
+                      direction="row"
+                      spacing={2}
+                      sx={{ alignItems: 'center' }}
+                    >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="subtitle2" noWrap>
                           {row.description}
@@ -179,7 +200,10 @@ export default async function MemberDashboard({
                       </Box>
                       <Typography
                         variant="subtitle2"
-                        sx={{ color: row.delta > 0 ? 'success.main' : 'text.secondary', fontVariantNumeric: 'tabular-nums' }}
+                        sx={{
+                          color: row.delta > 0 ? 'success.main' : 'text.secondary',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
                       >
                         {row.delta > 0 ? '+' : ''}
                         {row.delta}

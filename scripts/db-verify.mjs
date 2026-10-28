@@ -52,11 +52,11 @@ async function expectError(name, sql, params, expectedFragment) {
   }
 }
 
-async function asUser(userId, fn) {
+async function asUser(userId, fn, aal = 'aal1') {
   await client.query('savepoint rls_ctx');
   await client.query(`set local role authenticated`);
   await client.query(`select set_config('request.jwt.claims', $1, true)`, [
-    JSON.stringify({ sub: userId, role: 'authenticated' }),
+    JSON.stringify({ sub: userId, role: 'authenticated', aal }),
   ]);
   try {
     return await fn();
@@ -82,10 +82,9 @@ try {
   const memberAId = users.find((u) => u.email === 'verify.a@example.test').id;
   const memberBId = users.find((u) => u.email === 'verify.b@example.test').id;
 
-  await client.query(
-    `insert into public.user_roles (auth_user_id, role) values ($1, 'admin')`,
-    [adminId],
-  );
+  await client.query(`insert into public.user_roles (auth_user_id, role) values ($1, 'admin')`, [
+    adminId,
+  ]);
 
   const { rows: members } = await client.query(
     `insert into public.members (auth_user_id, public_number, member_since) values
@@ -155,10 +154,7 @@ try {
     `select public.redeem_reward($1, $2, 1, 'verify-redeem-1') as id`,
     [memberA, mug],
   );
-  check(
-    'redemption is idempotent by key',
-    dupRedemption.rows[0].id === redemption.rows[0].id,
-  );
+  check('redemption is idempotent by key', dupRedemption.rows[0].id === redemption.rows[0].id);
 
   const afterRedeem = await client.query(
     `select points from public.member_balances where member_id = $1`,
@@ -302,10 +298,7 @@ try {
      values ($1, $2, $3, 'verify-scan-b3', 'pending') returning id`,
     [deviceId, memberB, bonusSession],
   );
-  await client.query(`select public.confirm_scan($1, 'check_in', $2)`, [
-    scanB3Rows[0].id,
-    adminId,
-  ]);
+  await client.query(`select public.confirm_scan($1, 'check_in', $2)`, [scanB3Rows[0].id, adminId]);
   const balanceB = await client.query(
     `select points from public.member_balances where member_id = $1`,
     [memberB],
@@ -396,18 +389,54 @@ try {
   });
   check('RLS: member cannot read another profile row', otherProfile === 0);
 
-  const adminSeesAll = await asUser(adminId, async () => {
+  const adminWithoutMfa = await asUser(adminId, async () => {
     const res = await client.query(`select count(*)::int as n from public.member_profiles`);
     return res.rows[0].n;
   });
-  check('RLS: admin reads all profiles', adminSeesAll >= 2);
+  check('RLS: admin without MFA cannot read private profiles', adminWithoutMfa === 0);
+  const adminSeesAll = await asUser(
+    adminId,
+    async () => {
+      const res = await client.query(`select count(*)::int as n from public.member_profiles`);
+      return res.rows[0].n;
+    },
+    'aal2',
+  );
+  check('RLS: admin with MFA reads all profiles', adminSeesAll >= 2);
 
   const publicView = await asUser(memberAId, async () => {
     const res = await client.query(`select slug from public.public_profiles`);
     return res.rows.map((r) => r.slug);
   });
-  check('public projection includes public profile', publicView.includes('verify-profile-slug-aaaaaaaa'));
-  check('public projection hides private profile', !publicView.includes('verify-profile-slug-bbbbbbbb'));
+  check(
+    'public projection includes public profile',
+    publicView.includes('verify-profile-slug-aaaaaaaa'),
+  );
+  check(
+    'public projection hides private profile',
+    !publicView.includes('verify-profile-slug-bbbbbbbb'),
+  );
+
+  const visibleEmail = await client.query(
+    `select email, photo_path from public.public_profiles where slug = 'verify-profile-slug-aaaaaaaa'`,
+  );
+  check('email defaults public', visibleEmail.rows[0].email === 'verify.a@example.test');
+  check(
+    'public projection never exposes storage paths or auth IDs',
+    visibleEmail.rows[0].photo_path === 'verify-profile-slug-aaaaaaaa',
+  );
+  await client.query('update public.member_profiles set show_email = false where member_id = $1', [
+    memberA,
+  ]);
+  const hiddenEmail = await client.query(
+    `select email from public.public_profiles where slug = 'verify-profile-slug-aaaaaaaa'`,
+  );
+  check(
+    'email visibility is enforced in the public projection',
+    hiddenEmail.rows[0].email === null,
+  );
+  const bucket = await client.query(`select public from storage.buckets where id = 'avatars'`);
+  check('avatar bucket is private', bucket.rows[0]?.public === false);
 
   await client.query('savepoint anon_ctx');
   await client.query('set local role anon');
@@ -499,7 +528,9 @@ try {
     check('balance never goes negative', finalBalance[0].points === 0);
   } finally {
     if (raceRewardId) {
-      await concurrency.query(`delete from public.rewards where id = $1`, [raceRewardId]).catch(() => {});
+      await concurrency
+        .query(`delete from public.rewards where id = $1`, [raceRewardId])
+        .catch(() => {});
     }
     if (raceUserId) {
       await concurrency.query(`delete from auth.users where id = $1`, [raceUserId]).catch(() => {});

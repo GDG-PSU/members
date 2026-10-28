@@ -86,7 +86,7 @@ export const defaultVisibility: Visibility = {
   showStars: true,
   showEvents: true,
   showOnLeaderboard: true,
-  showEmail: false,
+  showEmail: true,
 };
 
 export const profileUpdateSchema = z.object({
@@ -309,8 +309,9 @@ export const deviceUpdateSchema = z.object({
 
 export const deviceHeadersSchema = z.object({
   'x-device-id': z.string().min(3).max(40),
-  'x-device-secret': z.string().min(32).max(128),
-  'x-request-id': requestIdSchema,
+  'x-device-timestamp': z.string().regex(/^\d{10}$/),
+  'x-device-signature': z.string().regex(/^[a-f0-9]{64}$/),
+  'x-request-id': z.string().regex(/^[A-Za-z0-9_-]{16,64}$/),
 });
 
 export const deviceHeartbeatSchema = z.object({

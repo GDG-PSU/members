@@ -1,7 +1,7 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getApiViewer } from '@/lib/auth/api-guard';
 import { jsonError, jsonOk, requestId } from '@/lib/api';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const { data, error } = await admin
     .from('device_scans')
     .select(
-      'id, member_id, action, created_at, expires_at, members(public_number, member_profiles(display_name, photo_path)), event_sessions(name, events(name)), devices(lane_label)',
+      'id, member_id, action, created_at, expires_at, members(public_number, member_profiles(display_name, profile_slug)), event_sessions(name, events(name)), devices(lane_label)',
     )
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
@@ -29,8 +29,12 @@ export async function GET(request: Request) {
 
   const scans = (data ?? []).map((scan) => {
     const member = Array.isArray(scan.members) ? scan.members[0] : scan.members;
-    const profile = Array.isArray(member?.member_profiles) ? member.member_profiles[0] : member?.member_profiles;
-    const session = Array.isArray(scan.event_sessions) ? scan.event_sessions[0] : scan.event_sessions;
+    const profile = Array.isArray(member?.member_profiles)
+      ? member.member_profiles[0]
+      : member?.member_profiles;
+    const session = Array.isArray(scan.event_sessions)
+      ? scan.event_sessions[0]
+      : scan.event_sessions;
     const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
     const device = Array.isArray(scan.devices) ? scan.devices[0] : scan.devices;
     return {
@@ -38,7 +42,7 @@ export async function GET(request: Request) {
       memberId: scan.member_id,
       memberName: profile?.display_name ?? 'Member',
       memberNumber: member?.public_number ?? '',
-      photoUrl: publicPhotoUrl(profile?.photo_path ?? null),
+      photoUrl: profilePhotoUrl(profile?.profile_slug ?? null),
       eventName: event?.name ?? 'Event',
       sessionName: session?.name ?? 'Session',
       suggestedAction: scan.action ?? 'check_in',

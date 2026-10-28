@@ -1,6 +1,5 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { publicPhotoUrl } from '@/lib/profile/photo';
 
 export interface MemberBalance {
   points: number;
@@ -35,7 +34,10 @@ export interface CardStatus {
   status: 'none' | 'pending' | 'active' | 'revoked' | 'lost' | 'replaced';
 }
 
-export async function getBalances(supabase: SupabaseClient, memberId: string): Promise<MemberBalance> {
+export async function getBalances(
+  supabase: SupabaseClient,
+  memberId: string,
+): Promise<MemberBalance> {
   const { data } = await supabase
     .from('member_balances')
     .select('points, stars')
@@ -78,7 +80,11 @@ export async function getRecentAttendance(
   });
 }
 
-export async function getLedger(supabase: SupabaseClient, memberId: string, limit = 25): Promise<LedgerRow[]> {
+export async function getLedger(
+  supabase: SupabaseClient,
+  memberId: string,
+  limit = 25,
+): Promise<LedgerRow[]> {
   const { data } = await supabase
     .from('point_ledger')
     .select('id, delta, kind, description, created_at')
@@ -94,7 +100,10 @@ export async function getLedger(supabase: SupabaseClient, memberId: string, limi
   }));
 }
 
-export async function getCardStatus(supabase: SupabaseClient, memberId: string): Promise<CardStatus> {
+export async function getCardStatus(
+  supabase: SupabaseClient,
+  memberId: string,
+): Promise<CardStatus> {
   const { data } = await supabase
     .from('card_credentials')
     .select('id, status')
@@ -120,8 +129,4 @@ export async function getActiveCardUrl(
   const { decryptSecret } = await import('@/lib/security/tokens');
   const token = decryptSecret(data.token_ciphertext as string);
   return `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/c/${token}`;
-}
-
-export async function getPhotoUrl(path: string): Promise<string | null> {
-  return publicPhotoUrl(path);
 }

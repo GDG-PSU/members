@@ -3,7 +3,7 @@
 #include <Adafruit_PN532.h>
 #include <Arduino.h>
 
-#include "config.h"
+#include "gdg_config.h"
 
 /**
  * PN532/NTAG lane.

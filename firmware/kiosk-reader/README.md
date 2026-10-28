@@ -13,7 +13,7 @@ connecting a board.
 
 ```text
 platformio.ini                 pinned platform + libraries
-include/config.h               pins, timeouts, state constants (safe to commit)
+include/gdg_config.h           pins, timeouts, state constants (safe to commit)
 include/secrets.example.h      template for credentials/CA (copy → secrets.h)
 include/secrets.h              untracked; never commit
 src/main.cpp                   boot + loop, mode dispatch, feedback
@@ -41,8 +41,15 @@ The API contract is:
 - `POST /api/device/v1/write-jobs/claim`
 - `POST /api/device/v1/write-jobs/complete`
 
-with `x-device-id`, `x-device-secret`, `x-request-id` and JSON bodies. The token in
-a card URL is exactly 43 base64url characters; see `lib/ndef_url`.
+with `x-device-id`, `x-device-timestamp`, `x-device-signature`, `x-request-id` and JSON bodies.
+The signature is lowercase HMAC-SHA-256 over `METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(body)`;
+timestamps are Unix seconds and the nonce is a fresh 128-bit hex value. TLS validates the
+configured CA. Requests fail closed until NTP synchronizes the clock. Existing devices must
+have their secret rotated after migration 0007 and firmware updated together. The card token
+is exactly 43 base64url characters; see `lib/ndef_url`.
+
+Scans are not persisted offline: a failed report requires the member to tap again. Do not
+use this firmware for an event until offline behavior and physical read/write are verified.
 
 ## Host parser test
 

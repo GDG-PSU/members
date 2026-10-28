@@ -4,7 +4,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { requireMember } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { publicPhotoUrl } from '@/lib/profile/photo';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 import { ProfileForm } from '@/components/member/profile-form';
 
 export const dynamic = 'force-dynamic';
@@ -47,7 +47,7 @@ export default async function ProfilePage() {
         initialName={profile?.display_name ?? member.displayName}
         initialAbout={(profile?.about as string | null) ?? ''}
         initialLinks={links}
-        photoUrl={publicPhotoUrl((profile?.photo_path as string) ?? member.photoPath)}
+        photoUrl={profilePhotoUrl(member.slug)}
       />
     </Container>
   );

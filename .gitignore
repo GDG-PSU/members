@@ -1,6 +1,9 @@
 # dependencies
 node_modules/
 .pnpm-store/
+.venv/
+.pio/
+.platformio/
 
 # builds
 .next/

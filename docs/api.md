@@ -8,15 +8,15 @@ This repository has three kinds of server surface:
 
 ## Implementation status
 
-| Surface | Status |
-| --- | --- |
-| `POST /api/auth/session`, `POST /api/auth/signout` | Implemented |
-| `GET /c/<card-token>` | Implemented |
-| Member/auth Server Actions | Implemented |
-| `GET /api/public/leaderboard`, `/api/public/events`, `/api/public/events/:slug` | Implemented |
-| Admin portal + Server Actions | Implemented under `app/(admin)/admin/*`; admin MFA gate at `/admin-mfa` |
-| `GET /api/admin/kiosk/pending`, `POST /api/admin/kiosk/confirm` | Implemented (cookie session + server-side admin check) |
-| `/api/device/v1/*` | Implemented; device auth, rate limits and idempotency enforced |
+| Surface                                                                         | Status                                                                  |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `POST /api/auth/session`, `POST /api/auth/signout`                              | Implemented                                                             |
+| `GET /c/<card-token>`                                                           | Implemented                                                             |
+| Member/auth Server Actions                                                      | Implemented                                                             |
+| `GET /api/public/leaderboard`, `/api/public/events`, `/api/public/events/:slug` | Implemented                                                             |
+| Admin portal + Server Actions                                                   | Implemented under `app/(admin)/admin/*`; admin MFA gate at `/admin-mfa` |
+| `GET /api/admin/kiosk/pending`, `POST /api/admin/kiosk/confirm`                 | Implemented (cookie session + server-side admin check)                  |
+| `/api/device/v1/*`                                                              | Implemented; device auth, rate limits and idempotency enforced          |
 
 All authenticated surfaces derive the actor from the verified Supabase session and re-check the role in the database; no client-supplied role or member id is trusted.
 
@@ -45,11 +45,11 @@ Request:
 
 Responses:
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ "redirectTo": "/invite/accept" }` and `Cache-Control: no-store` |
-| 400 | `{ "error": "Invalid session payload." }` |
-| 401 | `{ "error": "That sign-in link is invalid or expired." }` |
+| Status | Body                                                               |
+| ------ | ------------------------------------------------------------------ |
+| 200    | `{ "redirectTo": "/invite/accept" }` and `Cache-Control: no-store` |
+| 400    | `{ "error": "Invalid session payload." }`                          |
+| 401    | `{ "error": "That sign-in link is invalid or expired." }`          |
 
 This endpoint intentionally accepts tokens because Supabase's email verification redirect delivers them in the fragment. It does not log token values.
 
@@ -85,29 +85,29 @@ All other admin mutations are Server Actions (below). They require `getViewer().
 
 ### Admin Server Actions
 
-| Area | Actions |
-| --- | --- |
+| Area        | Actions                                                                                                                                                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Invitations | `createInvitationAction` (returns a one-time link), `regenerateInvitationLinkAction` (new link, 14-day record window), `revokeInvitationAction`. Duplicate pending invitations blocked; the Auth user is rolled back if the invitation row fails. **No email is sent.** |
-| Members | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction` (returns a one-time link; no email). Reasoned and audited. |
-| Cards | `prepareCardAction` (new token + revoke previous + encrypted one-time write job), `revokeCardAction`, `completeWriteJobAction` (cancel). |
-| Events | `saveEventAction` (event + exactly one main session + optional bonus), `setEventStatusAction`. |
-| Kiosk | `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions. |
-| Rewards | `saveRewardAction`, `decideRedemptionAction` (approve/fulfil/reject/cancel with refund). |
-| Devices | `createDeviceAction` (secret returned once), `updateDeviceAction` (lane/mode/enable/rotate secret). |
-| MFA | `/admin-mfa` actions `enrollMfaAction`, `verifyMfaAction` (Supabase TOTP, AAL2 required for `/admin/*`). |
+| Members     | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction` (returns a one-time link; no email). Reasoned and audited.                                                                                                                                    |
+| Cards       | `prepareCardAction` (new token + revoke previous + encrypted one-time write job), `revokeCardAction`, `completeWriteJobAction` (cancel).                                                                                                                                |
+| Events      | `saveEventAction` (event + exactly one main session + optional bonus), `setEventStatusAction`.                                                                                                                                                                          |
+| Kiosk       | `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions.                                                                                                                                                                           |
+| Rewards     | `saveRewardAction`, `decideRedemptionAction` (approve/fulfil/reject/cancel with refund).                                                                                                                                                                                |
+| Devices     | `createDeviceAction` (secret returned once), `updateDeviceAction` (lane/mode/enable/rotate secret).                                                                                                                                                                     |
+| MFA         | `/admin-mfa` actions `enrollMfaAction`, `verifyMfaAction` (Supabase TOTP, AAL2 required for `/admin/*`).                                                                                                                                                                |
 
 ## Server Actions
 
 Server Actions are POST requests generated by Next for same-origin forms; they are not a documented public API. They return serializable state objects (`{ ok?, message?, error? }`) except where they finish with `redirect()`. All inputs are parsed with Zod; all require an authenticated session unless noted.
 
-| Action | File | Auth | Behavior |
-| --- | --- | --- | --- |
-| `signInAction(prev, formData)` | `app/(auth)/login/actions.ts` | none | Email/password login via Supabase. Normalizes email. Rejects inactive memberships and signs out. Redirects member → `/member`, admin-only → `/admin`, otherwise `/invite/accept`. Returns a generic error for bad credentials. |
-| `completeSetupAction(prev, formData)` | `app/(auth)/invite/accept/actions.ts` | signed-in, no member | Requires name, password ≥12 with letter+digit, matching confirmation, consent, and a photo. Re-encodes the photo, sets the password, generates slug + public number, calls `complete_member_setup`, audits, redirects to `/member?welcome=1`. Retries on unique collisions; never creates a member without a profile. |
-| `updateProfileAction(prev, formData)` | `app/(member)/member/actions.ts` | active member | Validates display name (2–60), about (≤280), ≤6 `https://` links; optionally replaces the photo (2 MB, JPEG/PNG/WebP, re-encoded, old object deleted); audits before/after; revalidates member + public profile. |
-| `updatePrivacyAction(prev, formData)` | same | active member | Reads all 12 visibility booleans, updates the profile, audits before/after, revalidates member/public/leaderboard. |
-| `requestRedemptionAction(prev, formData)` | same | active member | Validates reward id, quantity 1–5, idempotency key (8–64). Calls `redeem_reward` (server-computed cost/balance). Maps `insufficient_points`, `out_of_stock`, `reward_unavailable` to messages. Audits. |
-| `cancelRedemptionAction(formData)` | same | active member | Verifies the redemption belongs to the caller and is `requested`/`approved`; calls `decide_redemption(action = cancel, reason = "Cancelled by member")`; audits; revalidates. |
+| Action                                    | File                                  | Auth                 | Behavior                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------- | ------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signInAction(prev, formData)`            | `app/(auth)/login/actions.ts`         | none                 | Email/password login via Supabase. Normalizes email. Rejects inactive memberships and signs out. Redirects member → `/member`, admin-only → `/admin`, otherwise `/invite/accept`. Returns a generic error for bad credentials.                                                                                        |
+| `completeSetupAction(prev, formData)`     | `app/(auth)/invite/accept/actions.ts` | signed-in, no member | Requires name, password ≥12 with letter+digit, matching confirmation, consent, and a photo. Re-encodes the photo, sets the password, generates slug + public number, calls `complete_member_setup`, audits, redirects to `/member?welcome=1`. Retries on unique collisions; never creates a member without a profile. |
+| `updateProfileAction(prev, formData)`     | `app/(member)/member/actions.ts`      | active member        | Validates display name (2–60), about (≤280), ≤6 `https://` links; optionally replaces the photo (2 MB, JPEG/PNG/WebP, re-encoded, old object deleted); audits before/after; revalidates member + public profile.                                                                                                      |
+| `updatePrivacyAction(prev, formData)`     | same                                  | active member        | Reads all 12 visibility booleans, updates the profile, audits before/after, revalidates member/public/leaderboard.                                                                                                                                                                                                    |
+| `requestRedemptionAction(prev, formData)` | same                                  | active member        | Validates reward id, quantity 1–5, idempotency key (8–64). Calls `redeem_reward` (server-computed cost/balance). Maps `insufficient_points`, `out_of_stock`, `reward_unavailable` to messages. Audits.                                                                                                                |
+| `cancelRedemptionAction(formData)`        | same                                  | active member        | Verifies the redemption belongs to the caller and is `requested`/`approved`; calls `decide_redemption(action = cancel, reason = "Cancelled by member")`; audits; revalidates.                                                                                                                                         |
 
 ## Errors and validation
 
@@ -118,33 +118,33 @@ Server Actions are POST requests generated by Next for same-origin forms; they a
 
 ## Idempotency and rate limiting
 
-| Operation | Mechanism |
-| --- | --- |
-| Point/star grant | `point_ledger.source_key` unique; `grant_points` returns the existing id on retry |
-| Attendance reward | `source_key = attendance:<attendance id>`; one attendance per member/session |
-| Redemption request | unique `(member_id, idempotency_key)`; repeated key returns the same redemption |
-| Card write | single-use job + nonce; completion rejects non-open jobs; read-back required for success |
-| Token lookup | fixed-window limiter in Postgres (`consume_rate_limit`) |
-| Invite acceptance | `complete_member_setup` returns the existing member for the Auth user |
+| Operation          | Mechanism                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| Point/star grant   | `point_ledger.source_key` unique; `grant_points` returns the existing id on retry        |
+| Attendance reward  | `source_key = attendance:<attendance id>`; one attendance per member/session             |
+| Redemption request | unique `(member_id, idempotency_key)`; repeated key returns the same redemption          |
+| Card write         | single-use job + nonce; completion rejects non-open jobs; read-back required for success |
+| Token lookup       | fixed-window limiter in Postgres (`consume_rate_limit`)                                  |
+| Invite acceptance  | `complete_member_setup` returns the existing member for the Auth user                    |
 
 ## Device API (implemented)
 
-Headers: `x-device-id`, `x-device-secret`, `x-request-id`; JSON bodies; HTTPS with certificate validation. Authentication hashes the presented secret and compares in constant time against the stored verifier; disabled/revoked devices are rejected; each device has a 120/min auth and 40/min scan budget.
+Headers: `x-device-id`, `x-device-timestamp` (Unix seconds), `x-request-id` (unique nonce), and `x-device-signature` (lowercase HMAC-SHA-256); JSON bodies; HTTPS with certificate validation. The signed string is `METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(body)`. Device keys are encrypted server-side, signatures are compared in constant time, clocks must be within 120 seconds, and nonces are retained for ten minutes. Existing devices must rotate their secrets after migration 0007. Disabled/revoked devices are rejected; each device has a 120/min auth and 40/min scan budget.
 
-| Method/path | Behavior |
-| --- | --- |
-| `POST /api/device/v1/heartbeat` | Validates credentials, records last-seen/firmware, returns server-assigned mode and session. |
-| `POST /api/device/v1/scans` | Validates a 43-char token, resolves the active card server-side, ensures the session window is open, and inserts a pending scan (unique per device/idempotency key). Never awards attendance or points. |
-| `POST /api/device/v1/write-jobs/claim` | Writer mode only; claims one queued job for this device, decrypts the short-lived card URL, marks it claimed. |
-| `POST /api/device/v1/write-jobs/complete` | Reports `written`/`failed`; `written` requires read-back match; activates the card and destroys the job payload. |
+| Method/path                               | Behavior                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/device/v1/heartbeat`           | Validates credentials, records last-seen/firmware, returns server-assigned mode and session.                                                                                                            |
+| `POST /api/device/v1/scans`               | Validates a 43-char token, resolves the active card server-side, ensures the session window is open, and inserts a pending scan (unique per device/idempotency key). Never awards attendance or points. |
+| `POST /api/device/v1/write-jobs/claim`    | Writer mode only; claims one queued job for this device, decrypts the short-lived card URL, marks it claimed.                                                                                           |
+| `POST /api/device/v1/write-jobs/complete` | Reports `written`/`failed`; `written` requires read-back match; activates the card and destroys the job payload.                                                                                        |
 
 Scan responses: `{ scanId, status, action, expiresAt }`; claim returns `{ job: null }` or `{ job: { id, cardUrl, expiresAt } }`. Tokens are never logged. The firmware client targets these exact paths.
 
-| Method/path | Purpose |
-| --- | --- |
-| `POST /api/device/v1/heartbeat` | Authenticate device, report firmware/mode/diagnostics, receive server-assigned mode |
-| `POST /api/device/v1/scans` | Submit one parsed card token + idempotency key; creates a pending scan only |
-| `POST /api/device/v1/write-jobs/claim` | Claim one queued write job bound to this device |
-| `POST /api/device/v1/write-jobs/:jobId/complete` | Report written/failed with read-back result |
+| Method/path                                      | Purpose                                                                             |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `POST /api/device/v1/heartbeat`                  | Authenticate device, report firmware/mode/diagnostics, receive server-assigned mode |
+| `POST /api/device/v1/scans`                      | Submit one parsed card token + idempotency key; creates a pending scan only         |
+| `POST /api/device/v1/write-jobs/claim`           | Claim one queued write job bound to this device                                     |
+| `POST /api/device/v1/write-jobs/:jobId/complete` | Report written/failed with read-back result                                         |
 
 TLS certificate validation is mandatory; payload size/content type, idempotency and rate limits are checked before any database write.

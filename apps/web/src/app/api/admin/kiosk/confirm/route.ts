@@ -2,6 +2,7 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getApiViewer } from '@/lib/auth/api-guard';
 import { handleApiError, jsonError, jsonOk, parseJson, requestId } from '@/lib/api';
 import { scanConfirmSchema } from '@gdg/contracts';
+import { SITE_URL } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ export async function POST(request: Request) {
     const viewer = await getApiViewer();
     if (!viewer) return jsonError(401, 'unauthorized', 'Sign in as an organizer.', id);
     if (!viewer.isAdmin) return jsonError(403, 'forbidden', 'Organizer access required.', id);
+    if (request.headers.get('origin') !== new URL(SITE_URL).origin) {
+      return jsonError(403, 'forbidden', 'Invalid request origin.', id);
+    }
 
     const payload = await parseJson(request, scanConfirmSchema);
     const admin = createSupabaseAdmin();

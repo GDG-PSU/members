@@ -24,11 +24,19 @@ const fields: { key: keyof Visibility; label: string; description: string }[] = 
   { key: 'showLinks', label: 'Links', description: 'https:// links only.' },
   { key: 'showMemberNumber', label: 'Member number', description: 'Your GDG-XXXXXX number.' },
   { key: 'showMemberSince', label: 'Member since', description: 'Your recorded join date.' },
-  { key: 'showPoints', label: 'Points', description: 'Spendable balance; required for the leaderboard.' },
+  {
+    key: 'showPoints',
+    label: 'Points',
+    description: 'Spendable balance; required for the leaderboard.',
+  },
   { key: 'showStars', label: 'Stars', description: 'Lifetime participation tally.' },
   { key: 'showEvents', label: 'Events attended', description: 'Count of qualified events.' },
   { key: 'showOnLeaderboard', label: 'Leaderboard', description: 'Appear in the public ranking.' },
-  { key: 'showEmail', label: 'Email address', description: 'Off by default. Only visible if you opt in.' },
+  {
+    key: 'showEmail',
+    label: 'Email address',
+    description: 'Public by default. Turn off to hide your email.',
+  },
 ];
 
 export function PrivacyForm({ initial: initialSettings }: { initial: Visibility }) {
@@ -82,7 +90,7 @@ export function PrivacyForm({ initial: initialSettings }: { initial: Visibility 
                 label={field.label}
                 description={field.description}
                 checked={settings[field.key]}
-                disabled={!settings.publicProfile && field.key !== 'showEmail'}
+                disabled={!settings.publicProfile}
                 onChange={(value) => set(field.key, value)}
               />
             </Box>
@@ -94,13 +102,19 @@ export function PrivacyForm({ initial: initialSettings }: { initial: Visibility 
 
           {!settings.publicProfile ? (
             <Alert severity="info">
-              Your profile is private. Visible fields are saved but not shown until you switch it back on.
+              Your profile is private. Visible fields are saved but not shown until you switch it
+              back on.
             </Alert>
           ) : null}
           {state.error ? <Alert severity="error">{state.error}</Alert> : null}
           {state.ok ? <Alert severity="success">{state.message}</Alert> : null}
 
-          <Button type="submit" variant="contained" disabled={pending} sx={{ alignSelf: 'flex-start' }}>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={pending}
+            sx={{ alignSelf: 'flex-start' }}
+          >
             {pending ? 'Saving…' : 'Save privacy settings'}
           </Button>
         </Stack>

@@ -4,8 +4,11 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_system.h>
+#include <mbedtls/md.h>
+#include <mbedtls/sha256.h>
+#include <time.h>
 
-#include "config.h"
+#include "gdg_config.h"
 #include "ndef_url.h"
 
 namespace {
@@ -14,6 +17,17 @@ const char* kHeartbeatPath = "/api/device/v1/heartbeat";
 const char* kScanPath = "/api/device/v1/scans";
 const char* kClaimPath = "/api/device/v1/write-jobs/claim";
 const char* kCompletePath = "/api/device/v1/write-jobs/complete";
+
+String Hex(const unsigned char* bytes, size_t length) {
+  String out;
+  out.reserve(length * 2);
+  char buffer[3];
+  for (size_t i = 0; i < length; ++i) {
+    snprintf(buffer, sizeof(buffer), "%02x", bytes[i]);
+    out += buffer;
+  }
+  return out;
+}
 
 }  // namespace
 
@@ -73,11 +87,32 @@ bool DeviceApiClient::PostJson(const char* path, const JsonDocument& payload, St
     return false;
   }
 
+  const time_t now = time(nullptr);
+  if (now < 1700000000) {
+    error = "clock_not_synchronized";
+    http.end();
+    return false;
+  }
+  const String timestamp = String(static_cast<unsigned long>(now));
+  const String nonce = NewRequestId();
+  unsigned char bodyHash[32];
+  mbedtls_sha256_ret(reinterpret_cast<const unsigned char*>(body.c_str()), body.length(), bodyHash, 0);
+  const String canonical = String("POST\n") + path + "\n" + timestamp + "\n" + nonce + "\n" + Hex(bodyHash, 32);
+  unsigned char signature[32];
+  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (!info || mbedtls_md_hmac(info, reinterpret_cast<const unsigned char*>(deviceSecret_), strlen(deviceSecret_),
+                               reinterpret_cast<const unsigned char*>(canonical.c_str()), canonical.length(), signature) != 0) {
+    error = "signature_failed";
+    http.end();
+    return false;
+  }
+
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Accept", "application/json");
   http.addHeader("x-device-id", deviceId_);
-  http.addHeader("x-device-secret", deviceSecret_);
-  http.addHeader("x-request-id", NewRequestId());
+  http.addHeader("x-device-timestamp", timestamp);
+  http.addHeader("x-device-signature", Hex(signature, 32));
+  http.addHeader("x-request-id", nonce);
   http.addHeader("User-Agent", "gdgpsu-kiosk/" GDG_FIRMWARE_VERSION);
 
   status = http.POST(body);
