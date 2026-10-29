@@ -2,7 +2,7 @@
 
 ## Verified against the hosted project, 2026-10-29
 
-The project `potjjlmgnrqxseeendmx` has all ten migrations recorded in `supabase_migrations.schema_migrations` and a private `avatars` bucket. Test fixtures are erased after each run; only real accounts remain. One administrator, `sainaman@psu.edu`, was created with a one-time activation link. No real email is sent; administrators copy and deliver links themselves.
+The project `potjjlmgnrqxseeendmx` has all ten migrations recorded in `supabase_migrations.schema_migrations` and a private `avatars` bucket. Test fixtures are erased after each run; only real accounts remain: two activated administrators (`sainaman@psu.edu`, `gdg@psu.edu`) and one member. No real email is sent; administrators copy and deliver links themselves.
 
 | Check                | Command                                                                                          | Result                                                                                                                                                                                                                           |
 | -------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,6 +27,6 @@ Run `pnpm verify` to attempt available release checks. It reports missing prereq
 - A shared firmware/server HMAC signature vector executed on the firmware target, plus physical ESP32/PN532/tag and PSU network validation.
 - Comprehensive secret scanning and a backup/restore rehearsal.
 - Vercel production deploy, DNS for `member.gdgpsu.dev`, and the final Supabase Email OTP expiry decision.
-- The initial administrator's activation: set password and enroll TOTP before `/admin` opens.
+- Administrator sign-in: password plus TOTP at `/admin-mfa` (verified for both admins locally; repeat on the production origin after deploy).
 
 Static NFC tags can be cloned and never authorize points or attendance without staff confirmation.

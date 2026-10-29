@@ -2,7 +2,7 @@
 
 Target: Next.js app on Vercel, Supabase Postgres/Auth/Storage, custom domain `member.gdgpsu.dev`.
 
-The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all nine migrations applied, history recorded in `supabase_migrations.schema_migrations`, the `avatars` bucket private, `db:verify` passing 46/46, and the authenticated browser suite passing. Test data and storage objects were then erased; one administrator (`sainaman@psu.edu`) remains with a one-time activation link. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
+The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all ten migrations applied, history recorded in `supabase_migrations.schema_migrations`, the `avatars` bucket private, `db:verify` passing 46/46, and the authenticated browser suite passing. Test data and storage objects were then erased; two administrators (`sainaman@psu.edu`, `gdg@psu.edu`) remain with passwords and verified TOTP. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
 
 ## 1. Prerequisites (user/operator action)
 
@@ -13,7 +13,7 @@ The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all nine 
 | Supabase project ownership + a publishable key | Auth/DB; see key note below | Verified — keys accepted, schema applied, RLS and storage checked                       |
 | Invitation/recovery delivery                   | Link delivery               | Manual — an admin copies links into their own mail client; no SMTP                      |
 | PSU IT approval for ESP32 network access       | Hardware lanes              | Unverified — confirm the approved network, device policy, SSID and CA                   |
-| Admin bootstrap identity (real email)          | First admin                 | Created — `sainaman@psu.edu`; password + TOTP activation still pending                  |
+| Admin bootstrap identity (real email)          | Admin access                | Activated — `sainaman@psu.edu` and `gdg@psu.edu` have passwords + verified TOTP         |
 
 ## 2. Environment variables (names only)
 
@@ -61,7 +61,7 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
 
 ## 4. Admin bootstrap
 
-The initial administrator (`sainaman@psu.edu`) is already created with the `admin` role and an activation link. They open the link, set a password at `/account/password`, then enroll TOTP at `/admin-mfa`. Once signed in with AAL2, they can generate further administrator or member invitations from **Admin → Invitations**; those links are copied and delivered manually.
+The administrators (`sainaman@psu.edu` and `gdg@psu.edu`) already hold the `admin` role and have set passwords and verified TOTP; each signs in at `/login` and completes TOTP at `/admin-mfa`. Once signed in with AAL2, they can generate further administrator or member invitations from **Admin → Invitations**; those links are copied and delivered manually.
 
 To recover or regenerate the initial link, run `pnpm db:bootstrap-admin --email sainaman@psu.edu --out .local/admin-link.txt` with `NEXT_PUBLIC_SITE_URL` set to the production origin; it writes an origin-owned `/auth/confirm` link to the output file (gitignored). No email is sent and no password is printed — deliver the link privately, then delete the file. Equivalent reviewed SQL (after creating the Auth user in Supabase):
 
@@ -111,7 +111,7 @@ The repository includes `vercel.json`, which sets the Next.js framework, the fro
 
 1. Sign in to Vercel (`npx vercel login`), create/import the project and set the production environment variables (the publishable key is supplied). Anonymous temporary deployments are not available.
 2. Approve DNS changes for `member.gdgpsu.dev` and set `NEXT_PUBLIC_SITE_URL` to that origin. App-generated links no longer need a Supabase redirect allowlist entry.
-3. Have `sainaman@psu.edu` open the one-time activation link, set a password and enroll TOTP. Regenerate the link with `pnpm db:bootstrap-admin --email sainaman@psu.edu --out .local/admin-link.txt` if it expires; this is the only admin, so nobody can issue invitations until activation is complete.
+3. Confirm both administrators can complete a TOTP sign-in on the production origin after `NEXT_PUBLIC_SITE_URL` is set. If one needs to be re-invited, regenerate the link with `pnpm db:bootstrap-admin --email <admin> --out .local/admin-link.txt`.
 4. Record PSU IT's approved ESP32 SSID/EAP method and hardware test window; do not use personal credentials or bypass TLS.
 5. Confirm whether preview deployments may use a staging Supabase project (recommended) or must stay offline.
 

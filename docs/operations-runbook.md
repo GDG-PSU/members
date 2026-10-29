@@ -4,7 +4,7 @@ Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**
 
 ## Current availability (read first)
 
-This checkout contains the database, public site, auth/invite/setup, member portal, admin portal, kiosk UI, card-writer flow, device middleware API and firmware project. The software steps below are available today. Steps that depend on an enrolled admin, physical hardware or the recorded PSU network details remain marked **[pending]**. Email is manual: admins generate links in the portal and send them from their own mailbox.
+This checkout contains the database, public site, auth/invite/setup, member portal, admin portal, kiosk UI, card-writer flow, device middleware API and firmware project. The software steps below are available today. Steps that depend on physical hardware or the recorded PSU network details remain marked **[pending]**. Email is manual: admins generate links in the portal and send them from their own mailbox.
 
 Never award attendance or points "to fix it later" without a reason and an audit record. Never edit ledger rows.
 

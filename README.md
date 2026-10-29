@@ -7,7 +7,7 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 - Backend: Supabase Postgres/Auth/Storage with transactional, ledger-derived points and append-only audit history.
 - Firmware: ESP32 + PN532 reader/writer that talks only to a narrow HTTPS device API.
 
-> **Status: hosted backend verified, production data reset to a clean slate, and one administrator (`sainaman@psu.edu`) created; not yet deployed.** All ten migrations, the private photo bucket, 46 database assertions and the browser suites pass. The administrator must still open their one-time link, set a password and enroll TOTP before `/admin` opens. Remaining operator steps are Vercel/DNS, production environment variables and hardware validation. Static NFC URLs can be cloned; staff must confirm attendance.
+> **Status: hosted backend verified and production data reset to a clean slate; not yet deployed.** All ten migrations, the private photo bucket, 46 database assertions and the browser suites pass. Both administrators (`sainaman@psu.edu`, `gdg@psu.edu`) have passwords and verified TOTP, so `/admin` opens only after an MFA sign-in. Remaining operator steps are Vercel/DNS, production environment variables and hardware validation. Static NFC URLs can be cloned; staff must confirm attendance.
 
 ## Stack
 
@@ -37,14 +37,14 @@ The table below reflects the hosted state verified on 2026-10-29. Re-run the rel
 | Device middleware API `/api/device/v1/*`                                                                               | Implemented; hardware flow untested                                                                               |
 | Public JSON endpoints `/api/public/*`                                                                                  | Implemented                                                                                                       |
 | Publishable key wired into the SSR client; secret key limited to admin operations                                      | Done                                                                                                              |
-| Hosted first admin and MFA                                                                                             | `sainaman@psu.edu` created with an activation link; password + TOTP enrollment still required                     |
+| Hosted administrators and MFA                                                                                          | `sainaman@psu.edu` and `gdg@psu.edu` both have passwords and verified TOTP; `/admin` requires AAL2                |
 | Manual invitation/recovery links generated in the admin UI (no SMTP dependency)                                        | Implemented; links confirm at `/auth/confirm` on the app origin, independent of Supabase redirect allowlists      |
 | PSU network approval for ESP32 lanes                                                                                   | Not independently verified                                                                                        |
 | License                                                                                                                | MIT                                                                                                               |
-| Unit tests and browser tests                                                                                           | 25 unit tests; 19 Playwright checks (1 intentionally skipped) and a 34-step full-surface authenticated run passed |
+| Unit tests and browser tests                                                                                           | 29 unit tests; 19 Playwright checks (1 intentionally skipped) and a 34-step full-surface authenticated run passed |
 | Admin bootstrap + guarded demo seed scripts, local `seed.sql`                                                          | Implemented                                                                                                       |
 
-All test accounts, members, invitations, device and event rows, audit entries and profile photos were erased on 2026-10-29; only the production administrator remains. Hardware-in-the-loop testing, axe/manual accessibility review, the shared firmware signature vector, comprehensive secret scanning and a pgTAP matrix are still missing. `pnpm verify` exits nonzero because those gates are not implemented; it does not certify a release.
+All test accounts, members, invitations, device and event rows, audit entries and profile photos were erased on 2026-10-29; only the two activated administrators and the real member profile remain. Hardware-in-the-loop testing, axe/manual accessibility review, the shared firmware signature vector, comprehensive secret scanning and a pgTAP matrix are still missing. `pnpm verify` exits nonzero because those gates are not implemented; it does not certify a release.
 
 ## Quick start
 
@@ -179,7 +179,7 @@ Not run: axe-core/manual screen-reader review, load test, comprehensive secret s
 
 1. **Vercel:** authenticate the CLI, import the repository, set the production/preview environment variables from `docs/deployment.md`, and set `NEXT_PUBLIC_SITE_URL` to the final public origin before generating new links.
 2. **DNS:** authorize `member.gdgpsu.dev` (or use the Vercel production domain) and point `NEXT_PUBLIC_SITE_URL` at it. App-generated links use `/auth/confirm`, so no Supabase redirect allowlist entry is required for them.
-3. **Admin activation:** `sainaman@psu.edu` must open the one-time link, set a password, then enroll TOTP at `/admin-mfa`. The link expires per the Supabase Email OTP setting; regenerate it with `pnpm db:bootstrap-admin --email sainaman@psu.edu --out .local/admin-link.txt` after setting the production site URL.
+3. **Admin sign-in on the production origin:** both administrators already have passwords and verified TOTP locally; once DNS and `NEXT_PUBLIC_SITE_URL` are set, confirm one full TOTP sign-in on that origin. If an administrator ever needs to be re-invited, regenerate a link with `pnpm db:bootstrap-admin --email <admin> --out .local/admin-link.txt`.
 4. **Hardware:** provide the exact PN532 boards, writable NFC tags, USB access and an event environment for two-lane testing, and obtain PSU network approval and the correct SSID/EAP settings.
 
 ## Documentation
