@@ -15,7 +15,10 @@ import { requestRedemptionAction, type ActionState } from '@/app/(member)/member
 const initial: ActionState = {};
 
 function newKey() {
-  return globalThis.crypto?.randomUUID?.() ?? `redeem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `redeem-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 export function RewardCard({
@@ -47,7 +50,10 @@ export function RewardCard({
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <CardContent sx={{ p: 2.75, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+        <Stack
+          direction="row"
+          sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}
+        >
           <Typography variant="h5">{name}</Typography>
           <Chip
             label={`${costPoints} pts`}
@@ -94,8 +100,8 @@ export function RewardCard({
             title={`Request ${name}?`}
             description={
               <span>
-                This reserves <strong>{costPoints} points</strong> immediately. An organizer will approve
-                and fulfil it. You can cancel before it is fulfilled.
+                This reserves <strong>{costPoints} points</strong> immediately. An organizer will
+                approve and fulfil it. You can cancel before it is fulfilled.
               </span>
             }
             confirmLabel="Reserve points"

@@ -1,4 +1,10 @@
-import { createHash, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createHash,
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import { getEnv } from '@/lib/env';
 
 const BASE64URL = 'base64url';
@@ -48,9 +54,12 @@ export function encryptSecret(plaintext: string): string {
   const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return ['v1', iv.toString(BASE64URL), tag.toString(BASE64URL), ciphertext.toString(BASE64URL)].join(
-    '.',
-  );
+  return [
+    'v1',
+    iv.toString(BASE64URL),
+    tag.toString(BASE64URL),
+    ciphertext.toString(BASE64URL),
+  ].join('.');
 }
 
 export function decryptSecret(payload: string): string {

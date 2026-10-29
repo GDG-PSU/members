@@ -25,12 +25,16 @@ export default function ForgotPasswordPage() {
           <Typography variant="overline" color="primary">
             Account recovery
           </Typography>
-          <Typography variant="h2" component="h1" sx={{ mt: 1, mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+          <Typography
+            variant="h2"
+            component="h1"
+            sx={{ mt: 1, mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
+          >
             Password help, handled by a person
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
-            Member password resets are not self-service. Email GDG@PSU from your registered address and
-            an organizer will trigger a single-use Supabase recovery link for your account.
+            Member password resets are not self-service. Email GDG@PSU from your registered address
+            and an organizer will trigger a single-use Supabase recovery link for your account.
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
             We will never ask for your password or send one by email.
@@ -45,8 +49,9 @@ export default function ForgotPasswordPage() {
           </Stack>
           <Box sx={{ mt: 4, p: 2, bgcolor: 'surfaceMuted.main', borderRadius: 2 }}>
             <Typography variant="caption" color="text.secondary">
-              Organizers: recovery is initiated from Admin → Members → a member → &quot;Send recovery
-              link&quot;. The action is audited and never exposes the token in the admin UI.
+              Organizers: recovery is initiated from Admin → Members → a member → &quot;Send
+              recovery link&quot;. The action is audited and never exposes the token in the admin
+              UI.
             </Typography>
           </Box>
         </CardContent>

@@ -54,34 +54,48 @@ export default async function HomePage() {
                 </Box>
               </Typography>
               <Typography
-                variant="subtitle1" component="p"
+                variant="subtitle1"
+                component="p"
                 sx={{ mt: 3, maxWidth: 520, color: 'text.secondary', fontSize: '1.1rem' }}
               >
                 One card. One profile. Every event, workshop and late-night build counted — for the
                 people who show up and make GDG@PSU what it is.
               </Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 4 }}>
-                <Button component="a" href="/events" variant="contained" size="large" endIcon={<ArrowForwardIcon />}>
+                <Button
+                  component="a"
+                  href="/events"
+                  variant="contained"
+                  size="large"
+                  endIcon={<ArrowForwardIcon />}
+                >
                   See what&apos;s next
                 </Button>
                 <Button component="a" href="/login" size="large" variant="outlined">
                   Member sign in
                 </Button>
               </Stack>
-              <Typography variant="caption" sx={{ display: 'block', mt: 2, color: 'text.secondary' }}>
+              <Typography
+                variant="caption"
+                sx={{ display: 'block', mt: 2, color: 'text.secondary' }}
+              >
                 Membership is by invitation after dues are recorded. Questions? {SUPPORT_EMAIL}
               </Typography>
             </Grid>
 
             <Grid size={{ xs: 12, md: 5 }}>
-              <Card                  sx={{
-                    p: 0.5,
-                    bgcolor: 'background.paper',
-                    boxShadow: '0 24px 80px rgba(11,18,32,0.14)',
-                  }}
+              <Card
+                sx={{
+                  p: 0.5,
+                  bgcolor: 'background.paper',
+                  boxShadow: '0 24px 80px rgba(11,18,32,0.14)',
+                }}
               >
                 <CardContent sx={{ p: 3 }}>
-                  <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Stack
+                    direction="row"
+                    sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
+                  >
                     <Typography variant="overline" color="text.secondary">
                       This semester&apos;s leaders
                     </Typography>
@@ -95,7 +109,12 @@ export default async function HomePage() {
                   ) : (
                     <Stack spacing={1.75} divider={<Divider flexItem />}>
                       {podium.map((entry) => (
-                        <Stack key={entry.slug} direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                        <Stack
+                          key={entry.slug}
+                          direction="row"
+                          spacing={1.5}
+                          sx={{ alignItems: 'center' }}
+                        >
                           <Typography
                             sx={{
                               width: 28,
@@ -106,7 +125,11 @@ export default async function HomePage() {
                           >
                             {String(entry.rank).padStart(2, '0')}
                           </Typography>
-                          <MemberAvatar name={entry.displayName} photoUrl={entry.photoUrl} size={40} />
+                          <MemberAvatar
+                            name={entry.displayName}
+                            photoUrl={entry.photoUrl}
+                            size={40}
+                          />
                           <Box sx={{ minWidth: 0, flex: 1 }}>
                             <Typography variant="subtitle2" noWrap>
                               {entry.displayName}
@@ -115,12 +138,23 @@ export default async function HomePage() {
                               {entry.memberNumber ?? 'GDG@PSU member'}
                             </Typography>
                           </Box>
-                          <Chip size="small" label={`${entry.points} pts`} color="primary" variant="outlined" />
+                          <Chip
+                            size="small"
+                            label={`${entry.points} pts`}
+                            color="primary"
+                            variant="outlined"
+                          />
                         </Stack>
                       ))}
                     </Stack>
                   )}
-                  <Button component="a" href="/leaderboard" fullWidth sx={{ mt: 2.5 }} endIcon={<ArrowForwardIcon />}>
+                  <Button
+                    component="a"
+                    href="/leaderboard"
+                    fullWidth
+                    sx={{ mt: 2.5 }}
+                    endIcon={<ArrowForwardIcon />}
+                  >
                     Full leaderboard
                   </Button>
                 </CardContent>
@@ -155,7 +189,16 @@ export default async function HomePage() {
           <Grid container spacing={2.5}>
             {events.map((event) => (
               <Grid key={event.id} size={{ xs: 12, md: 4 }}>
-                <Card component="a" href={`/events/${event.slug}`} sx={{ display: 'block', height: '100%', textDecoration: 'none', '&:hover': { borderColor: 'primary.main' } }}>
+                <Card
+                  component="a"
+                  href={`/events/${event.slug}`}
+                  sx={{
+                    display: 'block',
+                    height: '100%',
+                    textDecoration: 'none',
+                    '&:hover': { borderColor: 'primary.main' },
+                  }}
+                >
                   <CardContent sx={{ p: 3 }}>
                     <Typography variant="overline" color="primary">
                       {formatDate(event.startsAt)}
@@ -168,7 +211,9 @@ export default async function HomePage() {
                     </Typography>
                     <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: 'center' }}>
                       <Chip size="small" label={formatTime(event.startsAt)} variant="outlined" />
-                      {event.location ? <Chip size="small" label={event.location} variant="outlined" /> : null}
+                      {event.location ? (
+                        <Chip size="small" label={event.location} variant="outlined" />
+                      ) : null}
                     </Stack>
                   </CardContent>
                 </Card>
@@ -178,7 +223,15 @@ export default async function HomePage() {
         )}
       </Container>
 
-      <Box sx={{ bgcolor: 'surfaceMuted.main', py: { xs: 7, md: 9 }, borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Box
+        sx={{
+          bgcolor: 'surfaceMuted.main',
+          py: { xs: 7, md: 9 },
+          borderTop: '1px solid',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
         <Container maxWidth="lg">
           <Grid container spacing={{ xs: 3, md: 5 }}>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -237,8 +290,8 @@ export default async function HomePage() {
                   Already a member?
                 </Typography>
                 <Typography sx={{ mt: 1, opacity: 0.9, maxWidth: 560 }}>
-                  Sign in to see your points, stars, event history and your digital ID — or to pick up
-                  something from the rewards shelf.
+                  Sign in to see your points, stars, event history and your digital ID — or to pick
+                  up something from the rewards shelf.
                 </Typography>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>

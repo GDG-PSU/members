@@ -20,8 +20,8 @@ export default function SuspendedPage() {
         This membership is inactive
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 4 }}>
-        Your account still exists, but access to the member area is paused. Contact {SUPPORT_EMAIL} from
-        your registered address and an organizer can review the status.
+        Your account still exists, but access to the member area is paused. Contact {SUPPORT_EMAIL}{' '}
+        from your registered address and an organizer can review the status.
       </Typography>
       <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
         <Button href={`mailto:${SUPPORT_EMAIL}`} variant="contained">

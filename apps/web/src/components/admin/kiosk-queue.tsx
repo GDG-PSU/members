@@ -78,7 +78,10 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
       setScans((current) => current.filter((item) => item.id !== scan.id));
       void refresh();
     } catch (cause) {
-      setMessage({ kind: 'error', text: cause instanceof Error ? cause.message : 'Confirmation failed' });
+      setMessage({
+        kind: 'error',
+        text: cause instanceof Error ? cause.message : 'Confirmation failed',
+      });
     } finally {
       setBusyId(null);
     }
@@ -88,8 +91,8 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
     <Stack spacing={2}>
       {offline ? (
         <Alert severity="warning" icon={<WifiOffIcon />} role="status">
-          Kiosk connection lost. Confirmations are disabled until the server responds. Nothing is awarded
-          offline.
+          Kiosk connection lost. Confirmations are disabled until the server responds. Nothing is
+          awarded offline.
         </Alert>
       ) : null}
       {message ? <Alert severity={message.kind}>{message.text}</Alert> : null}
@@ -111,7 +114,11 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
           return (
             <Card key={scan.id} sx={{ borderLeft: '6px solid', borderLeftColor: 'primary.main' }}>
               <CardContent sx={{ p: 3 }}>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} sx={{ alignItems: { sm: 'center' } }}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={2.5}
+                  sx={{ alignItems: { sm: 'center' } }}
+                >
                   <MemberAvatar name={scan.memberName} photoUrl={scan.photoUrl} size={80} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="h3" sx={{ fontSize: { xs: '1.6rem', md: '2rem' } }}>
@@ -124,7 +131,12 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
                       {scan.eventName} · {scan.sessionName}
                     </Typography>
                     {expired ? (
-                      <Chip size="small" color="error" label="Expired — ask for a fresh tap" sx={{ mt: 1 }} />
+                      <Chip
+                        size="small"
+                        color="error"
+                        label="Expired — ask for a fresh tap"
+                        sx={{ mt: 1 }}
+                      />
                     ) : null}
                   </Box>
                   <Stack direction={{ xs: 'row', sm: 'column' }} spacing={1} sx={{ minWidth: 190 }}>
@@ -133,7 +145,12 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
                       size="large"
                       startIcon={<CheckCircleOutlinedIcon />}
                       disabled={busyId === scan.id || expired}
-                      onClick={() => confirm(scan, scan.suggestedAction === 'check_out' ? 'check_out' : 'check_in')}
+                      onClick={() =>
+                        confirm(
+                          scan,
+                          scan.suggestedAction === 'check_out' ? 'check_out' : 'check_in',
+                        )
+                      }
                     >
                       Confirm {scan.suggestedAction === 'check_out' ? 'check-out' : 'check-in'}
                     </Button>

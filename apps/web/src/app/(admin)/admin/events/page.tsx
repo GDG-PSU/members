@@ -30,7 +30,9 @@ export default async function AdminEventsPage({
   const admin = createSupabaseAdmin();
   const { data: events } = await admin
     .from('events')
-    .select('id, name, slug, starts_at, ends_at, status, is_public, event_sessions(kind, reward_points, minimum_duration_minutes)')
+    .select(
+      'id, name, slug, starts_at, ends_at, status, is_public, event_sessions(kind, reward_points, minimum_duration_minutes)',
+    )
     .order('starts_at', { ascending: false })
     .limit(60);
 
@@ -42,7 +44,11 @@ export default async function AdminEventsPage({
           <Typography variant="overline" color="primary">
             Calendar
           </Typography>
-          <Typography variant="h2" component="h1" sx={{ mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+          <Typography
+            variant="h2"
+            component="h1"
+            sx={{ mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
+          >
             Events
           </Typography>
           {!events || events.length === 0 ? (
@@ -53,13 +59,23 @@ export default async function AdminEventsPage({
                 const sessions = Array.isArray(event.event_sessions) ? event.event_sessions : [];
                 const main = sessions.find((session) => session.kind === 'main');
                 return (
-                  <Card key={event.id as string} component="a" href={`/admin/events/${event.id}`} sx={{ textDecoration: 'none', '&:hover': { borderColor: 'primary.main' } }}>
+                  <Card
+                    key={event.id as string}
+                    component="a"
+                    href={`/admin/events/${event.id}`}
+                    sx={{ textDecoration: 'none', '&:hover': { borderColor: 'primary.main' } }}
+                  >
                     <CardContent sx={{ p: 2.5 }}>
-                      <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
+                      >
                         <Box sx={{ minWidth: 0 }}>
                           <Typography variant="h5">{event.name as string}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {formatDateTime(event.starts_at as string)} → {formatDateTime(event.ends_at as string)}
+                            {formatDateTime(event.starts_at as string)} →{' '}
+                            {formatDateTime(event.ends_at as string)}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {main

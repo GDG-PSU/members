@@ -62,6 +62,25 @@ function readReturnTo(formData: FormData): string {
   return value.startsWith('/admin') ? value : '/admin';
 }
 
+/**
+ * Builds an origin-owned confirmation link from a Supabase generated link.
+ * Supabase only returns the redirect target it was willing to allowlist, so
+ * relying on `action_link` breaks on custom domains; `hashed_token` lets the
+ * app confirm the token itself at /auth/confirm.
+ */
+function confirmLink(
+  properties:
+    { hashed_token?: string; verification_type?: string; action_link?: string } | null | undefined,
+  next: string,
+): string | undefined {
+  if (!properties?.hashed_token || !properties.verification_type) return properties?.action_link;
+  const url = new URL('/auth/confirm', SITE_URL);
+  url.searchParams.set('token_hash', properties.hashed_token);
+  url.searchParams.set('type', properties.verification_type);
+  url.searchParams.set('next', next);
+  return url.toString();
+}
+
 function audit(
   actor: string,
   action: string,
@@ -147,7 +166,7 @@ export async function createInvitationAction(
 
   if (!invited.error && invited.data?.user) {
     authUser = invited.data.user;
-    link = invited.data.properties?.action_link;
+    link = confirmLink(invited.data.properties, '/invite/accept');
     createdUser = true;
   } else if (invited.error && /already|registered|exists/i.test(invited.error.message)) {
     // An Auth user from an earlier invite/revoked invitation: issue a fresh
@@ -163,7 +182,7 @@ export async function createInvitationAction(
       };
     }
     authUser = recovery.data.user;
-    link = recovery.data.properties?.action_link;
+    link = confirmLink(recovery.data.properties, '/invite/accept');
   } else {
     return {
       error: `Could not create the invitation: ${invited.error?.message ?? 'unknown error'}`,
@@ -200,6 +219,70 @@ export async function createInvitationAction(
   return { ok: true, email: parsed.data.email, link };
 }
 
+/**
+ * Grants the admin role to an email and returns a one-time password-setting
+ * link. No email is sent; the acting admin delivers the link manually. The
+ * invitee still has to enroll TOTP before /admin opens (AAL2 is enforced).
+ */
+export async function inviteAdministratorAction(
+  _prev: LinkState,
+  formData: FormData,
+): Promise<LinkState> {
+  const { user } = await requireAdminActor();
+  const parsed = z.email().safeParse(readString(formData, 'email').trim().toLowerCase());
+  if (!parsed.success) return { error: 'Enter a valid email address.' };
+  const email = parsed.data;
+
+  const admin = createSupabaseAdmin();
+  const created = await admin.auth.admin.createUser({ email, email_confirm: true });
+  let createdUserId: string | null = created.data?.user?.id ?? null;
+  if (created.error && !/already|registered|exists/i.test(created.error.message)) {
+    return {
+      error: `Could not create the administrator: ${created.error.message}`,
+    };
+  }
+
+  const recovery = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: { redirectTo: `${SITE_URL}/auth/callback?next=/admin-mfa` },
+  });
+  const link = confirmLink(recovery.data?.properties, '/account/password');
+  const authUserId = recovery.data?.user?.id ?? createdUserId;
+  if (recovery.error || !link || !authUserId) {
+    if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
+    createdUserId = null;
+    return {
+      error: `Could not generate an admin link: ${recovery.error?.message ?? 'unknown error'}`,
+    };
+  }
+
+  const { error: roleError } = await admin.from('user_roles').upsert(
+    {
+      auth_user_id: authUserId,
+      role: 'admin',
+      granted_by: user.id,
+      granted_at: new Date().toISOString(),
+      revoked_at: null,
+      revoked_by: null,
+      note: 'Invited from the admin panel',
+    },
+    { onConflict: 'auth_user_id,role' },
+  );
+  if (roleError) {
+    if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
+    return { error: 'The administrator role could not be granted. Nothing was changed.' };
+  }
+
+  await audit(user.id, 'admin.invited', 'user', authUserId, null, null, {
+    email,
+    role: 'admin',
+    delivery: 'manual',
+  });
+  revalidatePath('/admin/invitations');
+  return { ok: true, email, link };
+}
+
 export async function regenerateInvitationLinkAction(
   _prev: LinkState,
   formData: FormData,
@@ -224,7 +307,7 @@ export async function regenerateInvitationLinkAction(
     email: invitation.email,
     options: { redirectTo: `${SITE_URL}/auth/callback?next=/invite/accept` },
   });
-  const link = data?.properties?.action_link;
+  const link = confirmLink(data?.properties, '/invite/accept');
   if (error || !link) {
     return { error: `Could not generate a link: ${error?.message ?? 'unknown error'}` };
   }
@@ -365,7 +448,7 @@ export async function sendRecoveryAction(_prev: LinkState, formData: FormData): 
     email: email.data,
     options: { redirectTo: `${SITE_URL}/auth/callback?next=/invite/accept` },
   });
-  const link = data?.properties?.action_link;
+  const link = confirmLink(data?.properties, '/account/password');
 
   await audit(user.id, 'member.recovery_link_generated', 'member_email', email.data, null, null, {
     delivery: 'manual',

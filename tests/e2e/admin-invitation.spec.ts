@@ -85,9 +85,15 @@ test.describe('admin invitation and member setup', () => {
 
       await test.step('admin generates and copies an invitation link', async () => {
         await page.goto('/admin/invitations');
-        await page.getByLabel('Email').fill(memberEmail);
-        await page.getByLabel('Member since (paid date)').fill(paidSince);
-        await page.getByLabel('Internal note').fill('Created by the authenticated E2E suite.');
+        const memberForm = page
+          .locator('form')
+          .filter({ has: page.getByLabel('Member since (paid date)') })
+          .first();
+        await memberForm.getByLabel('Email').fill(memberEmail);
+        await memberForm.getByLabel('Member since (paid date)').fill(paidSince);
+        await memberForm
+          .getByLabel('Internal note')
+          .fill('Created by the authenticated E2E suite.');
         await page.getByRole('button', { name: 'Generate invitation link' }).click();
 
         const ready = page.getByRole('status').filter({ hasText: 'Invitation link ready' });
@@ -98,10 +104,9 @@ test.describe('admin invitation and member setup', () => {
           .getByLabel('One-time sign-in link')
           .locator('textarea:not([aria-hidden="true"])')
           .inputValue();
-        expect(new URL(invitationLink).origin).toBe(
-          new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).origin,
-        );
-        expect(new URL(invitationLink).pathname).toBe('/auth/v1/verify');
+        expect(new URL(invitationLink).origin).toBe(origin);
+        expect(new URL(invitationLink).pathname).toBe('/auth/confirm');
+        expect(new URL(invitationLink).searchParams.get('next')).toBe('/invite/accept');
 
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
         await page.getByRole('button', { name: 'Copy link' }).click();

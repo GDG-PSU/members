@@ -15,7 +15,10 @@ export async function GET(request: Request) {
     const limit = parsed.success ? parsed.data.limit : 25;
     const offset = parsed.success ? parsed.data.offset : 0;
 
-    const [entries, total] = await Promise.all([listLeaderboard(limit, offset), countLeaderboard()]);
+    const [entries, total] = await Promise.all([
+      listLeaderboard(limit, offset),
+      countLeaderboard(),
+    ]);
     return jsonOk({
       entries,
       pagination: { limit, offset, total },

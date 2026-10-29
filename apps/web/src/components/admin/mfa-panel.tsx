@@ -36,7 +36,14 @@ export function MfaPanel({
           <TextField
             name="code"
             label="Six-digit code"
-            slotProps={{ htmlInput: { inputMode: 'numeric', pattern: '[0-9]{6}', maxLength: 6, autoComplete: 'one-time-code' } }}
+            slotProps={{
+              htmlInput: {
+                inputMode: 'numeric',
+                pattern: '[0-9]{6}',
+                maxLength: 6,
+                autoComplete: 'one-time-code',
+              },
+            }}
             required
             autoFocus
           />
@@ -58,7 +65,14 @@ export function MfaPanel({
             component="img"
             src={enrollState.qrCode}
             alt="TOTP enrollment QR code"
-            sx={{ width: 220, height: 220, alignSelf: 'center', bgcolor: '#fff', p: 1, borderRadius: 2 }}
+            sx={{
+              width: 220,
+              height: 220,
+              alignSelf: 'center',
+              bgcolor: '#fff',
+              p: 1,
+              borderRadius: 2,
+            }}
           />
           {enrollState.secret ? (
             <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
@@ -69,7 +83,14 @@ export function MfaPanel({
           <TextField
             name="code"
             label="Six-digit code"
-            slotProps={{ htmlInput: { inputMode: 'numeric', pattern: '[0-9]{6}', maxLength: 6, autoComplete: 'one-time-code' } }}
+            slotProps={{
+              htmlInput: {
+                inputMode: 'numeric',
+                pattern: '[0-9]{6}',
+                maxLength: 6,
+                autoComplete: 'one-time-code',
+              },
+            }}
             required
             autoFocus
           />
@@ -84,8 +105,8 @@ export function MfaPanel({
     <Box component="form" action={enrollAction}>
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
-          No authenticator is enrolled for {email}. Enroll one now — you will need it for every admin
-          session.
+          No authenticator is enrolled for {email}. Enroll one now — you will need it for every
+          admin session.
         </Typography>
         {enrollState.error ? <Alert severity="error">{enrollState.error}</Alert> : null}
         <Button type="submit" variant="contained" disabled={enrolling}>

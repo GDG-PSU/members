@@ -24,7 +24,8 @@ export default async function EventsPage() {
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
-       <SectionHeading headingLevel={1}
+      <SectionHeading
+        headingLevel={1}
         eyebrow="Calendar"
         title="Come build with us"
         description="Each event has a main session worth attendance points. Bonus sessions (like a study block) require their own check-in and check-out."
@@ -60,7 +61,10 @@ export default async function EventsPage() {
                     sx={{ alignItems: { md: 'center' } }}
                   >
                     <Box sx={{ minWidth: { md: 132 } }}>
-                      <Typography variant="overline" color={upcoming ? 'primary' : 'text.secondary'}>
+                      <Typography
+                        variant="overline"
+                        color={upcoming ? 'primary' : 'text.secondary'}
+                      >
                         {upcoming ? 'Upcoming' : 'Past'}
                       </Typography>
                       <Typography variant="h5">{formatDate(event.startsAt)}</Typography>
@@ -76,8 +80,14 @@ export default async function EventsPage() {
                         {event.summary || 'Details coming soon.'}
                       </Typography>
                     </Box>
-                    {event.location ? <Chip label={event.location} variant="outlined" size="small" /> : null}
-                    <Button endIcon={<EventOutlinedIcon />} size="small" sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }}>
+                    {event.location ? (
+                      <Chip label={event.location} variant="outlined" size="small" />
+                    ) : null}
+                    <Button
+                      endIcon={<EventOutlinedIcon />}
+                      size="small"
+                      sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }}
+                    >
                       Details
                     </Button>
                   </Stack>

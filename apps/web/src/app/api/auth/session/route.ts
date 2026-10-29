@@ -28,7 +28,10 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    return NextResponse.json({ error: 'That sign-in link is invalid or expired.' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'That sign-in link is invalid or expired.' },
+      { status: 401 },
+    );
   }
 
   // Send existing members/admins to their home instead of the setup screen when

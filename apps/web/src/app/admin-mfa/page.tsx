@@ -38,8 +38,8 @@ export default async function AdminMfaPage() {
             Two-factor required
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
-            Admin routes require a verified authenticator (TOTP) session. This protects member data, the
-            points ledger and every event control.
+            Admin routes require a verified authenticator (TOTP) session. This protects member data,
+            the points ledger and every event control.
           </Typography>
           <MfaPanel
             hasVerifiedFactor={verified.length > 0}
@@ -47,12 +47,17 @@ export default async function AdminMfaPage() {
             verifiedFactorId={verified[0]?.id}
           />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 3 }}>
-            Lost your authenticator? Contact {SUPPORT_EMAIL} — an organizer with account access must reset
-            the factor from Supabase.
+            Lost your authenticator? Contact {SUPPORT_EMAIL} — an organizer with account access must
+            reset the factor from Supabase.
           </Typography>
           <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
             <form action="/api/auth/signout" method="post">
-              <Typography component="button" type="submit" variant="caption" sx={{ background: 'none', border: 0, cursor: 'pointer', color: 'text.secondary' }}>
+              <Typography
+                component="button"
+                type="submit"
+                variant="caption"
+                sx={{ background: 'none', border: 0, cursor: 'pointer', color: 'text.secondary' }}
+              >
                 Sign out
               </Typography>
             </form>

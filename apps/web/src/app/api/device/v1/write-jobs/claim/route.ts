@@ -41,7 +41,12 @@ export async function POST(request: Request) {
         p_ndef_length: null,
         p_actor: null,
       });
-      throw new ApiError(500, 'internal_error', 'Card payload could not be read.', context.requestId);
+      throw new ApiError(
+        500,
+        'internal_error',
+        'Card payload could not be read.',
+        context.requestId,
+      );
     }
 
     return jsonOk({

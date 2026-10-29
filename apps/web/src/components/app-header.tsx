@@ -87,7 +87,13 @@ export function AppHeader({
             component={Link}
             href="/"
             aria-label="GDG@PSU home"
-            sx={{ display: 'flex', alignItems: 'center', gap: 1, textDecoration: 'none', color: 'inherit' }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              textDecoration: 'none',
+              color: 'inherit',
+            }}
           >
             <Box
               aria-hidden
@@ -135,7 +141,10 @@ export function AppHeader({
 
       <Drawer anchor="right" open={open} onClose={() => setOpen(false)}>
         <Box sx={{ width: 288, p: 2 }} role="navigation" aria-label="Mobile navigation">
-          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Stack
+            direction="row"
+            sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}
+          >
             <Wordmark compact />
             <IconButton aria-label="Close navigation" onClick={() => setOpen(false)}>
               <CloseIcon />
@@ -163,7 +172,13 @@ export function AppHeader({
               </Button>
             </form>
           ) : (
-            <Button component={Link} href="/login" fullWidth variant="contained" onClick={() => setOpen(false)}>
+            <Button
+              component={Link}
+              href="/login"
+              fullWidth
+              variant="contained"
+              onClick={() => setOpen(false)}
+            >
               Member sign in
             </Button>
           )}

@@ -14,7 +14,7 @@ import StarBorderOutlinedIcon from '@mui/icons-material/StarBorderOutlined';
 import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
 import { MemberAvatar } from '@gdg/ui';
-import { getPublicProfile } from '@/lib/public/queries';
+import { getProfileState, getPublicProfile } from '@/lib/public/queries';
 import { formatDate } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +31,9 @@ export async function generateMetadata({
   }
   return {
     title: profile.displayName ?? 'GDG@PSU member',
-    description: profile.about ?? `A GDG@PSU member${profile.memberSince ? ` since ${profile.memberSince}` : ''}.`,
+    description:
+      profile.about ??
+      `A GDG@PSU member${profile.memberSince ? ` since ${profile.memberSince}` : ''}.`,
     openGraph: {
       title: profile.displayName ?? 'GDG@PSU member',
       images: profile.photoUrl ? [profile.photoUrl] : undefined,
@@ -48,7 +50,11 @@ export default async function MemberProfilePage({
 }) {
   const { profileSlug } = await params;
   const profile = await getPublicProfile(profileSlug);
-  if (!profile) notFound();
+  if (!profile) {
+    const state = await getProfileState(profileSlug);
+    if (state !== 'private') notFound();
+    return <PrivateProfile />;
+  }
 
   const name = profile.displayName ?? 'GDG@PSU member';
 
@@ -69,16 +75,26 @@ export default async function MemberProfilePage({
             }}
           />
           <CardContent sx={{ p: { xs: 3, md: 4.5 } }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ alignItems: { sm: 'center' } }}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={3}
+              sx={{ alignItems: { sm: 'center' } }}
+            >
               <MemberAvatar name={name} photoUrl={profile.photoUrl} size={104} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="h2" sx={{ fontSize: { xs: '2.2rem', md: '3rem' } }}>
                   {name}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1 }}>
-                  {profile.memberNumber ? <Chip size="small" label={profile.memberNumber} variant="outlined" /> : null}
+                  {profile.memberNumber ? (
+                    <Chip size="small" label={profile.memberNumber} variant="outlined" />
+                  ) : null}
                   {profile.memberSince ? (
-                    <Chip size="small" label={`Member since ${formatDate(profile.memberSince)}`} variant="outlined" />
+                    <Chip
+                      size="small"
+                      label={`Member since ${formatDate(profile.memberSince)}`}
+                      variant="outlined"
+                    />
                   ) : null}
                 </Stack>
                 {profile.email ? (
@@ -116,13 +132,19 @@ export default async function MemberProfilePage({
               </>
             ) : null}
 
-            {profile.points !== null || profile.stars !== null || profile.attendedEvents !== null ? (
+            {profile.points !== null ||
+            profile.stars !== null ||
+            profile.attendedEvents !== null ? (
               <>
                 <Divider sx={{ my: 3.5 }} />
                 <Grid container spacing={2}>
                   {profile.points !== null ? (
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', color: 'text.secondary' }}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: 'center', color: 'text.secondary' }}
+                      >
                         <EmojiEventsOutlinedIcon fontSize="small" />
                         <Typography variant="overline">Spendable points</Typography>
                       </Stack>
@@ -133,7 +155,11 @@ export default async function MemberProfilePage({
                   ) : null}
                   {profile.stars !== null ? (
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', color: 'text.secondary' }}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: 'center', color: 'text.secondary' }}
+                      >
                         <StarBorderOutlinedIcon fontSize="small" />
                         <Typography variant="overline">Lifetime stars</Typography>
                       </Stack>
@@ -144,7 +170,11 @@ export default async function MemberProfilePage({
                   ) : null}
                   {profile.attendedEvents !== null ? (
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', color: 'text.secondary' }}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: 'center', color: 'text.secondary' }}
+                      >
                         <EmojiEventsOutlinedIcon fontSize="small" />
                         <Typography variant="overline">Events attended</Typography>
                       </Stack>
@@ -159,7 +189,11 @@ export default async function MemberProfilePage({
           </CardContent>
         </Card>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 3, justifyContent: 'space-between' }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          sx={{ mt: 3, justifyContent: 'space-between' }}
+        >
           <Typography variant="caption" color="text.secondary">
             This profile is managed by the member. Visibility is theirs to change.
           </Typography>
@@ -167,6 +201,33 @@ export default async function MemberProfilePage({
             See the leaderboard
           </Button>
         </Stack>
+      </Container>
+    </Box>
+  );
+}
+
+/** Neutral state for an existing profile the member has made private. */
+function PrivateProfile() {
+  return (
+    <Box sx={{ minHeight: '60vh' }}>
+      <Container maxWidth="sm" sx={{ py: { xs: 6, md: 10 } }}>
+        <Card>
+          <CardContent sx={{ p: { xs: 3, md: 4.5 }, textAlign: 'center' }}>
+            <Typography variant="overline" color="text.secondary">
+              Member profile
+            </Typography>
+            <Typography variant="h3" sx={{ mt: 1, mb: 1.5 }}>
+              This profile is private
+            </Typography>
+            <Typography color="text.secondary">
+              This member has chosen to keep their profile hidden. If you scanned their card, ask
+              them directly — a private profile never exposes contact details here.
+            </Typography>
+            <Button component="a" href="/" variant="outlined" sx={{ mt: 3 }}>
+              Back to the hub
+            </Button>
+          </CardContent>
+        </Card>
       </Container>
     </Box>
   );

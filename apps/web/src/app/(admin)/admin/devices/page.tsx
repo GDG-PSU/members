@@ -10,7 +10,11 @@ import { EmptyState, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
-import { DeviceCreateForm, DeviceEditForm, type EventOption } from '@/components/admin/device-forms';
+import {
+  DeviceCreateForm,
+  DeviceEditForm,
+  type EventOption,
+} from '@/components/admin/device-forms';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +30,9 @@ export default async function DevicesPage() {
   const [devices, events] = await Promise.all([
     admin
       .from('devices')
-      .select('id, device_id, lane_label, mode, status, last_seen_at, firmware_version, event_id, session_id, rotated_at')
+      .select(
+        'id, device_id, lane_label, mode, status, last_seen_at, firmware_version, event_id, session_id, rotated_at',
+      )
       .order('lane_label'),
     admin
       .from('events')
@@ -53,7 +59,11 @@ export default async function DevicesPage() {
           <Typography variant="overline" color="primary">
             Hardware
           </Typography>
-          <Typography variant="h2" component="h1" sx={{ mb: 1, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+          <Typography
+            variant="h2"
+            component="h1"
+            sx={{ mb: 1, fontSize: { xs: '2rem', md: '2.5rem' } }}
+          >
             Devices
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
@@ -62,19 +72,30 @@ export default async function DevicesPage() {
           </Typography>
 
           {!devices.data || devices.data.length === 0 ? (
-            <EmptyState title="No devices registered" description="Register lane A and lane B before event day." />
+            <EmptyState
+              title="No devices registered"
+              description="Register lane A and lane B before event day."
+            />
           ) : (
             <Stack spacing={2}>
               {devices.data.map((device) => (
                 <Card key={device.id as string}>
                   <CardContent sx={{ p: 2.5 }}>
-                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Stack
+                      direction="row"
+                      spacing={1.5}
+                      sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
+                    >
                       <Box>
                         <Typography variant="h5">{device.lane_label as string}</Typography>
                         <Typography variant="caption" color="text.secondary">
                           {device.device_id as string} · last seen{' '}
-                          {device.last_seen_at ? formatDateTime(device.last_seen_at as string) : 'never'}
-                          {device.firmware_version ? ` · fw ${device.firmware_version as string}` : ''}
+                          {device.last_seen_at
+                            ? formatDateTime(device.last_seen_at as string)
+                            : 'never'}
+                          {device.firmware_version
+                            ? ` · fw ${device.firmware_version as string}`
+                            : ''}
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={1}>
@@ -94,9 +115,13 @@ export default async function DevicesPage() {
                       }}
                       events={eventOptions}
                     />
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                      Rotating the secret takes effect on the device&apos;s next request. Update the firmware
-                      secrets file before restarting that lane.
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mt: 1 }}
+                    >
+                      Rotating the secret takes effect on the device&apos;s next request. Update the
+                      firmware secrets file before restarting that lane.
                     </Typography>
                   </CardContent>
                 </Card>

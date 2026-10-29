@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 
@@ -41,10 +42,13 @@ if (
     'Start the app against disposable Supabase and set E2E_BASE_URL, Supabase test credentials, and CARD_WRITE_ENCRYPTION_KEY.',
   );
 mkdirSync('.local', { recursive: true });
-const hostTestPath = process.platform === 'win32' ? '.local\\ndef_test.exe' : './.local/ndef_test';
+const hostTestPath = path.resolve(
+  '.local',
+  process.platform === 'win32' ? 'ndef_test.exe' : 'ndef_test',
+);
 run(
   'NDEF parser host tests',
-  `g++ -std=c++17 -Wall -Wextra -Werror -I firmware/kiosk-reader/lib/ndef_url firmware/kiosk-reader/test/host/test_ndef_url.cpp firmware/kiosk-reader/lib/ndef_url/ndef_url.cpp -o ${hostTestPath} && ${hostTestPath}`,
+  `g++ -std=c++17 -Wall -Wextra -Werror -I firmware/kiosk-reader/lib/ndef_url firmware/kiosk-reader/test/host/test_ndef_url.cpp firmware/kiosk-reader/lib/ndef_url/ndef_url.cpp -o "${hostTestPath}" && "${hostTestPath}"`,
 );
 if (existsSync('firmware/kiosk-reader/include/secrets.h'))
   run('Firmware build', 'pio run -d firmware/kiosk-reader');

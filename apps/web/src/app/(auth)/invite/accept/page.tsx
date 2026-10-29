@@ -42,12 +42,16 @@ export default async function InviteAcceptPage() {
             <Typography variant="overline" color="primary">
               One-time setup
             </Typography>
-            <Typography variant="h2" component="h1" sx={{ mt: 1, mb: 1, fontSize: { xs: '2.1rem', md: '2.6rem' } }}>
+            <Typography
+              variant="h2"
+              component="h1"
+              sx={{ mt: 1, mb: 1, fontSize: { xs: '2.1rem', md: '2.6rem' } }}
+            >
               Make it yours
             </Typography>
             <Typography color="text.secondary">
-              Set a password, add the name and photo organizers will see, and your permanent profile is
-              created. Membership since {formatDate(invitation.paid_since)}.
+              Set a password, add the name and photo organizers will see, and your permanent profile
+              is created. Membership since {formatDate(invitation.paid_since)}.
             </Typography>
           </Box>
           <SetupForm email={viewer.user.email ?? ''} />
@@ -58,7 +62,11 @@ export default async function InviteAcceptPage() {
             <Typography variant="overline" color="primary">
               Membership
             </Typography>
-            <Typography variant="h2" component="h1" sx={{ mt: 1, mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+            <Typography
+              variant="h2"
+              component="h1"
+              sx={{ mt: 1, mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
+            >
               {invitation?.status === 'accepted'
                 ? 'This invitation was already used'
                 : expired
@@ -71,7 +79,10 @@ export default async function InviteAcceptPage() {
               Signed in as {viewer.user.email}. Invitations are single-use and expire after 14 days.
             </Typography>
             <Typography color="text.secondary" sx={{ mb: 3 }}>
-              Email <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>{SUPPORT_EMAIL}</Box>{' '}
+              Email{' '}
+              <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
+                {SUPPORT_EMAIL}
+              </Box>{' '}
               from this address and an organizer will check your membership record or issue a fresh
               invitation.
             </Typography>

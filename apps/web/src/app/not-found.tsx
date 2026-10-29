@@ -12,8 +12,8 @@ export default function NotFound() {
         This page is not here
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        The link may have expired, the member may have made their profile private, or a card may have
-        been replaced.
+        The link may have expired, the member may have made their profile private, or a card may
+        have been replaced.
       </Typography>
       <Button component="a" href="/" variant="contained">
         Back to GDG@PSU

@@ -33,7 +33,9 @@ export function jsonError(
   id: string,
   details?: Record<string, unknown>,
 ) {
-  const body: ApiErrorBody = { error: { code, message, requestId: id, ...(details ? { details } : {}) } };
+  const body: ApiErrorBody = {
+    error: { code, message, requestId: id, ...(details ? { details } : {}) },
+  };
   return NextResponse.json(body, { status, headers: noStore });
 }
 
@@ -62,7 +64,10 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>): Promis
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new ApiError(400, 'bad_request', 'Invalid request', '', {
-      issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
+      issues: parsed.error.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      })),
     });
   }
   return parsed.data;

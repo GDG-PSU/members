@@ -40,8 +40,8 @@ export function AppFooter() {
         </Stack>
         <Divider sx={{ my: 3 }} />
         <Typography variant="caption" color="text.secondary">
-          Card links are identifiers, not credentials. Attendance always requires a human check-in and
-          check-out.
+          Card links are identifiers, not credentials. Attendance always requires a human check-in
+          and check-out.
         </Typography>
       </Container>
     </Box>

@@ -2,7 +2,7 @@
 
 Target: Next.js app on Vercel, Supabase Postgres/Auth/Storage, custom domain `member.gdgpsu.dev`.
 
-The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all nine migrations applied from a clean schema, history recorded in `supabase_migrations.schema_migrations`, the `avatars` bucket private, `db:verify` passing 46/46, and the authenticated browser suite passing. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
+The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all nine migrations applied, history recorded in `supabase_migrations.schema_migrations`, the `avatars` bucket private, `db:verify` passing 46/46, and the authenticated browser suite passing. Test data and storage objects were then erased; one administrator (`sainaman@psu.edu`) remains with a one-time activation link. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
 
 ## 1. Prerequisites (user/operator action)
 
@@ -13,7 +13,7 @@ The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all nine 
 | Supabase project ownership + a publishable key | Auth/DB; see key note below | Verified — keys accepted, schema applied, RLS and storage checked                       |
 | Invitation/recovery delivery                   | Link delivery               | Manual — an admin copies links into their own mail client; no SMTP                      |
 | PSU IT approval for ESP32 network access       | Hardware lanes              | Unverified — confirm the approved network, device policy, SSID and CA                   |
-| Admin bootstrap identity (real email)          | First admin                 | Pending operator action — no admin account exists in the project yet                    |
+| Admin bootstrap identity (real email)          | First admin                 | Created — `sainaman@psu.edu`; password + TOTP activation still pending                  |
 
 ## 2. Environment variables (names only)
 
@@ -51,9 +51,9 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
    Migration `0006_profile_privacy.sql` makes the `avatars` bucket private, protects photo delivery and sets public-by-default email for new profiles without changing existing choices. Migration `0007_device_signatures.sql` requires all existing device secrets to be rotated before use; `0008_admin_rls_mfa.sql` enforces MFA in database admin policies; `0009_controlled_erasure.sql` makes documented account closure possible without weakening the append-only guards. All four are applied in the hosted project.
 
 2. **Auth settings:**
-   - Site URL: `https://member.gdgpsu.dev`
-   - Additional redirect URLs: `https://member.gdgpsu.dev/auth/callback`, `http://localhost:3000/auth/callback` (local only). Add preview origins only if previews need sign-in.
-   - Disable public signup. Accounts are created by the Admin API through generated invitation links. (The initial admin was created through signup and then confirmed; disable signup after that.)
+   - Site URL: the final public origin (`https://member.gdgpsu.dev`). Keep it in sync with Vercel's `NEXT_PUBLIC_SITE_URL`.
+   - App-generated invitation/recovery links confirm at `/auth/confirm` on that origin, so they do not depend on Supabase's redirect allowlist. Keep `https://member.gdgpsu.dev/auth/callback` and `http://localhost:3000/auth/callback` as optional fallbacks for legacy links.
+   - Disable public signup. Accounts are created by the Admin API through generated invitation links.
    - Enable TOTP MFA for admin accounts. Admins without AAL2 cannot use `/admin/*` and are redirected to `/admin-mfa`.
    - **Email:** no SMTP is configured and the app sends no mail. Admin → Invitations generates a one-time link with `generateLink`; the admin copies it into their own mail client. The same applies to member recovery on the member detail page. Generated links expire per the project's **Email OTP Expiration** setting (default 1 hour); raise it to fit your sending workflow, and regenerate a link if it expires. Do not reduce this setting.
 3. **Storage:** bucket `avatars` must be private, with server-side uploads only. Photos are served by a no-store endpoint that checks current profile visibility or the owner's / MFA-verified admin's session.
@@ -61,7 +61,9 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
 
 ## 4. Admin bootstrap
 
-There is no public admin creation path. Run `pnpm db:bootstrap-admin --email you@psu.edu --out .local/admin-link.txt`; it finds or creates the Auth user, grants the `admin` role and writes a one-time recovery link to the output file (gitignored). No email is sent and no password is printed — deliver the link privately, then delete the file. Equivalent reviewed SQL (after creating the Auth user in Supabase):
+The initial administrator (`sainaman@psu.edu`) is already created with the `admin` role and an activation link. They open the link, set a password at `/account/password`, then enroll TOTP at `/admin-mfa`. Once signed in with AAL2, they can generate further administrator or member invitations from **Admin → Invitations**; those links are copied and delivered manually.
+
+To recover or regenerate the initial link, run `pnpm db:bootstrap-admin --email sainaman@psu.edu --out .local/admin-link.txt` with `NEXT_PUBLIC_SITE_URL` set to the production origin; it writes an origin-owned `/auth/confirm` link to the output file (gitignored). No email is sent and no password is printed — deliver the link privately, then delete the file. Equivalent reviewed SQL (after creating the Auth user in Supabase):
 
 ```sql
 insert into public.user_roles (auth_user_id, role, note)
@@ -91,7 +93,7 @@ The repository includes `vercel.json`, which sets the Next.js framework, the fro
 
 1. `GET /` renders (200) and no CSP/console errors.
 2. Sign-in flow works on the real origin; cookies are Secure/HttpOnly; callback redirects to `/invite/accept`.
-3. An admin-generated invitation link works once; expired/revoked link shows a neutral state.
+3. An admin-generated invitation link works once and lands on `/account/password` (admins) or `/invite/accept` (members); expired/revoked links show a neutral state.
 4. Setup creates a member, `/m/<slug>` loads, leaderboard excludes private profiles.
 5. `/c/<token>` redirects (307) to `/m/<slug>`; a revoked token shows `/card-unavailable`.
 6. Admin routes require MFA (AAL2) and redirect to `/admin-mfa` when unenrolled; member routes reject anonymous requests.
@@ -108,8 +110,8 @@ The repository includes `vercel.json`, which sets the Next.js framework, the fro
 ## 8. Exact blockers to resolve before production
 
 1. Sign in to Vercel (`npx vercel login`), create/import the project and set the production environment variables (the publishable key is supplied). Anonymous temporary deployments are not available.
-2. Approve DNS changes for `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
-3. Bootstrap the intended first administrator (`pnpm db:bootstrap-admin --email <real admin> --out .local/admin-link.txt`) and enroll TOTP before any member data is entered. No admin exists in the project yet, so nobody can issue invitations until this is done.
+2. Approve DNS changes for `member.gdgpsu.dev` and set `NEXT_PUBLIC_SITE_URL` to that origin. App-generated links no longer need a Supabase redirect allowlist entry.
+3. Have `sainaman@psu.edu` open the one-time activation link, set a password and enroll TOTP. Regenerate the link with `pnpm db:bootstrap-admin --email sainaman@psu.edu --out .local/admin-link.txt` if it expires; this is the only admin, so nobody can issue invitations until activation is complete.
 4. Record PSU IT's approved ESP32 SSID/EAP method and hardware test window; do not use personal credentials or bypass TLS.
 5. Confirm whether preview deployments may use a staging Supabase project (recommended) or must stay offline.
 

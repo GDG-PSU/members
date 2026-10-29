@@ -13,7 +13,11 @@ import { DataTable, EmptyState, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
-import { completeWriteJobAction, prepareCardAction, revokeCardAction } from '@/app/(admin)/admin/actions';
+import {
+  completeWriteJobAction,
+  prepareCardAction,
+  revokeCardAction,
+} from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +46,9 @@ export default async function CardsPage({
       .limit(300),
     admin
       .from('card_credentials')
-      .select('id, member_id, status, issued_at, revoked_at, revoke_reason, created_at, members(public_number, member_profiles(display_name))')
+      .select(
+        'id, member_id, status, issued_at, revoked_at, revoke_reason, created_at, members(public_number, member_profiles(display_name))',
+      )
       .order('created_at', { ascending: false })
       .limit(100),
     admin
@@ -50,11 +56,17 @@ export default async function CardsPage({
       .select('id, status, created_at, expires_at, failure_code, devices(lane_label)')
       .order('created_at', { ascending: false })
       .limit(30),
-    admin.from('devices').select('id, device_id, lane_label, status, mode').eq('mode', 'writer').eq('status', 'active'),
+    admin
+      .from('devices')
+      .select('id, device_id, lane_label, status, mode')
+      .eq('mode', 'writer')
+      .eq('status', 'active'),
   ]);
 
   const memberRows = (members.data ?? []).map((row) => {
-    const profile = Array.isArray(row.member_profiles) ? row.member_profiles[0] : row.member_profiles;
+    const profile = Array.isArray(row.member_profiles)
+      ? row.member_profiles[0]
+      : row.member_profiles;
     return {
       id: row.id as string,
       label: `${(profile?.display_name as string) ?? 'Member'} · ${row.public_number as string}`,
@@ -75,19 +87,33 @@ export default async function CardsPage({
                 Prepare a card
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Generates a new opaque URL, revokes the previous card, and queues a single-use write job on
-                the selected writer lane. The token is never displayed.
+                Generates a new opaque URL, revokes the previous card, and queues a single-use write
+                job on the selected writer lane. The token is never displayed.
               </Typography>
               <Stack component="form" action={prepareCardAction} spacing={2}>
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <TextField select name="memberId" label="Member" required size="small" defaultValue="">
+                <TextField
+                  select
+                  name="memberId"
+                  label="Member"
+                  required
+                  size="small"
+                  defaultValue=""
+                >
                   {memberRows.map((member) => (
                     <MenuItem key={member.id} value={member.id}>
                       {member.label}
                     </MenuItem>
                   ))}
                 </TextField>
-                <TextField select name="deviceId" label="Writer lane" required size="small" defaultValue="">
+                <TextField
+                  select
+                  name="deviceId"
+                  label="Writer lane"
+                  required
+                  size="small"
+                  defaultValue=""
+                >
                   {(writers.data ?? []).length === 0 ? (
                     <MenuItem value="" disabled>
                       No active writer lane
@@ -104,8 +130,8 @@ export default async function CardsPage({
                 <SubmitButton pendingLabel="Queuing…">Queue write job</SubmitButton>
               </Stack>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                To enable writer mode, set the lane to Writer under Devices. That lane pauses attendance
-                scanning while it writes.
+                To enable writer mode, set the lane to Writer under Devices. That lane pauses
+                attendance scanning while it writes.
               </Typography>
             </CardContent>
           </Card>
@@ -116,7 +142,10 @@ export default async function CardsPage({
             Card credentials
           </Typography>
           {!cards.data || cards.data.length === 0 ? (
-            <EmptyState title="No cards prepared" description="Prepare a card for an active member." />
+            <EmptyState
+              title="No cards prepared"
+              description="Prepare a card for an active member."
+            />
           ) : (
             <DataTable
               caption="Card credentials"
@@ -133,7 +162,9 @@ export default async function CardsPage({
                       : member?.member_profiles;
                     return (
                       <Box>
-                        <Typography variant="subtitle2">{(profile?.display_name as string) ?? 'Member'}</Typography>
+                        <Typography variant="subtitle2">
+                          {(profile?.display_name as string) ?? 'Member'}
+                        </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {member?.public_number as string}
                         </Typography>
@@ -141,7 +172,11 @@ export default async function CardsPage({
                     );
                   },
                 },
-                { key: 'status', header: 'Status', render: (row) => <StatusChip status={row.status as string} /> },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  render: (row) => <StatusChip status={row.status as string} />,
+                },
                 {
                   key: 'issued',
                   header: 'Issued',
@@ -169,8 +204,17 @@ export default async function CardsPage({
                       <Box component="form" action={revokeCardAction}>
                         <input type="hidden" name="returnTo" value={returnTo} />
                         <input type="hidden" name="cardId" value={row.id as string} />
-                        <input type="hidden" name="reason" value="Reported lost or replaced by organizer" />
-                        <SubmitButton size="small" variant="text" color="error" confirmMessage="Revoke this card?">
+                        <input
+                          type="hidden"
+                          name="reason"
+                          value="Reported lost or replaced by organizer"
+                        />
+                        <SubmitButton
+                          size="small"
+                          variant="text"
+                          color="error"
+                          confirmMessage="Revoke this card?"
+                        >
                           Revoke
                         </SubmitButton>
                       </Box>
@@ -197,16 +241,28 @@ export default async function CardsPage({
                   return <Typography variant="body2">{device?.lane_label as string}</Typography>;
                 },
               },
-              { key: 'status', header: 'Status', render: (row) => <StatusChip status={row.status as string} /> },
+              {
+                key: 'status',
+                header: 'Status',
+                render: (row) => <StatusChip status={row.status as string} />,
+              },
               {
                 key: 'created',
                 header: 'Queued',
-                render: (row) => <Typography variant="caption">{formatDateTime(row.created_at as string)}</Typography>,
+                render: (row) => (
+                  <Typography variant="caption">
+                    {formatDateTime(row.created_at as string)}
+                  </Typography>
+                ),
               },
               {
                 key: 'expires',
                 header: 'Expires',
-                render: (row) => <Typography variant="caption">{formatDateTime(row.expires_at as string)}</Typography>,
+                render: (row) => (
+                  <Typography variant="caption">
+                    {formatDateTime(row.expires_at as string)}
+                  </Typography>
+                ),
               },
               {
                 key: 'actions',

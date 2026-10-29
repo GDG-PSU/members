@@ -86,7 +86,11 @@ export default async function EditEventPage({
       <Button component="a" href="/admin/events" size="small" sx={{ mb: 2 }}>
         ← All events
       </Button>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+      >
         <Box>
           <Typography variant="overline" color="primary">
             {event.status as string}
@@ -109,7 +113,11 @@ export default async function EditEventPage({
                 variant="outlined"
                 color={status === 'cancelled' ? 'error' : 'primary'}
                 pendingLabel="Updating…"
-                confirmMessage={status === 'cancelled' ? 'Cancel this event? The public page will be hidden.' : undefined}
+                confirmMessage={
+                  status === 'cancelled'
+                    ? 'Cancel this event? The public page will be hidden.'
+                    : undefined
+                }
               >
                 Mark {status}
               </SubmitButton>
@@ -168,7 +176,9 @@ export default async function EditEventPage({
                   {
                     key: 'status',
                     header: 'Status',
-                    render: (row) => <StatusChip status={row.qualified ? 'qualified' : row.state} />,
+                    render: (row) => (
+                      <StatusChip status={row.qualified ? 'qualified' : row.state} />
+                    ),
                   },
                   {
                     key: 'points',
@@ -179,7 +189,8 @@ export default async function EditEventPage({
                 ]}
               />
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Corrections are made from the member detail page so each change carries a reason and actor.
+                Corrections are made from the member detail page so each change carries a reason and
+                actor.
               </Typography>
             </CardContent>
           </Card>

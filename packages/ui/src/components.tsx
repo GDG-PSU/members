@@ -50,7 +50,13 @@ export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <Box
       component="span"
-      sx={{ display: 'inline-flex', alignItems: 'baseline', gap: 0.25, fontWeight: 800, letterSpacing: '-0.03em' }}
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'baseline',
+        gap: 0.25,
+        fontWeight: 800,
+        letterSpacing: '-0.03em',
+      }}
       aria-label="GDG at Penn State"
     >
       <Box component="span" sx={{ fontSize: compact ? '1.05rem' : '1.15rem' }}>
@@ -92,10 +98,7 @@ export function SectionHeading({
     >
       <Box sx={{ maxWidth: 640 }}>
         {eyebrow ? (
-          <Box
-            component="p"
-            sx={{ m: 0, mb: 0.5, typography: 'overline', color: 'primary.main' }}
-          >
+          <Box component="p" sx={{ m: 0, mb: 0.5, typography: 'overline', color: 'primary.main' }}>
             {eyebrow}
           </Box>
         ) : null}

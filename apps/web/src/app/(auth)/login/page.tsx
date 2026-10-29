@@ -35,7 +35,11 @@ export default async function LoginPage({
           <Typography variant="overline" color="primary">
             Member access
           </Typography>
-          <Typography variant="h2" component="h1" sx={{ mt: 1, mb: 1, fontSize: { xs: '2rem', md: '2.6rem' } }}>
+          <Typography
+            variant="h2"
+            component="h1"
+            sx={{ mt: 1, mb: 1, fontSize: { xs: '2rem', md: '2.6rem' } }}
+          >
             Welcome back
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
@@ -48,8 +52,8 @@ export default async function LoginPage({
           ) : null}
           {notice === 'invalid-link' ? (
             <Typography variant="body2" sx={{ mb: 2, color: 'error.main' }} role="alert">
-              That sign-in link is invalid or has already been used. Ask GDG@PSU for a fresh link, or sign
-              in with your password.
+              That sign-in link is invalid or has already been used. Ask GDG@PSU for a fresh link,
+              or sign in with your password.
             </Typography>
           ) : null}
           <LoginForm />
@@ -57,7 +61,11 @@ export default async function LoginPage({
           <Stack spacing={1}>
             <Typography variant="body2" color="text.secondary">
               Forgot your password? Email{' '}
-              <Box component="a" href={`mailto:${SUPPORT_EMAIL}?subject=GDG%40PSU%20password%20reset`} sx={{ color: 'primary.main' }}>
+              <Box
+                component="a"
+                href={`mailto:${SUPPORT_EMAIL}?subject=GDG%40PSU%20password%20reset`}
+                sx={{ color: 'primary.main' }}
+              >
                 {SUPPORT_EMAIL}
               </Box>{' '}
               from your registered address. An admin will send a recovery link.
@@ -65,7 +73,12 @@ export default async function LoginPage({
             <Typography variant="body2" color="text.secondary">
               Not a member yet? Membership opens after dues are recorded — no public signup.
             </Typography>
-            <Button component="a" href="/forgot-password" size="small" sx={{ alignSelf: 'flex-start', px: 0 }}>
+            <Button
+              component="a"
+              href="/forgot-password"
+              size="small"
+              sx={{ alignSelf: 'flex-start', px: 0 }}
+            >
               Password help
             </Button>
           </Stack>

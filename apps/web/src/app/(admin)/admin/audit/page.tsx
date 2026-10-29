@@ -40,7 +40,11 @@ export default async function AuditPage({
 
   return (
     <Container maxWidth="xl" sx={{ pb: 8 }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+      >
         <Box>
           <Typography variant="overline" color="primary">
             Immutable
@@ -48,7 +52,9 @@ export default async function AuditPage({
           <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
             Audit log
           </Typography>
-          <Typography color="text.secondary">Append-only record of organizer and security actions.</Typography>
+          <Typography color="text.secondary">
+            Append-only record of organizer and security actions.
+          </Typography>
         </Box>
         <Box component="form" method="get" sx={{ display: 'flex', gap: 1 }}>
           <TextField
@@ -66,7 +72,10 @@ export default async function AuditPage({
       </Stack>
 
       {!data || data.length === 0 ? (
-        <EmptyState title="No matching audit entries" description="Actions appear here as organizers work." />
+        <EmptyState
+          title="No matching audit entries"
+          description="Actions appear here as organizers work."
+        />
       ) : (
         <DataTable
           caption="Audit log entries"
@@ -77,7 +86,9 @@ export default async function AuditPage({
               key: 'when',
               header: 'When',
               render: (row) => (
-                <Typography variant="caption">{formatDateTime(row.created_at as string)}</Typography>
+                <Typography variant="caption">
+                  {formatDateTime(row.created_at as string)}
+                </Typography>
               ),
             },
             {

@@ -30,7 +30,10 @@ export function CallbackHandler() {
       body: JSON.stringify({ accessToken, refreshToken, next }),
     })
       .then(async (response) => {
-        const body = (await response.json().catch(() => ({}))) as { redirectTo?: string; error?: string };
+        const body = (await response.json().catch(() => ({}))) as {
+          redirectTo?: string;
+          error?: string;
+        };
         if (!response.ok) throw new Error(body.error ?? 'Could not complete sign in.');
         window.history.replaceState(null, '', window.location.pathname);
         router.replace(body.redirectTo ?? next);

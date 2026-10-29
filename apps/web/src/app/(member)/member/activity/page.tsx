@@ -39,7 +39,8 @@ export default async function ActivityPage() {
 
   return (
     <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 9 } }}>
-       <SectionHeading headingLevel={1}
+      <SectionHeading
+        headingLevel={1}
         eyebrow={`${balances.points} points · ${balances.stars} stars`}
         title="Your activity"
         description="Every point comes from a ledger entry. Corrections add a compensating entry rather than erasing history."
@@ -63,16 +64,26 @@ export default async function ActivityPage() {
                   }
                 />
               ) : (
-                <Stack spacing={2} divider={<Box sx={{ borderBottom: '1px solid', borderColor: 'divider' }} />}>
+                <Stack
+                  spacing={2}
+                  divider={<Box sx={{ borderBottom: '1px solid', borderColor: 'divider' }} />}
+                >
                   {attendance.map((row) => (
-                    <Stack key={row.id} direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { sm: 'center' } }}>
+                    <Stack
+                      key={row.id}
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1.5}
+                      sx={{ alignItems: { sm: 'center' } }}
+                    >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
                           {row.eventName}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {formatDateTime(row.checkedInAt)}
-                          {row.checkedOutAt ? ` → ${formatDateTime(row.checkedOutAt)}` : ' → no check-out'}
+                          {row.checkedOutAt
+                            ? ` → ${formatDateTime(row.checkedOutAt)}`
+                            : ' → no check-out'}
                           {row.durationMinutes !== null ? ` · ${row.durationMinutes} min` : ''}
                           {row.sessionKind === 'bonus' ? ' · bonus session' : ''}
                         </Typography>
@@ -88,9 +99,13 @@ export default async function ActivityPage() {
                   ))}
                 </Stack>
               )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>
-                Missing checkout or a threshold error? Email gdg@psu.edu from your registered address —
-                organizers can correct attendance with an audited reason.
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: 'block', mt: 2.5 }}
+              >
+                Missing checkout or a threshold error? Email gdg@psu.edu from your registered
+                address — organizers can correct attendance with an audited reason.
               </Typography>
             </CardContent>
           </Card>
@@ -105,9 +120,17 @@ export default async function ActivityPage() {
               {ledger.length === 0 ? (
                 <EmptyState title="No ledger entries yet" />
               ) : (
-                <Stack spacing={1.5} divider={<Box sx={{ borderBottom: '1px solid', borderColor: 'divider' }} />}>
+                <Stack
+                  spacing={1.5}
+                  divider={<Box sx={{ borderBottom: '1px solid', borderColor: 'divider' }} />}
+                >
                   {ledger.map((row) => (
-                    <Stack key={row.id} direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+                    <Stack
+                      key={row.id}
+                      direction="row"
+                      spacing={1.5}
+                      sx={{ alignItems: 'flex-start' }}
+                    >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="subtitle2">{row.description}</Typography>
                         <Typography variant="caption" color="text.secondary">

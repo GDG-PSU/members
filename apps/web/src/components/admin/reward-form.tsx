@@ -21,7 +21,14 @@ export function RewardForm({ reward, returnTo }: { reward?: RewardValues; return
     <Stack component="form" action={saveRewardAction} spacing={2} noValidate>
       <input type="hidden" name="returnTo" value={returnTo} />
       {reward?.id ? <input type="hidden" name="rewardId" value={reward.id} /> : null}
-      <TextField name="name" label="Reward name" defaultValue={reward?.name} required fullWidth slotProps={{ htmlInput: { maxLength: 80 } }} />
+      <TextField
+        name="name"
+        label="Reward name"
+        defaultValue={reward?.name}
+        required
+        fullWidth
+        slotProps={{ htmlInput: { maxLength: 80 } }}
+      />
       <TextField
         name="description"
         label="Description"
@@ -61,8 +68,13 @@ export function RewardForm({ reward, returnTo }: { reward?: RewardValues; return
         fullWidth
         slotProps={{ htmlInput: { maxLength: 300 } }}
       />
-      <FormControlLabel control={<Checkbox name="isActive" defaultChecked={reward?.isActive ?? true} />} label="Active" />
-      <SubmitButton pendingLabel="Saving…">{reward?.id ? 'Save reward' : 'Create reward'}</SubmitButton>
+      <FormControlLabel
+        control={<Checkbox name="isActive" defaultChecked={reward?.isActive ?? true} />}
+        label="Active"
+      />
+      <SubmitButton pendingLabel="Saving…">
+        {reward?.id ? 'Save reward' : 'Create reward'}
+      </SubmitButton>
     </Stack>
   );
 }

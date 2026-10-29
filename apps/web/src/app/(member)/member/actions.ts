@@ -79,7 +79,10 @@ export async function updateProfileAction(
     try {
       const nextPath = await storeProfilePhoto(photo, user.id);
       if (current?.photo_path && current.photo_path !== nextPath) {
-        await admin.storage.from('avatars').remove([current.photo_path as string]).catch(() => {});
+        await admin.storage
+          .from('avatars')
+          .remove([current.photo_path as string])
+          .catch(() => {});
       }
       photoPath = nextPath;
     } catch (error) {
@@ -109,7 +112,11 @@ export async function updateProfileAction(
     p_target_id: member.id,
     p_reason: null,
     p_before: { display_name: current?.display_name, about: current?.about, links: current?.links },
-    p_after: { display_name: parsed.data.displayName, about: parsed.data.about, links: parsed.data.links },
+    p_after: {
+      display_name: parsed.data.displayName,
+      about: parsed.data.about,
+      links: parsed.data.links,
+    },
     p_request_id: null,
   });
 

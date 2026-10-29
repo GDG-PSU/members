@@ -88,7 +88,9 @@ export function LinkDialog({
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
-      <DialogContent>{link ? <LinkPanel link={link} email={email} title="Copy this link" /> : null}</DialogContent>
+      <DialogContent>
+        {link ? <LinkPanel link={link} email={email} title="Copy this link" /> : null}
+      </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Done</Button>
       </DialogActions>

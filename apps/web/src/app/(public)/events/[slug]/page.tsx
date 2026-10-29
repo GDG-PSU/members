@@ -17,7 +17,11 @@ import { formatDate, formatTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
   const { slug } = await params;
   const data = await getPublicEvent(slug).catch(() => null);
   return {
@@ -54,7 +58,10 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               label={event.location || 'Location to be announced'}
               variant="outlined"
             />
-            <Chip label={`${formatTime(event.startsAt)} – ${formatTime(event.endsAt)}`} variant="outlined" />
+            <Chip
+              label={`${formatTime(event.startsAt)} – ${formatTime(event.endsAt)}`}
+              variant="outlined"
+            />
           </Stack>
 
           <Box sx={{ mt: 5 }}>
@@ -65,14 +72,18 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               {main ? (
                 <Card>
                   <CardContent sx={{ p: 2.5 }}>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                    <Stack
+                      direction="row"
+                      sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}
+                    >
                       <Box>
                         <Typography variant="overline" color="primary">
                           Main session
                         </Typography>
                         <Typography variant="h5">{main.name}</Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          {formatTime(main.startsAt)} – {formatTime(main.endsAt)} · Check out to qualify
+                          {formatTime(main.startsAt)} – {formatTime(main.endsAt)} · Check out to
+                          qualify
                         </Typography>
                       </Box>
                       <Chip
@@ -88,15 +99,18 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               {bonus.map((session) => (
                 <Card key={session.id}>
                   <CardContent sx={{ p: 2.5 }}>
-                    <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+                    <Stack
+                      direction="row"
+                      sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}
+                    >
                       <Box>
                         <Typography variant="overline" color="secondary">
                           Bonus session
                         </Typography>
                         <Typography variant="h6">{session.name}</Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          {formatTime(session.startsAt)} – {formatTime(session.endsAt)} · Requires its own
-                          check-in and check-out
+                          {formatTime(session.startsAt)} – {formatTime(session.endsAt)} · Requires
+                          its own check-in and check-out
                         </Typography>
                       </Box>
                       <Chip label={`+${session.rewardPoints} pts`} variant="outlined" />
@@ -147,8 +161,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               </Stack>
               <Divider sx={{ my: 2 }} />
               <Typography variant="caption" color="text.secondary">
-                No checkout means no attendance points. If something goes wrong, email GDG@PSU from your
-                registered address and an organizer can review it.
+                No checkout means no attendance points. If something goes wrong, email GDG@PSU from
+                your registered address and an organizer can review it.
               </Typography>
               <Button component="a" href="/login" fullWidth variant="contained" sx={{ mt: 2.5 }}>
                 Member sign in

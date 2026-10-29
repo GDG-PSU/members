@@ -36,10 +36,15 @@ export default async function AdminRewardsPage({
   const returnTo = '/admin/rewards';
 
   const [rewards, redemptions] = await Promise.all([
-    admin.from('rewards').select('id, name, description, cost_points, inventory, is_active').order('created_at', { ascending: false }),
+    admin
+      .from('rewards')
+      .select('id, name, description, cost_points, inventory, is_active')
+      .order('created_at', { ascending: false }),
     admin
       .from('redemptions')
-      .select('id, reward_name_snapshot, quantity, points_debited, status, created_at, reason, members(public_number, member_profiles(display_name))')
+      .select(
+        'id, reward_name_snapshot, quantity, points_debited, status, created_at, reason, members(public_number, member_profiles(display_name))',
+      )
       .in('status', ['requested', 'approved'])
       .order('created_at', { ascending: true })
       .limit(50),
@@ -53,25 +58,41 @@ export default async function AdminRewardsPage({
           <Typography variant="overline" color="primary">
             Catalogue
           </Typography>
-          <Typography variant="h2" component="h1" sx={{ mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+          <Typography
+            variant="h2"
+            component="h1"
+            sx={{ mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
+          >
             Rewards
           </Typography>
           {!rewards.data || rewards.data.length === 0 ? (
-            <EmptyState title="No rewards yet" description="Add merchandise or perks for members to redeem." />
+            <EmptyState
+              title="No rewards yet"
+              description="Add merchandise or perks for members to redeem."
+            />
           ) : (
             <Stack spacing={1.5}>
               {rewards.data.map((reward) => (
                 <Card key={reward.id as string}>
                   <CardContent sx={{ p: 2.5 }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={2}
+                      sx={{ alignItems: { sm: 'center' } }}
+                    >
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="h5">{reward.name as string}</Typography>
                         <Typography variant="caption" color="text.secondary">
                           {reward.cost_points as number} points ·{' '}
-                          {reward.inventory === null ? 'unlimited' : `${reward.inventory as number} in stock`}
+                          {reward.inventory === null
+                            ? 'unlimited'
+                            : `${reward.inventory as number} in stock`}
                         </Typography>
                       </Box>
-                      <StatusChip status={reward.is_active ? 'active' : 'revoked'} label={reward.is_active ? 'active' : 'inactive'} />
+                      <StatusChip
+                        status={reward.is_active ? 'active' : 'revoked'}
+                        label={reward.is_active ? 'active' : 'inactive'}
+                      />
                       <Button component="a" href={`/admin/rewards/${reward.id}`} size="small">
                         Edit
                       </Button>
@@ -86,7 +107,10 @@ export default async function AdminRewardsPage({
             Redemption queue
           </Typography>
           {!redemptions.data || redemptions.data.length === 0 ? (
-            <EmptyState title="Nothing waiting" description="Member requests appear here for approval." />
+            <EmptyState
+              title="Nothing waiting"
+              description="Member requests appear here for approval."
+            />
           ) : (
             <Stack spacing={1.5} divider={<Divider flexItem />}>
               {redemptions.data.map((row) => {
@@ -97,23 +121,44 @@ export default async function AdminRewardsPage({
                 return (
                   <Card key={row.id as string}>
                     <CardContent sx={{ p: 2.5 }}>
-                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'center' } }}>
+                      <Stack
+                        direction={{ xs: 'column', md: 'row' }}
+                        spacing={2}
+                        sx={{ alignItems: { md: 'center' } }}
+                      >
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
-                            {(profile?.display_name as string) ?? 'Member'} — {row.reward_name_snapshot as string}
+                            {(profile?.display_name as string) ?? 'Member'} —{' '}
+                            {row.reward_name_snapshot as string}
                             {Number(row.quantity) > 1 ? ` × ${row.quantity}` : ''}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {member?.public_number as string} · {row.points_debited as number} points ·{' '}
-                            {formatDateTime(row.created_at as string)}
+                            {member?.public_number as string} · {row.points_debited as number}{' '}
+                            points · {formatDateTime(row.created_at as string)}
                           </Typography>
                         </Box>
                         <StatusChip status={row.status as string} />
-                        <Box component="form" action={decideRedemptionAction} sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Box
+                          component="form"
+                          action={decideRedemptionAction}
+                          sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}
+                        >
                           <input type="hidden" name="returnTo" value={returnTo} />
                           <input type="hidden" name="redemptionId" value={row.id as string} />
-                          <TextField name="reason" size="small" label="Reason (for reject)" slotProps={{ htmlInput: { maxLength: 300 } }} />
-                          <TextField select name="action" size="small" label="Action" defaultValue={row.status === 'approved' ? 'fulfil' : 'approve'} sx={{ minWidth: 120 }}>
+                          <TextField
+                            name="reason"
+                            size="small"
+                            label="Reason (for reject)"
+                            slotProps={{ htmlInput: { maxLength: 300 } }}
+                          />
+                          <TextField
+                            select
+                            name="action"
+                            size="small"
+                            label="Action"
+                            defaultValue={row.status === 'approved' ? 'fulfil' : 'approve'}
+                            sx={{ minWidth: 120 }}
+                          >
                             {[
                               { value: 'approve', label: 'Approve' },
                               { value: 'fulfil', label: 'Fulfil' },
@@ -125,7 +170,12 @@ export default async function AdminRewardsPage({
                               </MenuItem>
                             ))}
                           </TextField>
-                          <SubmitButton size="small" variant="outlined" pendingLabel="Saving…" confirmMessage="Apply this redemption action?">
+                          <SubmitButton
+                            size="small"
+                            variant="outlined"
+                            pendingLabel="Saving…"
+                            confirmMessage="Apply this redemption action?"
+                          >
                             Apply
                           </SubmitButton>
                         </Box>

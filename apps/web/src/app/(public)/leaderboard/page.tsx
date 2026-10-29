@@ -32,7 +32,8 @@ export default async function LeaderboardPage() {
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
-       <SectionHeading headingLevel={1}
+      <SectionHeading
+        headingLevel={1}
         eyebrow="Semester standings"
         title="The leaderboard"
         description="Ranked by spendable points earned from confirmed attendance and organizer-recognized contributions. Stars are not part of the ranking."
@@ -67,7 +68,11 @@ export default async function LeaderboardPage() {
                   >
                     <CardContent sx={{ p: 2.5, width: '100%' }}>
                       <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-                        <MemberAvatar name={entry.displayName} photoUrl={entry.photoUrl} size={56} />
+                        <MemberAvatar
+                          name={entry.displayName}
+                          photoUrl={entry.photoUrl}
+                          size={56}
+                        />
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Typography variant="overline" sx={{ color: style.accent }}>
                             #{entry.rank}
@@ -81,7 +86,10 @@ export default async function LeaderboardPage() {
                             {entry.memberNumber ?? 'GDG@PSU member'}
                           </Typography>
                         </Box>
-                        <Chip label={`${entry.points} pts`} color={index === 0 ? 'warning' : 'primary'} />
+                        <Chip
+                          label={`${entry.points} pts`}
+                          color={index === 0 ? 'warning' : 'primary'}
+                        />
                       </Stack>
                     </CardContent>
                   </Card>
@@ -92,7 +100,16 @@ export default async function LeaderboardPage() {
 
           <Card>
             <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-              <Box component="caption" sx={{ textAlign: 'left', px: 2.5, pt: 2, typography: 'overline', color: 'text.secondary' }}>
+              <Box
+                component="caption"
+                sx={{
+                  textAlign: 'left',
+                  px: 2.5,
+                  pt: 2,
+                  typography: 'overline',
+                  color: 'text.secondary',
+                }}
+              >
                 Full ranking
               </Box>
               <Box component="thead">
@@ -121,15 +138,36 @@ export default async function LeaderboardPage() {
                   <Box
                     component="tr"
                     key={entry.slug}
-                    sx={{ borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 0 } }}
+                    sx={{
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      '&:last-child': { borderBottom: 0 },
+                    }}
                   >
-                    <Box component="td" sx={{ px: 2.5, py: 1.75, color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+                    <Box
+                      component="td"
+                      sx={{
+                        px: 2.5,
+                        py: 1.75,
+                        color: 'text.secondary',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
                       {entry.rank}
                     </Box>
                     <Box component="td" sx={{ px: 2.5, py: 1.25 }}>
                       <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-                        <MemberAvatar name={entry.displayName} photoUrl={entry.photoUrl} size={34} />
-                        <Typography variant="subtitle2" component="a" href={`/m/${entry.slug}`} sx={{ textDecoration: 'none' }}>
+                        <MemberAvatar
+                          name={entry.displayName}
+                          photoUrl={entry.photoUrl}
+                          size={34}
+                        />
+                        <Typography
+                          variant="subtitle2"
+                          component="a"
+                          href={`/m/${entry.slug}`}
+                          sx={{ textDecoration: 'none' }}
+                        >
                           {entry.displayName}
                         </Typography>
                       </Stack>
@@ -137,7 +175,16 @@ export default async function LeaderboardPage() {
                     <Box component="td" sx={{ px: 2.5, py: 1.75, color: 'text.secondary' }}>
                       {entry.memberNumber ?? '—'}
                     </Box>
-                    <Box component="td" sx={{ px: 2.5, py: 1.75, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                    <Box
+                      component="td"
+                      sx={{
+                        px: 2.5,
+                        py: 1.75,
+                        textAlign: 'right',
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
                       {entry.points}
                     </Box>
                   </Box>
@@ -146,8 +193,8 @@ export default async function LeaderboardPage() {
             </Box>
           </Card>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-            Only members who opted into the leaderboard and public points appear. Missing names are not
-            zero-point members.
+            Only members who opted into the leaderboard and public points appear. Missing names are
+            not zero-point members.
           </Typography>
         </>
       )}

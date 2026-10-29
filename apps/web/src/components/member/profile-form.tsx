@@ -24,13 +24,20 @@ interface ProfileFormProps {
   photoUrl: string | null;
 }
 
-export function ProfileForm({ initialName, initialAbout, initialLinks, photoUrl }: ProfileFormProps) {
+export function ProfileForm({
+  initialName,
+  initialAbout,
+  initialLinks,
+  photoUrl,
+}: ProfileFormProps) {
   const [state, action, pending] = useActionState(updateProfileAction, initial);
   const [links, setLinks] = useState(initialLinks.length > 0 ? initialLinks : []);
   const [preview, setPreview] = useState<string | null>(photoUrl);
 
   const updateLink = (index: number, field: 'label' | 'url', value: string) => {
-    setLinks((current) => current.map((link, i) => (i === index ? { ...link, [field]: value } : link)));
+    setLinks((current) =>
+      current.map((link, i) => (i === index ? { ...link, [field]: value } : link)),
+    );
   };
 
   return (
@@ -38,7 +45,13 @@ export function ProfileForm({ initialName, initialAbout, initialLinks, photoUrl 
       <Grid size={{ xs: 12, md: 7 }}>
         <Card>
           <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
-            <Stack component="form" action={action} spacing={2.5} noValidate encType="multipart/form-data">
+            <Stack
+              component="form"
+              action={action}
+              spacing={2.5}
+              noValidate
+              encType="multipart/form-data"
+            >
               <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
                 <Box
                   sx={{
@@ -69,7 +82,11 @@ export function ProfileForm({ initialName, initialAbout, initialLinks, photoUrl 
                       }}
                     />
                   </Button>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: 'block', mt: 0.5 }}
+                  >
                     Square crop · max 2 MB
                   </Typography>
                 </Box>
@@ -146,7 +163,12 @@ export function ProfileForm({ initialName, initialAbout, initialLinks, photoUrl 
 
               {state.error ? <Alert severity="error">{state.error}</Alert> : null}
               {state.ok ? <Alert severity="success">{state.message}</Alert> : null}
-              <Button type="submit" variant="contained" disabled={pending} sx={{ alignSelf: 'flex-start' }}>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={pending}
+                sx={{ alignSelf: 'flex-start' }}
+              >
                 {pending ? 'Saving…' : 'Save profile'}
               </Button>
             </Stack>
@@ -155,7 +177,9 @@ export function ProfileForm({ initialName, initialAbout, initialLinks, photoUrl 
       </Grid>
       <Grid size={{ xs: 12, md: 5 }}>
         <Card sx={{ position: { md: 'sticky' }, top: { md: 96 }, overflow: 'hidden' }}>
-          <Box sx={{ height: 6, background: 'linear-gradient(90deg, #1450a3, #0f766e, #a16207)' }} />
+          <Box
+            sx={{ height: 6, background: 'linear-gradient(90deg, #1450a3, #0f766e, #a16207)' }}
+          />
           <CardContent sx={{ p: 3 }}>
             <Typography variant="overline" color="text.secondary">
               Preview
@@ -181,8 +205,8 @@ export function ProfileForm({ initialName, initialAbout, initialLinks, photoUrl 
               </Box>
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              Saved changes appear on your public profile immediately. Hidden fields stay hidden even if
-              you fill them in here.
+              Saved changes appear on your public profile immediately. Hidden fields stay hidden
+              even if you fill them in here.
             </Typography>
           </CardContent>
         </Card>

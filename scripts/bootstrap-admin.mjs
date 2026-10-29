@@ -107,13 +107,27 @@ await client.end();
 const recovery = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
   method: 'POST',
   headers,
-  body: JSON.stringify({ type: 'recovery', email, redirect_to: `${siteUrl}/auth/callback?next=/admin` }),
+  body: JSON.stringify({
+    type: 'recovery',
+    email,
+  }),
 });
 
 console.log(`Granted admin role to ${email}.`);
 if (recovery.ok) {
   const body = await recovery.json();
-  const link = body.action_link ?? body.properties?.action_link;
+  const properties = body.properties ?? body;
+  // Confirm on our own origin: Supabase rewrites redirect_to to its allowlisted
+  // Site URL, which breaks links when the deployment uses a custom domain.
+  const link = properties?.hashed_token
+    ? (() => {
+        const url = new URL('/auth/confirm', siteUrl);
+        url.searchParams.set('token_hash', properties.hashed_token);
+        url.searchParams.set('type', properties.verification_type ?? 'recovery');
+        url.searchParams.set('next', '/account/password');
+        return url.toString();
+      })()
+    : (body.action_link ?? properties?.action_link);
   const outIndex = process.argv.indexOf('--out');
   const outPath = outIndex >= 0 ? process.argv[outIndex + 1] : '';
   if (link && outPath) {
@@ -123,9 +137,13 @@ if (recovery.ok) {
   } else if (link) {
     console.log('Recovery link generated but not printed. Re-run with --out <path> to save it.');
   } else {
-    console.log('No recovery link was returned. Generate one from the admin member page once signed in.');
+    console.log(
+      'No recovery link was returned. Generate one from the admin member page once signed in.',
+    );
   }
 } else {
-  console.log('Admin role granted, but the recovery link could not be generated. Set a password in Supabase.');
+  console.log(
+    'Admin role granted, but the recovery link could not be generated. Set a password in Supabase.',
+  );
 }
 console.log('The user must set a password, then enroll TOTP at /admin-mfa before /admin opens.');

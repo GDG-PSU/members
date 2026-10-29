@@ -19,8 +19,8 @@ export default function CardUnavailablePage() {
         This card link is not active
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 4 }}>
-        It may have been replaced or reported lost. Ask an organizer at the next event and they can issue
-        a fresh card without changing your profile.
+        It may have been replaced or reported lost. Ask an organizer at the next event and they can
+        issue a fresh card without changing your profile.
       </Typography>
       <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
         <Button component="a" href="/" variant="contained">

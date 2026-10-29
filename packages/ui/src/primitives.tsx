@@ -22,7 +22,13 @@ export function PageShell({ children }: { children: ReactNode }) {
   return (
     <Box
       component="main"
-      sx={{ mx: 'auto', width: '100%', maxWidth: 1200, px: { xs: 2, sm: 3, lg: 4 }, py: { xs: 4, md: 6 } }}
+      sx={{
+        mx: 'auto',
+        width: '100%',
+        maxWidth: 1200,
+        px: { xs: 2, sm: 3, lg: 4 },
+        py: { xs: 4, md: 6 },
+      }}
     >
       {children}
     </Box>
@@ -80,7 +86,13 @@ export function MemberAvatar({
     <Avatar
       src={photoUrl ?? undefined}
       alt={name ? `${name}'s profile photo` : 'Member profile photo'}
-      sx={{ width: size, height: size, bgcolor: 'primary.main', fontWeight: 700, fontSize: size / 2.6 }}
+      sx={{
+        width: size,
+        height: size,
+        bgcolor: 'primary.main',
+        fontWeight: 700,
+        fontSize: size / 2.6,
+      }}
     >
       {initials}
     </Avatar>

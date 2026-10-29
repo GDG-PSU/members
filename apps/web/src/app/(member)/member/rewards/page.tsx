@@ -46,7 +46,8 @@ export default async function RewardsPage() {
 
   return (
     <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 9 } }}>
-       <SectionHeading headingLevel={1}
+      <SectionHeading
+        headingLevel={1}
         eyebrow={`${balances.points} points available · ${balances.stars} stars untouched`}
         title="The rewards shelf"
         description="Points are reserved when you request an item. Cancellations return them through an audited ledger entry; stars never change when you spend."
@@ -81,20 +82,28 @@ export default async function RewardsPage() {
           Your requests
         </Typography>
         {redemptions.length === 0 ? (
-          <EmptyState title="No requests yet" description="Anything you redeem will be tracked here." />
+          <EmptyState
+            title="No requests yet"
+            description="Anything you redeem will be tracked here."
+          />
         ) : (
           <Stack spacing={1.5}>
             {redemptions.map((row) => (
               <Card key={row.id as string}>
                 <CardContent sx={{ p: 2.5 }}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={2}
+                    sx={{ alignItems: { sm: 'center' } }}
+                  >
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
                         {row.reward_name_snapshot as string}
                         {Number(row.quantity) > 1 ? ` × ${row.quantity}` : ''}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {formatDateTime(row.created_at as string)} · {row.points_debited as number} points
+                        {formatDateTime(row.created_at as string)} · {row.points_debited as number}{' '}
+                        points
                         {row.reason ? ` · ${row.reason as string}` : ''}
                       </Typography>
                     </Box>
@@ -121,7 +130,8 @@ export default async function RewardsPage() {
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 4 }}>
-        Signed in as {user.email}. Redemption requests are reviewed by an organizer at the next event.
+        Signed in as {user.email}. Redemption requests are reviewed by an organizer at the next
+        event.
       </Typography>
     </Container>
   );

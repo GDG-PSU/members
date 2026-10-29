@@ -114,6 +114,24 @@ export async function getPublicEvent(
   };
 }
 
+export type ProfileState = 'public' | 'private' | 'missing';
+
+/**
+ * Distinguishes an existing-but-private profile (rendered as a neutral page)
+ * from an unknown slug (404). Never returns profile fields.
+ */
+export async function getProfileState(slug: string): Promise<ProfileState> {
+  const supabase = createSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('member_profiles')
+    .select('public_profile, members!inner(status)')
+    .eq('profile_slug', slug)
+    .maybeSingle();
+  if (error || !data) return 'missing';
+  const member = Array.isArray(data.members) ? data.members[0] : data.members;
+  return data.public_profile === true && member?.status === 'active' ? 'public' : 'private';
+}
+
 export async function getPublicProfile(slug: string): Promise<PublicProfile | null> {
   const supabase = createSupabaseAdmin();
   const { data, error } = await supabase

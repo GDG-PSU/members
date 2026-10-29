@@ -26,10 +26,19 @@ export default async function AdminOverviewPage() {
 
   const [members, invites, scans, jobs, redemptions, rewards, recentAudit] = await Promise.all([
     admin.from('members').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-    admin.from('member_invitations').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    admin
+      .from('member_invitations')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending'),
     admin.from('device_scans').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    admin.from('card_write_jobs').select('id', { count: 'exact', head: true }).in('status', ['queued', 'claimed']),
-    admin.from('redemptions').select('id', { count: 'exact', head: true }).in('status', ['requested', 'approved']),
+    admin
+      .from('card_write_jobs')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['queued', 'claimed']),
+    admin
+      .from('redemptions')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['requested', 'approved']),
     admin.from('rewards').select('id', { count: 'exact', head: true }).eq('is_active', true),
     admin
       .from('audit_log')
@@ -40,7 +49,11 @@ export default async function AdminOverviewPage() {
 
   return (
     <Container maxWidth="xl" sx={{ pb: 8 }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+      >
         <Box>
           <Typography variant="overline" color="primary">
             Organizer console
@@ -67,7 +80,11 @@ export default async function AdminOverviewPage() {
           <MetricCard label="Pending invitations" value={invites.count ?? 0} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard label="Pending scans" value={scans.count ?? 0} hint="Awaiting human confirmation" />
+          <MetricCard
+            label="Pending scans"
+            value={scans.count ?? 0}
+            hint="Awaiting human confirmation"
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <MetricCard label="Open redemption requests" value={redemptions.count ?? 0} />
@@ -83,7 +100,12 @@ export default async function AdminOverviewPage() {
               </Typography>
               <Stack spacing={1.5}>
                 {(recentAudit.data ?? []).map((row) => (
-                  <Stack key={row.id as number} direction="row" spacing={2} sx={{ alignItems: 'baseline' }}>
+                  <Stack
+                    key={row.id as number}
+                    direction="row"
+                    spacing={2}
+                    sx={{ alignItems: 'baseline' }}
+                  >
                     <Typography variant="caption" color="text.secondary" sx={{ minWidth: 138 }}>
                       {formatDateTime(row.created_at as string)}
                     </Typography>
@@ -102,7 +124,13 @@ export default async function AdminOverviewPage() {
                   </Typography>
                 ) : null}
               </Stack>
-              <Button component="a" href="/admin/audit" size="small" endIcon={<ArrowForwardIcon />} sx={{ mt: 2 }}>
+              <Button
+                component="a"
+                href="/admin/audit"
+                size="small"
+                endIcon={<ArrowForwardIcon />}
+                sx={{ mt: 2 }}
+              >
                 Full audit log
               </Button>
             </CardContent>
@@ -135,10 +163,16 @@ export default async function AdminOverviewPage() {
                 </Stack>
               </Stack>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Card writes and kiosk confirmations require a human in the loop. Points are never granted
-                by a tap alone.
+                Card writes and kiosk confirmations require a human in the loop. Points are never
+                granted by a tap alone.
               </Typography>
-              <Button component="a" href="/admin/devices" size="small" sx={{ mt: 2 }} endIcon={<ArrowForwardIcon />}>
+              <Button
+                component="a"
+                href="/admin/devices"
+                size="small"
+                sx={{ mt: 2 }}
+                endIcon={<ArrowForwardIcon />}
+              >
                 Device health
               </Button>
             </CardContent>

@@ -12,7 +12,11 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import IconButton from '@mui/material/IconButton';
-import { createDeviceAction, updateDeviceAction, type DeviceFormState } from '@/app/(admin)/admin/actions';
+import {
+  createDeviceAction,
+  updateDeviceAction,
+  type DeviceFormState,
+} from '@/app/(admin)/admin/actions';
 import { SubmitButton } from '@/components/admin/ui';
 
 const initial: DeviceFormState = {};
@@ -36,7 +40,13 @@ export function DeviceCreateForm({ events }: { events: EventOption[] }) {
         helperText="Lowercase letters, digits, dashes · e.g. lane-a"
         slotProps={{ htmlInput: { pattern: '[a-z0-9][a-z0-9-]{2,31}' } }}
       />
-      <TextField name="laneLabel" label="Lane label" required fullWidth slotProps={{ htmlInput: { maxLength: 40 } }} />
+      <TextField
+        name="laneLabel"
+        label="Lane label"
+        required
+        fullWidth
+        slotProps={{ htmlInput: { maxLength: 40 } }}
+      />
       <TextField select name="mode" label="Initial mode" defaultValue="kiosk" fullWidth>
         <MenuItem value="kiosk">Kiosk (attendance)</MenuItem>
         <MenuItem value="writer">Writer (card writing)</MenuItem>
@@ -49,7 +59,13 @@ export function DeviceCreateForm({ events }: { events: EventOption[] }) {
           </MenuItem>
         ))}
       </TextField>
-      <TextField select name="sessionId" label="Assigned session (optional)" defaultValue="" fullWidth>
+      <TextField
+        select
+        name="sessionId"
+        label="Assigned session (optional)"
+        defaultValue=""
+        fullWidth
+      >
         <MenuItem value="">None</MenuItem>
         {events.flatMap((event) =>
           event.sessions.map((session) => (
@@ -113,16 +129,36 @@ export function DeviceEditForm({
       <input type="hidden" name="deviceUuid" value={device.id} />
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField name="laneLabel" label="Lane label" defaultValue={device.laneLabel} fullWidth size="small" />
+          <TextField
+            name="laneLabel"
+            label="Lane label"
+            defaultValue={device.laneLabel}
+            fullWidth
+            size="small"
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField select name="mode" label="Mode" defaultValue={device.mode} fullWidth size="small">
+          <TextField
+            select
+            name="mode"
+            label="Mode"
+            defaultValue={device.mode}
+            fullWidth
+            size="small"
+          >
             <MenuItem value="kiosk">Kiosk</MenuItem>
             <MenuItem value="writer">Writer</MenuItem>
           </TextField>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField select name="eventId" label="Event" defaultValue={device.eventId ?? ''} fullWidth size="small">
+          <TextField
+            select
+            name="eventId"
+            label="Event"
+            defaultValue={device.eventId ?? ''}
+            fullWidth
+            size="small"
+          >
             <MenuItem value="">None</MenuItem>
             {events.map((event) => (
               <MenuItem key={event.id} value={event.id}>
@@ -132,7 +168,14 @@ export function DeviceEditForm({
           </TextField>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField select name="sessionId" label="Session" defaultValue={device.sessionId ?? ''} fullWidth size="small">
+          <TextField
+            select
+            name="sessionId"
+            label="Session"
+            defaultValue={device.sessionId ?? ''}
+            fullWidth
+            size="small"
+          >
             <MenuItem value="">None</MenuItem>
             {events.flatMap((event) =>
               event.sessions.map((session) => (
@@ -159,7 +202,10 @@ export function DeviceEditForm({
       {state.error ? <Alert severity="error">{state.error}</Alert> : null}
       {state.secret ? (
         <Alert severity="warning">
-          New secret (shown once): <Box component="code" sx={{ wordBreak: 'break-all' }}>{state.secret}</Box>
+          New secret (shown once):{' '}
+          <Box component="code" sx={{ wordBreak: 'break-all' }}>
+            {state.secret}
+          </Box>
         </Alert>
       ) : null}
     </Stack>

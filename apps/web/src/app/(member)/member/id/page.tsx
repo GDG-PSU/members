@@ -47,8 +47,8 @@ export default async function DigitalIdPage() {
           Your digital ID
         </Typography>
         <Typography color="text.secondary">
-          Show this to an organizer if your card is unavailable. It opens your public profile — it is not
-          a password and does not authorize attendance by itself.
+          Show this to an organizer if your card is unavailable. It opens your public profile — it
+          is not a password and does not authorize attendance by itself.
         </Typography>
       </Stack>
 
@@ -61,7 +61,13 @@ export default async function DigitalIdPage() {
                 component="img"
                 src={qr}
                 alt={`QR code linking to ${member.displayName}'s GDG@PSU profile`}
-                sx={{ width: '100%', maxWidth: 320, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}
+                sx={{
+                  width: '100%',
+                  maxWidth: 320,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
               />
               <Typography variant="h5">{member.displayName}</Typography>
               <StatusChip status="active" label="Active card" />

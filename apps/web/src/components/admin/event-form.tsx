@@ -147,7 +147,14 @@ export function EventForm({ event, returnTo }: { event?: EventValues; returnTo: 
       {event?.id ? <input type="hidden" name="eventId" value={event.id} /> : null}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, sm: 8 }}>
-          <TextField name="name" label="Event name" defaultValue={event?.name} required fullWidth slotProps={{ htmlInput: { maxLength: 120 } }} />
+          <TextField
+            name="name"
+            label="Event name"
+            defaultValue={event?.name}
+            required
+            fullWidth
+            slotProps={{ htmlInput: { maxLength: 120 } }}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField
@@ -160,10 +167,24 @@ export function EventForm({ event, returnTo }: { event?: EventValues; returnTo: 
           />
         </Grid>
         <Grid size={{ xs: 12 }}>
-          <TextField name="summary" label="Summary" defaultValue={event?.summary} fullWidth multiline minRows={2} slotProps={{ htmlInput: { maxLength: 400 } }} />
+          <TextField
+            name="summary"
+            label="Summary"
+            defaultValue={event?.summary}
+            fullWidth
+            multiline
+            minRows={2}
+            slotProps={{ htmlInput: { maxLength: 400 } }}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 5 }}>
-          <TextField name="location" label="Location" defaultValue={event?.location} fullWidth slotProps={{ htmlInput: { maxLength: 160 } }} />
+          <TextField
+            name="location"
+            label="Location"
+            defaultValue={event?.location}
+            fullWidth
+            slotProps={{ htmlInput: { maxLength: 160 } }}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
@@ -213,10 +234,12 @@ export function EventForm({ event, returnTo }: { event?: EventValues; returnTo: 
       <SessionFields prefix="bonus" label="Bonus session (optional)" session={bonus} optional />
 
       <Typography variant="caption" color="text.secondary">
-        Times are interpreted as America/New_York wall-clock. Rewards are snapshotted onto each attendance
-        record when checkout is confirmed, so later edits never rewrite history.
+        Times are interpreted as America/New_York wall-clock. Rewards are snapshotted onto each
+        attendance record when checkout is confirmed, so later edits never rewrite history.
       </Typography>
-      <SubmitButton pendingLabel="Saving event…">{event?.id ? 'Save changes' : 'Create event'}</SubmitButton>
+      <SubmitButton pendingLabel="Saving event…">
+        {event?.id ? 'Save changes' : 'Create event'}
+      </SubmitButton>
     </Stack>
   );
 }

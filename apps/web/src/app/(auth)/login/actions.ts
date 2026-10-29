@@ -32,7 +32,12 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   const admin = createSupabaseAdmin();
   const [{ data: member }, { data: role }] = await Promise.all([
     admin.from('members').select('id, status').eq('auth_user_id', data.user.id).maybeSingle(),
-    admin.from('user_roles').select('role').eq('auth_user_id', data.user.id).is('revoked_at', null).maybeSingle(),
+    admin
+      .from('user_roles')
+      .select('role')
+      .eq('auth_user_id', data.user.id)
+      .is('revoked_at', null)
+      .maybeSingle(),
   ]);
 
   if (member && member.status !== 'active') {

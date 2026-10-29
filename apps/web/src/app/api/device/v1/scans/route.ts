@@ -10,18 +10,36 @@ export async function POST(request: Request) {
   try {
     const context = await authenticateDevice(request);
     if (context.device.mode !== 'kiosk') {
-      throw new ApiError(409, 'conflict', 'This lane is in writer mode; attendance is paused.', context.requestId);
+      throw new ApiError(
+        409,
+        'conflict',
+        'This lane is in writer mode; attendance is paused.',
+        context.requestId,
+      );
     }
 
     const payload = await parseJson(request, deviceScanSchema);
     const session = await currentSessionForDevice(context);
     if (!session || !session.is_enabled) {
-      throw new ApiError(409, 'conflict', 'No active session is assigned to this lane.', context.requestId);
+      throw new ApiError(
+        409,
+        'conflict',
+        'No active session is assigned to this lane.',
+        context.requestId,
+      );
     }
 
     const now = Date.now();
-    if (now < Date.parse(session.check_in_opens_at) || now > Date.parse(session.check_out_closes_at)) {
-      throw new ApiError(409, 'conflict', 'Outside the attendance window for this session.', context.requestId);
+    if (
+      now < Date.parse(session.check_in_opens_at) ||
+      now > Date.parse(session.check_out_closes_at)
+    ) {
+      throw new ApiError(
+        409,
+        'conflict',
+        'Outside the attendance window for this session.',
+        context.requestId,
+      );
     }
 
     const allowed = await context.admin.rpc('consume_rate_limit', {
@@ -54,7 +72,12 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (attendance?.checked_out_at) {
-      throw new ApiError(409, 'conflict', 'Attendance is already complete for this session.', context.requestId);
+      throw new ApiError(
+        409,
+        'conflict',
+        'Attendance is already complete for this session.',
+        context.requestId,
+      );
     }
 
     const action = attendance ? 'check_out' : 'check_in';
@@ -83,7 +106,12 @@ export async function POST(request: Request) {
           .eq('idempotency_key', payload.idempotencyKey)
           .maybeSingle();
         if (existing) {
-          return jsonOk({ scanId: existing.id, status: existing.status, action: existing.action, expiresAt: existing.expires_at });
+          return jsonOk({
+            scanId: existing.id,
+            status: existing.status,
+            action: existing.action,
+            expiresAt: existing.expires_at,
+          });
         }
       }
       console.error(`[device-scan:${context.requestId}]`, error.message);

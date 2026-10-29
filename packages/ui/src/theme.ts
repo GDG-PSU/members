@@ -23,9 +23,24 @@ type PaletteColorOptions = {
 const typography: ThemeOptions['typography'] = {
   fontFamily:
     '"Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif',
-  h1: { fontSize: 'clamp(2.4rem, 6vw, 4.5rem)', fontWeight: 700, lineHeight: 1.02, letterSpacing: '-0.045em' },
-  h2: { fontSize: 'clamp(1.9rem, 3.4vw, 2.8rem)', fontWeight: 700, lineHeight: 1.08, letterSpacing: '-0.035em' },
-  h3: { fontSize: 'clamp(1.4rem, 2.2vw, 1.85rem)', fontWeight: 650, lineHeight: 1.15, letterSpacing: '-0.025em' },
+  h1: {
+    fontSize: 'clamp(2.4rem, 6vw, 4.5rem)',
+    fontWeight: 700,
+    lineHeight: 1.02,
+    letterSpacing: '-0.045em',
+  },
+  h2: {
+    fontSize: 'clamp(1.9rem, 3.4vw, 2.8rem)',
+    fontWeight: 700,
+    lineHeight: 1.08,
+    letterSpacing: '-0.035em',
+  },
+  h3: {
+    fontSize: 'clamp(1.4rem, 2.2vw, 1.85rem)',
+    fontWeight: 650,
+    lineHeight: 1.15,
+    letterSpacing: '-0.025em',
+  },
   h4: { fontSize: '1.35rem', fontWeight: 650, letterSpacing: '-0.02em' },
   h5: { fontSize: '1.1rem', fontWeight: 650, letterSpacing: '-0.01em' },
   h6: { fontSize: '0.98rem', fontWeight: 650 },
@@ -46,9 +61,16 @@ const shared: ThemeOptions = {
       styleOverrides: {
         html: { WebkitFontSmoothing: 'antialiased', scrollBehavior: 'smooth' },
         '::selection': { background: 'rgba(37, 99, 235, 0.25)' },
-        '*:focus-visible': { outline: '3px solid var(--mui-palette-primary-main)', outlineOffset: 2 },
+        '*:focus-visible': {
+          outline: '3px solid var(--mui-palette-primary-main)',
+          outlineOffset: 2,
+        },
         '@media (prefers-reduced-motion: reduce)': {
-          '*': { animationDuration: '0.01ms !important', transitionDuration: '0.01ms !important', scrollBehavior: 'auto !important' },
+          '*': {
+            animationDuration: '0.01ms !important',
+            transitionDuration: '0.01ms !important',
+            scrollBehavior: 'auto !important',
+          },
         },
       },
     },

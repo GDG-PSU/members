@@ -13,6 +13,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { revokeInvitationAction } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
 import { InviteForm } from '@/components/admin/invite-form';
+import { AdminInviteForm } from '@/components/admin/admin-invite-form';
 import { RegenerateInvitationLink } from '@/components/admin/regenerate-invitation-link';
 
 export const dynamic = 'force-dynamic';
@@ -41,28 +42,48 @@ export default async function InvitationsPage({
       <Flash notice={notice} error={error} />
       <Grid container spacing={4}>
         <Grid size={{ xs: 12, md: 4 }}>
-          <Card sx={{ position: { md: 'sticky' }, top: { md: 96 } }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="overline" color="primary">
-                Paid member
-              </Typography>
-              <Typography variant="h4" sx={{ mb: 1 }}>
-                Invite a member
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-                Record the date dues were paid, then generate a one-time invitation link and send it
-                yourself. No profile exists until the member completes setup.
-              </Typography>
-              <InviteForm />
-            </CardContent>
-          </Card>
+          <Stack spacing={4} sx={{ position: { md: 'sticky' }, top: { md: 96 } }}>
+            <Card>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="overline" color="primary">
+                  Paid member
+                </Typography>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  Invite a member
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+                  Record the date dues were paid, then generate a one-time invitation link and send
+                  it yourself. No profile exists until the member completes setup.
+                </Typography>
+                <InviteForm />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="overline" color="secondary">
+                  Staff access
+                </Typography>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  Invite an administrator
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+                  Grants the admin role and returns a one-time link. The invitee enrolls TOTP before
+                  the portal opens.
+                </Typography>
+                <AdminInviteForm />
+              </CardContent>
+            </Card>
+          </Stack>
         </Grid>
         <Grid size={{ xs: 12, md: 8 }}>
           <Typography variant="h3" sx={{ mb: 2 }}>
             Invitation history
           </Typography>
           {!invitations || invitations.length === 0 ? (
-            <EmptyState title="No invitations yet" description="Invite the first paid member using the form." />
+            <EmptyState
+              title="No invitations yet"
+              description="Invite the first paid member using the form."
+            />
           ) : (
             <DataTable
               caption="Member invitations"
@@ -77,7 +98,9 @@ export default async function InvitationsPage({
                       <Typography variant="subtitle2">{row.email as string}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         Paid since {formatDate(row.paid_since as string)}
-                        {row.accepted_at ? ` · accepted ${formatDate(row.accepted_at as string)}` : ''}
+                        {row.accepted_at
+                          ? ` · accepted ${formatDate(row.accepted_at as string)}`
+                          : ''}
                       </Typography>
                     </Box>
                   ),
