@@ -117,7 +117,7 @@ The repository includes `vercel.json`, which sets the Next.js framework, the fro
 
 ## 9. Database branching for pull requests
 
-The Supabase project is `potjjlmgnrqxseeendmx`. Preview database branching follows [Supabase: Branching with GitHub integration](https://supabase.com/docs/guides/deployment/branching/github-integration). The repository side is ready: `supabase/migrations` holds the full ordered set and the project now records a CLI-compatible history for 0001–0009. Whether the GitHub app itself is installed cannot be confirmed with database credentials alone; if it is not, an organization administrator must install the Supabase GitHub app and authorize the repository.
+The Supabase project is `potjjlmgnrqxseeendmx`. Preview database branching follows [Supabase: Branching with GitHub integration](https://supabase.com/docs/guides/deployment/branching/github-integration). The repository side is ready: `supabase/migrations` holds the full ordered set and the project now records a CLI-compatible history for 0001–0010. Whether the GitHub app itself is installed cannot be confirmed with database credentials alone; if it is not, an organization administrator must install the Supabase GitHub app and authorize the repository.
 
 To enable it:
 
