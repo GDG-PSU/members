@@ -1,14 +1,7 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import { MetricCard } from '@gdg/ui';
+import Link from 'next/link';
+import { ArrowRight, Gift, Mail, ScanLine, Users } from 'lucide-react';
+import { buttonVariants, Card, CardContent, MetricCard, PageShell } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -47,138 +40,112 @@ export default async function AdminOverviewPage() {
       .limit(8),
   ]);
 
+  const readiness = [
+    { label: 'Queued card writes', value: jobs.count ?? 0 },
+    { label: 'Active rewards', value: rewards.count ?? 0 },
+    { label: 'Pending scans', value: scans.count ?? 0 },
+  ];
+
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
-      >
-        <Box>
-          <Typography variant="overline" color="primary">
-            Organizer console
-          </Typography>
-          <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
-            Event control
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1.5}>
-          <Button component="a" href="/admin/kiosk" variant="contained">
+    <PageShell>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="type-overline text-primary">Organizer console</p>
+          <h1 className="type-h1 mt-2">Event control</h1>
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          <Link href="/admin/kiosk" className={buttonVariants({})}>
             Open kiosk
-          </Button>
-          <Button component="a" href="/admin/events" variant="outlined">
+          </Link>
+          <Link href="/admin/events" className={buttonVariants({ variant: 'secondary' })}>
             Events
-          </Button>
-        </Stack>
-      </Stack>
+          </Link>
+        </div>
+      </div>
 
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard label="Active members" value={members.count ?? 0} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard label="Pending invitations" value={invites.count ?? 0} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard
-            label="Pending scans"
-            value={scans.count ?? 0}
-            hint="Awaiting human confirmation"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard label="Open redemption requests" value={redemptions.count ?? 0} />
-        </Grid>
-      </Grid>
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Active members" value={members.count ?? 0} icon={<Users />} />
+        <MetricCard label="Pending invitations" value={invites.count ?? 0} icon={<Mail />} />
+        <MetricCard
+          label="Pending scans"
+          value={scans.count ?? 0}
+          hint="Awaiting human confirmation"
+          icon={<ScanLine />}
+        />
+        <MetricCard
+          label="Open redemption requests"
+          value={redemptions.count ?? 0}
+          icon={<Gift />}
+        />
+      </div>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>
-                Recent actions
-              </Typography>
-              <Stack spacing={1.5}>
-                {(recentAudit.data ?? []).map((row) => (
-                  <Stack
-                    key={row.id as number}
-                    direction="row"
-                    spacing={2}
-                    sx={{ alignItems: 'baseline' }}
-                  >
-                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 138 }}>
-                      {formatDateTime(row.created_at as string)}
-                    </Typography>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle2">{row.action as string}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {row.target_type as string}
-                        {row.reason ? ` · ${row.reason as string}` : ''}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                ))}
-                {(recentAudit.data ?? []).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    No admin actions recorded yet.
-                  </Typography>
-                ) : null}
-              </Stack>
-              <Button
-                component="a"
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardContent className="pt-5">
+            <div className="mb-1 flex items-baseline justify-between">
+              <h2 className="type-h3">Recent actions</h2>
+              <Link
                 href="/admin/audit"
-                size="small"
-                endIcon={<ArrowForwardIcon />}
-                sx={{ mt: 2 }}
+                className={buttonVariants({ variant: 'ghost', size: 'sm', className: '-mr-2' })}
               >
                 Full audit log
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>
-                Event readiness
-              </Typography>
-              <Stack spacing={1.5}>
-                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Queued card writes</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {jobs.count ?? 0}
-                  </Typography>
-                </Stack>
-                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Active rewards</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {rewards.count ?? 0}
-                  </Typography>
-                </Stack>
-                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Pending scans</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {scans.count ?? 0}
-                  </Typography>
-                </Stack>
-              </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Card writes and kiosk confirmations require a human in the loop. Points are never
-                granted by a tap alone.
-              </Typography>
-              <Button
-                component="a"
-                href="/admin/devices"
-                size="small"
-                sx={{ mt: 2 }}
-                endIcon={<ArrowForwardIcon />}
-              >
-                Device health
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </Container>
+                <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
+            </div>
+
+            {(recentAudit.data ?? []).length === 0 ? (
+              <p className="py-6 text-sm text-muted-foreground">No admin actions recorded yet.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {(recentAudit.data ?? []).map((row) => (
+                  <li
+                    key={row.id as number}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2.5"
+                  >
+                    <span className="w-[8.6rem] shrink-0 font-mono text-[0.7rem] tabular-nums text-muted-foreground">
+                      {formatDateTime(row.created_at as string)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {row.action as string}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {row.target_type as string}
+                        {row.reason ? ` · ${row.reason as string}` : ''}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-5">
+            <h2 className="type-h3">Event readiness</h2>
+            <dl className="mt-3 divide-y divide-border">
+              {readiness.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-4 py-2.5">
+                  <dt className="text-sm text-muted-foreground">{item.label}</dt>
+                  <dd className="font-mono text-sm font-semibold tabular-nums">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              Card writes and kiosk confirmations require a human in the loop. Points are never
+              granted by a tap alone.
+            </p>
+            <Link
+              href="/admin/devices"
+              className={buttonVariants({ variant: 'soft', size: 'sm', className: 'mt-3' })}
+            >
+              Device health
+              <ArrowRight className="size-3.5" aria-hidden />
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
   );
 }

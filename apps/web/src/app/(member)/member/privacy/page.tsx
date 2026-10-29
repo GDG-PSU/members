@@ -1,8 +1,5 @@
 import type { Metadata } from 'next';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { PageShell } from '@gdg/ui';
 import { defaultVisibility, type Visibility } from '@gdg/contracts';
 import { requireMember } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
@@ -48,30 +45,24 @@ export default async function PrivacySettingsPage() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 9 } }}>
-      <Grid container spacing={4}>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Stack spacing={1}>
-            <Typography variant="overline" color="primary">
-              Your call
-            </Typography>
-            <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.6rem' } }}>
-              Privacy settings
-            </Typography>
-            <Typography color="text.secondary">
-              Everything here can be changed at any time. Email is public by default, but you can
-              hide it. Turning off the public profile hides every field at once.
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
-              The leaderboard only includes public profiles with both points and leaderboard
-              visibility enabled.
-            </Typography>
-          </Stack>
-        </Grid>
-        <Grid size={{ xs: 12, md: 7 }}>
+    <PageShell width="lg" className="pb-10 pt-6 sm:pt-8">
+      <div className="grid gap-6 md:grid-cols-[0.75fr_1.25fr] md:gap-8">
+        <div className="md:sticky md:top-24 md:self-start">
+          <p className="type-overline text-primary">Your call</p>
+          <h1 className="type-h2 mt-2">Privacy settings</h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            Everything here can be changed at any time. Email is public by default, but you can hide
+            it. Turning off the public profile hides every field at once.
+          </p>
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            The leaderboard only includes public profiles with both points and leaderboard
+            visibility enabled.
+          </p>
+        </div>
+        <div className="min-w-0">
           <PrivacyForm initial={initial} />
-        </Grid>
-      </Grid>
-    </Container>
+        </div>
+      </div>
+    </PageShell>
   );
 }

@@ -1,25 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-
-import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import AppBar from '@mui/material/AppBar';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Drawer from '@mui/material/Drawer';
-import IconButton from '@mui/material/IconButton';
-import List from '@mui/material/List';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
-import Stack from '@mui/material/Stack';
-import Toolbar from '@mui/material/Toolbar';
-import Typography from '@mui/material/Typography';
-import MenuIcon from '@mui/icons-material/Menu';
-import CloseIcon from '@mui/icons-material/Close';
-import { ThemeModeToggle, Wordmark } from '@gdg/ui';
+import { useState } from 'react';
+import { Menu, X } from 'lucide-react';
+import {
+  buttonVariants,
+  cn,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+  ThemeModeToggle,
+  Wordmark,
+} from '@gdg/ui';
 
 const publicLinks = [
   { href: '/leaderboard', label: 'Leaderboard' },
@@ -43,147 +37,152 @@ export function AppHeader({
     ...(isSignedIn ? [{ href: '/member', label: 'My dashboard' }] : []),
     ...(isAdmin ? [{ href: '/admin', label: 'Admin' }] : []),
   ];
+  const onAuthPage =
+    pathname === '/login' ||
+    pathname === '/forgot-password' ||
+    pathname === '/account/password' ||
+    pathname === '/admin-mfa' ||
+    pathname.startsWith('/invite/');
 
-  const nav = (
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 0.5, md: 0.5 }}>
-      {links.map((link) => {
-        const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
-        return (
-          <Button
-            key={link.href}
-            component={Link}
-            href={link.href}
-            color={active ? 'primary' : 'inherit'}
-            aria-current={active ? 'page' : undefined}
-            sx={{
-              justifyContent: { xs: 'flex-start', md: 'center' },
-              fontWeight: active ? 700 : 550,
-              bgcolor: active ? 'action.selected' : 'transparent',
-              px: 1.75,
-            }}
-          >
-            {link.label}
-          </Button>
-        );
-      })}
-    </Stack>
-  );
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <AppBar
-      position="sticky"
-      color="transparent"
-      sx={{
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        backdropFilter: 'saturate(150%) blur(14px)',
-        bgcolor: 'rgba(255,255,255,0.02)',
-        zIndex: (theme) => theme.zIndex.appBar,
-      }}
-    >
-      <Container maxWidth="lg">
-        <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 }, gap: 2 }}>
-          <Box
-            component={Link}
-            href="/"
-            aria-label="GDG@PSU home"
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              textDecoration: 'none',
-              color: 'inherit',
-            }}
-          >
-            <Box
-              aria-hidden
-              sx={{
-                width: 10,
-                height: 10,
-                borderRadius: '3px',
-                background: 'linear-gradient(135deg, #1450a3 0%, #0f766e 100%)',
-              }}
-            />
-            <Wordmark />
-          </Box>
+    <header className="sticky top-0 z-40 border-b border-border/80 bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-2 px-4 sm:px-6 md:h-[4.5rem] lg:px-8">
+        <Link
+          href="/"
+          aria-label="MemberPass home"
+          className="flex shrink-0 items-center rounded-lg pr-1 transition-opacity hover:opacity-80"
+        >
+          <Wordmark />
+        </Link>
 
-          <Box sx={{ display: { xs: 'none', md: 'flex' }, ml: 2 }}>{nav}</Box>
-          <Box sx={{ flexGrow: 1 }} />
-          <ThemeModeToggle />
-          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1 }}>
-            {isSignedIn ? (
-              <>
-                <Typography variant="body2" sx={{ maxWidth: 140, fontWeight: 600 }} noWrap>
-                  {displayName ?? 'Member'}
-                </Typography>
-                <form action="/api/auth/signout" method="post">
-                  <Button type="submit" size="small" color="inherit">
-                    Sign out
-                  </Button>
-                </form>
-              </>
-            ) : (
-              <Button component={Link} href="/login" size="small" variant="contained">
-                Member sign in
-              </Button>
-            )}
-          </Box>
-          <IconButton
-            sx={{ display: { md: 'none' } }}
+        <nav aria-label="Primary" className="ml-2 hidden items-center gap-1 md:flex">
+          {links.map((link) => {
+            const active = isActive(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'inline-flex h-9 items-center rounded-full px-3.5 text-sm transition-colors',
+                  active
+                    ? 'bg-primary-soft font-bold text-primary'
+                    : 'font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeModeToggle className="hidden md:inline-flex" />
+          {isSignedIn ? (
+            <>
+              <span className="hidden max-w-[9rem] truncate text-sm font-semibold lg:block">
+                {displayName ?? (isAdmin ? 'Organizer' : 'Member')}
+              </span>
+              <form action="/api/auth/signout" method="post" className="hidden sm:block">
+                <button
+                  type="submit"
+                  className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
+                >
+                  Sign out
+                </button>
+              </form>
+            </>
+          ) : onAuthPage ? null : (
+            <Link
+              href="/login"
+              className={cn(buttonVariants({ size: 'sm' }), 'hidden sm:inline-flex')}
+            >
+              Sign in
+            </Link>
+          )}
+
+          <button
+            type="button"
             aria-label="Open navigation"
             aria-expanded={open}
             onClick={() => setOpen(true)}
+            className="grid size-10 place-items-center rounded-xl border border-border bg-card text-foreground transition-colors hover:bg-muted md:hidden"
           >
-            <MenuIcon />
-          </IconButton>
-        </Toolbar>
-      </Container>
+            <Menu className="size-5" />
+          </button>
+        </div>
+      </div>
 
-      <Drawer anchor="right" open={open} onClose={() => setOpen(false)}>
-        <Box sx={{ width: 288, p: 2 }} role="navigation" aria-label="Mobile navigation">
-          <Stack
-            direction="row"
-            sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1 }}
-          >
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          className="left-auto right-0 top-0 h-dvh w-[84vw] max-w-xs translate-x-0 translate-y-0 rounded-none rounded-l-3xl border-y-0 border-r-0 p-5"
+          showClose={false}
+        >
+          <DialogTitle className="sr-only">Navigation</DialogTitle>
+          <div className="flex items-center justify-between">
             <Wordmark compact />
-            <IconButton aria-label="Close navigation" onClick={() => setOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Stack>
-          <Divider sx={{ mb: 1 }} />
-          <List>
-            {links.map((link) => (
-              <ListItemButton
-                key={link.href}
-                component={Link}
-                href={link.href}
-                selected={pathname === link.href || pathname.startsWith(`${link.href}/`)}
-                onClick={() => setOpen(false)}
-              >
-                <ListItemText primary={link.label} />
-              </ListItemButton>
-            ))}
-          </List>
-          <Divider sx={{ my: 1 }} />
-          {isSignedIn ? (
-            <form action="/api/auth/signout" method="post">
-              <Button type="submit" fullWidth color="inherit">
-                Sign out
-              </Button>
-            </form>
-          ) : (
-            <Button
-              component={Link}
-              href="/login"
-              fullWidth
-              variant="contained"
-              onClick={() => setOpen(false)}
+            <DialogClose
+              aria-label="Close navigation"
+              className="grid size-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              Member sign in
-            </Button>
-          )}
-        </Box>
-      </Drawer>
-    </AppBar>
+              <X className="size-4" />
+            </DialogClose>
+          </div>
+
+          <nav aria-label="Mobile navigation" className="mt-6">
+            <ul className="space-y-1">
+              {links.map((link) => {
+                const active = isActive(link.href);
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      onClick={() => setOpen(false)}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'flex h-11 items-center rounded-xl px-3.5 text-sm transition-colors',
+                        active
+                          ? 'bg-primary-soft font-bold text-primary'
+                          : 'font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <p className="type-overline mb-2 text-muted-foreground">Theme</p>
+            <ThemeModeToggle />
+          </div>
+
+          <div className="mt-6 border-t border-border pt-5">
+            {isSignedIn ? (
+              <form action="/api/auth/signout" method="post">
+                <button
+                  type="submit"
+                  className={cn(buttonVariants({ variant: 'secondary' }), 'w-full')}
+                >
+                  Sign out
+                </button>
+              </form>
+            ) : onAuthPage ? null : (
+              <Link
+                href="/login"
+                onClick={() => setOpen(false)}
+                className={cn(buttonVariants({}), 'w-full')}
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </header>
   );
 }

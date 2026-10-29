@@ -1,19 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import StarBorderOutlinedIcon from '@mui/icons-material/StarBorderOutlined';
-import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
-import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
-import { MemberAvatar } from '@gdg/ui';
+import { ArrowRight, CalendarDays, Link2, Lock, Star, Trophy } from 'lucide-react';
+import { buttonVariants, Card, CardContent, MemberAvatar, PageShell } from '@gdg/ui';
 import { getProfileState, getPublicProfile } from '@/lib/public/queries';
 import { formatDate } from '@/lib/format';
 
@@ -57,178 +46,147 @@ export default async function MemberProfilePage({
   }
 
   const name = profile.displayName ?? 'GDG@PSU member';
+  const hasStats =
+    profile.points !== null || profile.stars !== null || profile.attendedEvents !== null;
 
   return (
-    <Box
-      sx={{
-        background:
-          'radial-gradient(900px 400px at 80% -10%, rgba(20,80,163,0.16), transparent 60%), radial-gradient(600px 320px at 0% 5%, rgba(15,118,110,0.12), transparent 60%)',
-        minHeight: '70vh',
-      }}
-    >
-      <Container maxWidth="md" sx={{ py: { xs: 5, md: 9 } }}>
-        <Card sx={{ overflow: 'hidden' }}>
-          <Box
-            sx={{
-              height: 8,
-              background: 'linear-gradient(90deg, #1450a3 0%, #0f766e 55%, #a16207 100%)',
-            }}
-          />
-          <CardContent sx={{ p: { xs: 3, md: 4.5 } }}>
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={3}
-              sx={{ alignItems: { sm: 'center' } }}
-            >
-              <MemberAvatar name={name} photoUrl={profile.photoUrl} size={104} />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="h2" sx={{ fontSize: { xs: '2.2rem', md: '3rem' } }}>
-                  {name}
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1 }}>
-                  {profile.memberNumber ? (
-                    <Chip size="small" label={profile.memberNumber} variant="outlined" />
-                  ) : null}
-                  {profile.memberSince ? (
-                    <Chip
-                      size="small"
-                      label={`Member since ${formatDate(profile.memberSince)}`}
-                      variant="outlined"
-                    />
-                  ) : null}
-                </Stack>
-                {profile.email ? (
-                  <Typography variant="body2" sx={{ mt: 1.5 }}>
-                    {profile.email}
-                  </Typography>
+    <PageShell width="md" className="py-10 sm:py-14">
+      <Card className="overflow-hidden">
+        <div
+          aria-hidden
+          className="h-1.5 w-full bg-[linear-gradient(90deg,#4285f4_0%,#ea4335_25%,#fbbc04_50%,#34a853_75%,#4285f4_100%)]"
+        />
+        <CardContent className="p-6 sm:p-9">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+            <MemberAvatar name={name} photoUrl={profile.photoUrl} size={104} />
+            <div className="min-w-0 flex-1">
+              <h1 className="type-h1">{name}</h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {profile.memberNumber ? (
+                  <span className="inline-flex items-center rounded-full border border-border bg-subtle px-2.5 py-0.5 font-mono text-[0.72rem] font-semibold text-muted-foreground">
+                    {profile.memberNumber}
+                  </span>
                 ) : null}
-              </Box>
-            </Stack>
+                {profile.memberSince ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-subtle px-2.5 py-0.5 text-[0.72rem] font-medium text-muted-foreground">
+                    <CalendarDays className="size-3" aria-hidden />
+                    Member since {formatDate(profile.memberSince)}
+                  </span>
+                ) : null}
+              </div>
+              {profile.email ? (
+                <a
+                  href={`mailto:${profile.email}`}
+                  className="mt-2.5 inline-flex text-sm font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  {profile.email}
+                </a>
+              ) : null}
+            </div>
+          </div>
 
-            {profile.about ? (
-              <Typography variant="body1" sx={{ mt: 3.5, maxWidth: 620 }}>
-                {profile.about}
-              </Typography>
-            ) : null}
+          {profile.about ? (
+            <p className="mt-6 max-w-2xl text-[0.95rem] leading-relaxed text-muted-foreground">
+              {profile.about}
+            </p>
+          ) : null}
 
-            {profile.links.length > 0 ? (
-              <>
-                <Divider sx={{ my: 3 }} />
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-                  {profile.links.map((link) => (
-                    <Chip
-                      key={link.url}
-                      icon={<LinkOutlinedIcon />}
-                      label={link.label}
-                      component="a"
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow ugc"
-                      clickable
-                      variant="outlined"
-                    />
-                  ))}
-                </Stack>
-              </>
-            ) : null}
+          {profile.links.length > 0 ? (
+            <>
+              <div className="my-6 h-px bg-border" />
+              <div className="flex flex-wrap gap-2">
+                {profile.links.map((link) => (
+                  <a
+                    key={link.url}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow ugc"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  >
+                    <Link2 className="size-3.5" aria-hidden />
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </>
+          ) : null}
 
-            {profile.points !== null ||
-            profile.stars !== null ||
-            profile.attendedEvents !== null ? (
-              <>
-                <Divider sx={{ my: 3.5 }} />
-                <Grid container spacing={2}>
-                  {profile.points !== null ? (
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{ alignItems: 'center', color: 'text.secondary' }}
-                      >
-                        <EmojiEventsOutlinedIcon fontSize="small" />
-                        <Typography variant="overline">Spendable points</Typography>
-                      </Stack>
-                      <Typography variant="h2" sx={{ fontSize: '2.4rem' }}>
-                        {profile.points}
-                      </Typography>
-                    </Grid>
-                  ) : null}
-                  {profile.stars !== null ? (
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{ alignItems: 'center', color: 'text.secondary' }}
-                      >
-                        <StarBorderOutlinedIcon fontSize="small" />
-                        <Typography variant="overline">Lifetime stars</Typography>
-                      </Stack>
-                      <Typography variant="h2" sx={{ fontSize: '2.4rem' }}>
-                        {profile.stars}
-                      </Typography>
-                    </Grid>
-                  ) : null}
-                  {profile.attendedEvents !== null ? (
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{ alignItems: 'center', color: 'text.secondary' }}
-                      >
-                        <EmojiEventsOutlinedIcon fontSize="small" />
-                        <Typography variant="overline">Events attended</Typography>
-                      </Stack>
-                      <Typography variant="h2" sx={{ fontSize: '2.4rem' }}>
-                        {profile.attendedEvents}
-                      </Typography>
-                    </Grid>
-                  ) : null}
-                </Grid>
-              </>
-            ) : null}
-          </CardContent>
-        </Card>
+          {hasStats ? (
+            <>
+              <div className="my-6 h-px bg-border" />
+              <div className="grid gap-3 sm:grid-cols-3">
+                {profile.points !== null ? (
+                  <div className="rounded-xl border border-border bg-subtle px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Trophy className="size-3.5" aria-hidden />
+                      <span className="type-overline text-muted-foreground">Spendable points</span>
+                    </div>
+                    <p className="mt-1 text-[1.9rem] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
+                      {profile.points}
+                    </p>
+                  </div>
+                ) : null}
+                {profile.stars !== null ? (
+                  <div className="rounded-xl border border-border bg-subtle px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Star className="size-3.5" aria-hidden />
+                      <span className="type-overline text-muted-foreground">Lifetime stars</span>
+                    </div>
+                    <p className="mt-1 text-[1.9rem] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
+                      {profile.stars}
+                    </p>
+                  </div>
+                ) : null}
+                {profile.attendedEvents !== null ? (
+                  <div className="rounded-xl border border-border bg-subtle px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <CalendarDays className="size-3.5" aria-hidden />
+                      <span className="type-overline text-muted-foreground">Events attended</span>
+                    </div>
+                    <p className="mt-1 text-[1.9rem] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
+                      {profile.attendedEvents}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={1.5}
-          sx={{ mt: 3, justifyContent: 'space-between' }}
-        >
-          <Typography variant="caption" color="text.secondary">
-            This profile is managed by the member. Visibility is theirs to change.
-          </Typography>
-          <Button component="a" href="/leaderboard" size="small">
-            See the leaderboard
-          </Button>
-        </Stack>
-      </Container>
-    </Box>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          This profile is managed by the member. Visibility is theirs to change.
+        </p>
+        <Link href="/leaderboard" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+          See the leaderboard
+          <ArrowRight className="size-4" aria-hidden />
+        </Link>
+      </div>
+    </PageShell>
   );
 }
 
 /** Neutral state for an existing profile the member has made private. */
 function PrivateProfile() {
   return (
-    <Box sx={{ minHeight: '60vh' }}>
-      <Container maxWidth="sm" sx={{ py: { xs: 6, md: 10 } }}>
-        <Card>
-          <CardContent sx={{ p: { xs: 3, md: 4.5 }, textAlign: 'center' }}>
-            <Typography variant="overline" color="text.secondary">
-              Member profile
-            </Typography>
-            <Typography variant="h3" sx={{ mt: 1, mb: 1.5 }}>
-              This profile is private
-            </Typography>
-            <Typography color="text.secondary">
-              This member has chosen to keep their profile hidden. If you scanned their card, ask
-              them directly — a private profile never exposes contact details here.
-            </Typography>
-            <Button component="a" href="/" variant="outlined" sx={{ mt: 3 }}>
-              Back to the hub
-            </Button>
-          </CardContent>
-        </Card>
-      </Container>
-    </Box>
+    <PageShell width="sm" className="py-14 sm:py-20">
+      <Card>
+        <CardContent className="flex flex-col items-center p-8 text-center sm:p-10">
+          <span className="mb-4 grid size-12 place-items-center rounded-2xl border border-border bg-subtle text-muted-foreground">
+            <Lock className="size-5" aria-hidden />
+          </span>
+          <p className="type-overline text-muted-foreground">Member profile</p>
+          <h1 className="type-h3 mt-2">This profile is private</h1>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+            This member has chosen to keep their profile hidden. If you scanned their card, ask them
+            directly — a private profile never exposes contact details here.
+          </p>
+          <Link href="/" className={buttonVariants({ variant: 'secondary', className: 'mt-6' })}>
+            Back to the hub
+          </Link>
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }

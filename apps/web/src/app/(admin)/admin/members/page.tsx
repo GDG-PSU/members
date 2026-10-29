@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import { DataTable, EmptyState, MemberAvatar, StatusChip } from '@gdg/ui';
+import Link from 'next/link';
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  Input,
+  MemberAvatar,
+  PageShell,
+  StatusChip,
+  buttonVariants,
+} from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
@@ -64,35 +68,27 @@ export default async function MembersPage({
     );
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
+    <PageShell>
       <Flash notice={notice} error={error} />
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
-      >
-        <Box>
-          <Typography variant="overline" color="primary">
-            People
-          </Typography>
-          <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
-            Members
-          </Typography>
-        </Box>
-        <Box component="form" method="get" sx={{ display: 'flex', gap: 1 }}>
-          <TextField
+
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="type-overline text-primary">People</p>
+          <h1 className="type-h2 mt-1">Members</h1>
+        </div>
+        <form method="get" className="flex w-full gap-2 sm:w-auto">
+          <Input
             name="q"
             defaultValue={q}
             placeholder="Search name, email, member no."
-            size="small"
-            sx={{ minWidth: { sm: 300 } }}
-            slotProps={{ htmlInput: { 'aria-label': 'Search members' } }}
+            aria-label="Search members"
+            className="h-10 sm:w-72"
           />
-          <Button type="submit" variant="outlined">
+          <Button type="submit" variant="secondary" size="sm" className="h-10 shrink-0">
             Search
           </Button>
-        </Box>
-      </Stack>
+        </form>
+      </div>
 
       {members.length === 0 ? (
         <EmptyState
@@ -113,35 +109,33 @@ export default async function MembersPage({
               key: 'member',
               header: 'Member',
               render: (row) => (
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                <span className="flex items-center gap-3">
                   <MemberAvatar name={row.name} photoUrl={row.photo} size={38} />
-                  <Box>
-                    <Typography
-                      variant="subtitle2"
-                      component="a"
+                  <span className="min-w-0">
+                    <Link
                       href={`/admin/members/${row.id}`}
-                      sx={{ textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                      className="block truncate text-sm font-semibold underline-offset-2 hover:text-primary hover:underline"
                     >
                       {row.name}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    </Link>
+                    <span className="block truncate text-xs text-muted-foreground">
                       {row.email}
-                    </Typography>
-                  </Box>
-                </Stack>
+                    </span>
+                  </span>
+                </span>
               ),
             },
             {
               key: 'number',
               header: 'Member no.',
-              render: (row) => <Typography variant="body2">{row.publicNumber}</Typography>,
+              render: (row) => (
+                <span className="font-mono text-xs text-muted-foreground">{row.publicNumber}</span>
+              ),
             },
             {
               key: 'since',
               header: 'Member since',
-              render: (row) => (
-                <Typography variant="body2">{formatDate(row.memberSince)}</Typography>
-              ),
+              render: (row) => <span className="text-sm">{formatDate(row.memberSince)}</span>,
             },
             {
               key: 'status',
@@ -153,14 +147,17 @@ export default async function MembersPage({
               header: '',
               align: 'right',
               render: (row) => (
-                <Button component="a" href={`/admin/members/${row.id}`} size="small">
+                <Link
+                  href={`/admin/members/${row.id}`}
+                  className={buttonVariants({ size: 'sm', variant: 'secondary' })}
+                >
                   Manage
-                </Button>
+                </Link>
               ),
             },
           ]}
         />
       )}
-    </Container>
+    </PageShell>
   );
 }

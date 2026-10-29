@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { ShieldCheck } from 'lucide-react';
+import { Card, CardContent } from '@gdg/ui';
 import { getViewer } from '@/lib/auth/viewer';
 import { MfaPanel } from '@/components/admin/mfa-panel';
 import { SUPPORT_EMAIL } from '@/lib/env';
@@ -28,42 +25,49 @@ export default async function AdminMfaPage() {
   const verified = (factors?.totp ?? []).filter((factor) => factor.status === 'verified');
 
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 6, md: 10 } }}>
-      <Card>
-        <CardContent sx={{ p: { xs: 3, md: 4 } }}>
-          <Typography variant="overline" color="primary">
-            Organizer security
-          </Typography>
-          <Typography variant="h2" sx={{ mt: 1, mb: 1.5, fontSize: { xs: '2rem', md: '2.5rem' } }}>
-            Two-factor required
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
-            Admin routes require a verified authenticator (TOTP) session. This protects member data,
-            the points ledger and every event control.
-          </Typography>
-          <MfaPanel
-            hasVerifiedFactor={verified.length > 0}
-            email={viewer.user.email ?? ''}
-            verifiedFactorId={verified[0]?.id}
+    <main id="main" className="flex flex-1 items-center justify-center px-4 py-10 sm:py-14">
+      <div className="w-full max-w-lg">
+        <Card className="overflow-hidden">
+          <div
+            aria-hidden
+            className="h-1.5 w-full bg-[linear-gradient(90deg,var(--primary),#4285f4,#0d7a72)]"
           />
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 3 }}>
-            Lost your authenticator? Contact {SUPPORT_EMAIL} — an organizer with account access must
-            reset the factor from Supabase.
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-            <form action="/api/auth/signout" method="post">
-              <Typography
-                component="button"
-                type="submit"
-                variant="caption"
-                sx={{ background: 'none', border: 0, cursor: 'pointer', color: 'text.secondary' }}
-              >
-                Sign out
-              </Typography>
-            </form>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Container>
+          <CardContent className="p-6 sm:p-8">
+            <span className="grid size-11 place-items-center rounded-xl bg-primary-soft text-primary">
+              <ShieldCheck className="size-5" aria-hidden />
+            </span>
+            <p className="type-overline mt-4 text-primary">Organizer security</p>
+            <h1 className="type-h2 mt-2">Two-factor required</h1>
+            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+              Admin routes require a verified authenticator (TOTP) session. This protects member
+              data, the points ledger and every event control.
+            </p>
+
+            <div className="mt-6">
+              <MfaPanel
+                hasVerifiedFactor={verified.length > 0}
+                email={viewer.user.email ?? ''}
+                verifiedFactorId={verified[0]?.id}
+              />
+            </div>
+
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="text-[0.78rem] leading-relaxed text-muted-foreground">
+                Lost your authenticator? Contact {SUPPORT_EMAIL} — an organizer with account access
+                must reset the factor from Supabase.
+              </p>
+              <form action="/api/auth/signout" method="post" className="mt-2">
+                <button
+                  type="submit"
+                  className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  Sign out
+                </button>
+              </form>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </main>
   );
 }

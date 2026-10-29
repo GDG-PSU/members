@@ -1,8 +1,6 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
 import { regenerateInvitationLinkAction, type LinkState } from '@/app/(admin)/admin/actions';
 import { LinkDialog } from '@/components/admin/link-panel';
 import { SubmitButton } from '@/components/admin/ui';
@@ -15,17 +13,17 @@ export function RegenerateInvitationLink({ invitationId }: { invitationId: strin
   const open = Boolean(state.link) && dismissed !== state.link;
 
   return (
-    <Box>
-      <Box component="form" action={action}>
+    <div>
+      <form action={action}>
         <input type="hidden" name="invitationId" value={invitationId} />
         <SubmitButton size="small" variant="outlined" pendingLabel="Generating…">
           New link
         </SubmitButton>
-      </Box>
+      </form>
       {pending ? null : state.error ? (
-        <Typography variant="caption" color="error" role="alert">
+        <p className="mt-1 text-xs font-medium text-danger" role="alert">
           {state.error}
-        </Typography>
+        </p>
       ) : null}
       <LinkDialog
         open={open}
@@ -34,6 +32,6 @@ export function RegenerateInvitationLink({ invitationId }: { invitationId: strin
         email={state.email}
         title="New invitation link"
       />
-    </Box>
+    </div>
   );
 }

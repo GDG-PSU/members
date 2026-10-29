@@ -1,10 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { Card, CardContent } from '@gdg/ui';
 import { PasswordForm } from '@/components/auth/password-form';
 import { getViewer } from '@/lib/auth/viewer';
 
@@ -20,20 +16,16 @@ export default async function AccountPasswordPage() {
   if (!viewer.user) redirect('/login?next=/account/password');
 
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 5, md: 9 } }}>
-      <Stack spacing={3}>
-        <Typography variant="overline" color="primary">
-          Account recovery
-        </Typography>
-        <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.6rem' } }}>
-          Set a new password
-        </Typography>
-        <Card>
-          <CardContent sx={{ p: { xs: 3, md: 4 } }}>
-            <PasswordForm email={viewer.user.email ?? ''} />
-          </CardContent>
-        </Card>
-      </Stack>
-    </Container>
+    <div className="space-y-5">
+      <div>
+        <p className="type-overline text-primary">Account recovery</p>
+        <h1 className="type-h2 mt-2">Set a new password</h1>
+      </div>
+      <Card>
+        <CardContent className="p-6 sm:p-8">
+          <PasswordForm email={viewer.user.email ?? ''} />
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import MenuItem from '@mui/material/MenuItem';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import { DataTable, EmptyState, StatusChip } from '@gdg/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  DataTable,
+  EmptyState,
+  Field,
+  Input,
+  PageShell,
+  Select,
+  StatusChip,
+} from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -74,73 +75,65 @@ export default async function CardsPage({
   });
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
+    <PageShell className="pb-10">
       <Flash notice={notice} error={error} />
-      <Grid container spacing={4}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Card sx={{ position: { md: 'sticky' }, top: { md: 96 } }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="overline" color="primary">
-                One card at a time
-              </Typography>
-              <Typography variant="h4" sx={{ mb: 1 }}>
-                Prepare a card
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Generates a new opaque URL, revokes the previous card, and queues a single-use write
-                job on the selected writer lane. The token is never displayed.
-              </Typography>
-              <Stack component="form" action={prepareCardAction} spacing={2}>
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <TextField
-                  select
-                  name="memberId"
-                  label="Member"
-                  required
-                  size="small"
-                  defaultValue=""
-                >
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8">
+        <Card className="h-fit lg:sticky lg:top-24">
+          <CardContent className="p-5 sm:p-6">
+            <p className="type-overline text-primary">One card at a time</p>
+            <h1 className="type-h3 mt-1.5">Prepare a card</h1>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              Generates a new opaque URL, revokes the previous card, and queues a single-use write
+              job on the selected writer lane. The token is never displayed.
+            </p>
+
+            <form action={prepareCardAction} className="mt-4 space-y-3.5">
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Field label="Member" htmlFor="memberId" required>
+                <Select id="memberId" name="memberId" required defaultValue="">
+                  <option value="" disabled>
+                    Select a member
+                  </option>
                   {memberRows.map((member) => (
-                    <MenuItem key={member.id} value={member.id}>
+                    <option key={member.id} value={member.id}>
                       {member.label}
-                    </MenuItem>
+                    </option>
                   ))}
-                </TextField>
-                <TextField
-                  select
-                  name="deviceId"
-                  label="Writer lane"
-                  required
-                  size="small"
-                  defaultValue=""
-                >
+                </Select>
+              </Field>
+
+              <Field label="Writer lane" htmlFor="deviceId" required>
+                <Select id="deviceId" name="deviceId" required defaultValue="">
                   {(writers.data ?? []).length === 0 ? (
-                    <MenuItem value="" disabled>
+                    <option value="" disabled>
                       No active writer lane
-                    </MenuItem>
+                    </option>
                   ) : (
                     (writers.data ?? []).map((device) => (
-                      <MenuItem key={device.id as string} value={device.id as string}>
+                      <option key={device.id as string} value={device.id as string}>
                         {device.lane_label as string} ({device.device_id as string})
-                      </MenuItem>
+                      </option>
                     ))
                   )}
-                </TextField>
-                <TextField name="reason" label="Reason (optional)" size="small" />
-                <SubmitButton pendingLabel="Queuing…">Queue write job</SubmitButton>
-              </Stack>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                To enable writer mode, set the lane to Writer under Devices. That lane pauses
-                attendance scanning while it writes.
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+                </Select>
+              </Field>
 
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Typography variant="h3" sx={{ mb: 2 }}>
-            Card credentials
-          </Typography>
+              <Field label="Reason (optional)" htmlFor="reason">
+                <Input id="reason" name="reason" />
+              </Field>
+
+              <SubmitButton pendingLabel="Queuing…">Queue write job</SubmitButton>
+            </form>
+
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              To enable writer mode, set the lane to Writer under Devices. That lane pauses
+              attendance scanning while it writes.
+            </p>
+          </CardContent>
+        </Card>
+
+        <div className="min-w-0">
+          <h2 className="type-h3 mb-3">Card credentials</h2>
           {!cards.data || cards.data.length === 0 ? (
             <EmptyState
               title="No cards prepared"
@@ -161,14 +154,14 @@ export default async function CardsPage({
                       ? member.member_profiles[0]
                       : member?.member_profiles;
                     return (
-                      <Box>
-                        <Typography variant="subtitle2">
+                      <div>
+                        <p className="text-sm font-semibold">
                           {(profile?.display_name as string) ?? 'Member'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        </p>
+                        <p className="text-xs text-muted-foreground">
                           {member?.public_number as string}
-                        </Typography>
-                      </Box>
+                        </p>
+                      </div>
                     );
                   },
                 },
@@ -181,18 +174,18 @@ export default async function CardsPage({
                   key: 'issued',
                   header: 'Issued',
                   render: (row) => (
-                    <Typography variant="caption">
+                    <span className="text-xs">
                       {row.issued_at ? formatDateTime(row.issued_at as string) : 'not written'}
-                    </Typography>
+                    </span>
                   ),
                 },
                 {
                   key: 'revoked',
                   header: 'Revoked',
                   render: (row) => (
-                    <Typography variant="caption" color="text.secondary">
+                    <span className="text-xs text-muted-foreground">
                       {row.revoked_at ? formatDateTime(row.revoked_at as string) : '—'}
-                    </Typography>
+                    </span>
                   ),
                 },
                 {
@@ -201,7 +194,7 @@ export default async function CardsPage({
                   align: 'right',
                   render: (row) =>
                     row.status === 'active' ? (
-                      <Box component="form" action={revokeCardAction}>
+                      <form action={revokeCardAction}>
                         <input type="hidden" name="returnTo" value={returnTo} />
                         <input type="hidden" name="cardId" value={row.id as string} />
                         <input
@@ -217,16 +210,14 @@ export default async function CardsPage({
                         >
                           Revoke
                         </SubmitButton>
-                      </Box>
+                      </form>
                     ) : null,
                 },
               ]}
             />
           )}
 
-          <Typography variant="h4" sx={{ mt: 4, mb: 2 }}>
-            Write jobs
-          </Typography>
+          <h3 className="type-h3 mb-3 mt-8">Write jobs</h3>
           <DataTable
             caption="Card write jobs"
             rows={jobs.data ?? []}
@@ -238,7 +229,7 @@ export default async function CardsPage({
                 header: 'Lane',
                 render: (row) => {
                   const device = Array.isArray(row.devices) ? row.devices[0] : row.devices;
-                  return <Typography variant="body2">{device?.lane_label as string}</Typography>;
+                  return <span className="text-sm">{device?.lane_label as string}</span>;
                 },
               },
               {
@@ -250,18 +241,14 @@ export default async function CardsPage({
                 key: 'created',
                 header: 'Queued',
                 render: (row) => (
-                  <Typography variant="caption">
-                    {formatDateTime(row.created_at as string)}
-                  </Typography>
+                  <span className="text-xs">{formatDateTime(row.created_at as string)}</span>
                 ),
               },
               {
                 key: 'expires',
                 header: 'Expires',
                 render: (row) => (
-                  <Typography variant="caption">
-                    {formatDateTime(row.expires_at as string)}
-                  </Typography>
+                  <span className="text-xs">{formatDateTime(row.expires_at as string)}</span>
                 ),
               },
               {
@@ -270,19 +257,19 @@ export default async function CardsPage({
                 align: 'right',
                 render: (row) =>
                   ['queued', 'claimed'].includes(row.status as string) ? (
-                    <Box component="form" action={completeWriteJobAction}>
+                    <form action={completeWriteJobAction}>
                       <input type="hidden" name="returnTo" value={returnTo} />
                       <input type="hidden" name="jobId" value={row.id as string} />
-                      <Button type="submit" size="small" color="inherit">
+                      <Button type="submit" size="sm" variant="ghost">
                         Cancel
                       </Button>
-                    </Box>
+                    </form>
                   ) : null,
               },
             ]}
           />
-        </Grid>
-      </Grid>
-    </Container>
+        </div>
+      </div>
+    </PageShell>
   );
 }

@@ -1,12 +1,5 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { DataTable, EmptyState, StatusChip } from '@gdg/ui';
+import { Card, CardContent, DataTable, EmptyState, PageShell, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -38,47 +31,40 @@ export default async function InvitationsPage({
     .limit(100);
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
+    <PageShell className="pb-10">
       <Flash notice={notice} error={error} />
-      <Grid container spacing={4}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Stack spacing={4} sx={{ position: { md: 'sticky' }, top: { md: 96 } }}>
-            <Card>
-              <CardContent sx={{ p: 3 }}>
-                <Typography variant="overline" color="primary">
-                  Paid member
-                </Typography>
-                <Typography variant="h4" sx={{ mb: 1 }}>
-                  Invite a member
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-                  Record the date dues were paid, then generate a one-time invitation link and send
-                  it yourself. No profile exists until the member completes setup.
-                </Typography>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8">
+        <div className="space-y-6 lg:sticky lg:top-24 lg:h-fit">
+          <Card>
+            <CardContent className="p-5 sm:p-6">
+              <p className="type-overline text-primary">Paid member</p>
+              <h1 className="type-h3 mt-1.5">Invite a member</h1>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                Record the date dues were paid, then generate a one-time invitation link and send it
+                yourself. No profile exists until the member completes setup.
+              </p>
+              <div className="mt-4">
                 <InviteForm />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent sx={{ p: 3 }}>
-                <Typography variant="overline" color="secondary">
-                  Staff access
-                </Typography>
-                <Typography variant="h4" sx={{ mb: 1 }}>
-                  Invite an administrator
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-                  Grants the admin role and returns a one-time link. The invitee enrolls TOTP before
-                  the portal opens.
-                </Typography>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-5 sm:p-6">
+              <p className="type-overline text-secondary">Staff access</p>
+              <h2 className="type-h3 mt-1.5">Invite an administrator</h2>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                Grants the admin role and returns a one-time link. The invitee enrolls TOTP before
+                the portal opens.
+              </p>
+              <div className="mt-4">
                 <AdminInviteForm />
-              </CardContent>
-            </Card>
-          </Stack>
-        </Grid>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Typography variant="h3" sx={{ mb: 2 }}>
-            Invitation history
-          </Typography>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="min-w-0">
+          <h2 className="type-h3 mb-3">Invitation history</h2>
           {!invitations || invitations.length === 0 ? (
             <EmptyState
               title="No invitations yet"
@@ -94,15 +80,15 @@ export default async function InvitationsPage({
                   key: 'email',
                   header: 'Email',
                   render: (row) => (
-                    <Box>
-                      <Typography variant="subtitle2">{row.email as string}</Typography>
-                      <Typography variant="caption" color="text.secondary">
+                    <div>
+                      <p className="text-sm font-semibold">{row.email as string}</p>
+                      <p className="text-xs text-muted-foreground">
                         Paid since {formatDate(row.paid_since as string)}
                         {row.accepted_at
                           ? ` · accepted ${formatDate(row.accepted_at as string)}`
                           : ''}
-                      </Typography>
-                    </Box>
+                      </p>
+                    </div>
                   ),
                 },
                 {
@@ -114,14 +100,12 @@ export default async function InvitationsPage({
                   key: 'expires',
                   header: 'Created / expires',
                   render: (row) => (
-                    <Box>
-                      <Typography variant="caption">
-                        {formatDateTime(row.created_at as string)}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                    <div>
+                      <p className="text-xs">{formatDateTime(row.created_at as string)}</p>
+                      <p className="text-xs text-muted-foreground">
                         → {formatDateTime(row.expires_at as string)}
-                      </Typography>
-                    </Box>
+                      </p>
+                    </div>
                   ),
                 },
                 {
@@ -129,9 +113,9 @@ export default async function InvitationsPage({
                   header: 'Actions',
                   render: (row) =>
                     row.status === 'pending' ? (
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                      <div className="flex flex-wrap items-center gap-2">
                         <RegenerateInvitationLink invitationId={row.id as string} />
-                        <Box component="form" action={revokeInvitationAction}>
+                        <form action={revokeInvitationAction}>
                           <input type="hidden" name="returnTo" value="/admin/invitations" />
                           <input type="hidden" name="invitationId" value={row.id as string} />
                           <SubmitButton
@@ -142,19 +126,17 @@ export default async function InvitationsPage({
                           >
                             Revoke
                           </SubmitButton>
-                        </Box>
-                      </Stack>
+                        </form>
+                      </div>
                     ) : (
-                      <Typography variant="caption" color="text.secondary">
-                        —
-                      </Typography>
+                      <span className="text-xs text-muted-foreground">—</span>
                     ),
                 },
               ]}
             />
           )}
-        </Grid>
-      </Grid>
-    </Container>
+        </div>
+      </div>
+    </PageShell>
   );
 }

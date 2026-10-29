@@ -1,15 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Textarea,
+} from '@gdg/ui';
 
 /**
  * Displays a one-time Supabase action link. No email is sent by the app; the
@@ -39,36 +40,34 @@ export function LinkPanel({
   }
 
   return (
-    <Stack spacing={1.5} sx={{ mt: 2 }}>
-      <Alert severity="success" role="status">
+    <div className="mt-3 space-y-3">
+      <Alert variant="success" role="status">
         {title ?? 'Link ready'}
         {email ? ` for ${email}` : ''}. Send it privately; anyone with it can set the password.
       </Alert>
-      <TextField
+      <Textarea
         value={link}
-        fullWidth
-        multiline
-        minRows={2}
-        size="small"
-        slotProps={{ input: { readOnly: true } }}
+        readOnly
+        rows={3}
         onFocus={(event) => event.currentTarget.select()}
         aria-label="One-time sign-in link"
+        className="min-h-0 resize-none font-mono text-xs leading-relaxed"
       />
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        <Button size="small" variant="outlined" onClick={copy}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Button size="sm" variant="secondary" onClick={copy}>
           {copied ? 'Copied' : 'Copy link'}
         </Button>
-        <Typography variant="caption" color="text.secondary">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           Links expire per your Supabase Auth OTP setting (default 1 hour). Generate a new one if it
           expires.
-        </Typography>
-      </Stack>
+        </p>
+      </div>
       {copyError ? (
-        <Typography variant="caption" color="error">
+        <p className="text-xs font-medium text-danger">
           Copy failed — select the link and copy it manually.
-        </Typography>
+        </p>
       ) : null}
-    </Stack>
+    </div>
   );
 }
 
@@ -86,14 +85,18 @@ export function LinkDialog({
   title?: string;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>{title}</DialogTitle>
+    <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
       <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         {link ? <LinkPanel link={link} email={email} title="Copy this link" /> : null}
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Done
+          </Button>
+        </DialogFooter>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Done</Button>
-      </DialogActions>
     </Dialog>
   );
 }

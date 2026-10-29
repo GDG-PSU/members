@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
-import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import Box from '@mui/material/Box';
+import { LockKeyhole } from 'lucide-react';
+import { Button, buttonVariants, Card, CardContent } from '@gdg/ui';
 import { SUPPORT_EMAIL } from '@/lib/env';
 
 export const metadata: Metadata = {
@@ -12,27 +10,28 @@ export const metadata: Metadata = {
 
 export default function SuspendedPage() {
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 8, md: 12 }, textAlign: 'center' }}>
-      <Typography variant="overline" color="primary">
-        Membership
-      </Typography>
-      <Typography variant="h2" component="h1" sx={{ my: 1.5 }}>
-        This membership is inactive
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 4 }}>
-        Your account still exists, but access to the member area is paused. Contact {SUPPORT_EMAIL}{' '}
-        from your registered address and an organizer can review the status.
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <Button href={`mailto:${SUPPORT_EMAIL}`} variant="contained">
-          Contact organizers
-        </Button>
-        <form action="/api/auth/signout" method="post">
-          <Button type="submit" color="inherit">
-            Sign out
-          </Button>
-        </form>
-      </Box>
-    </Container>
+    <Card className="overflow-hidden">
+      <CardContent className="p-6 text-center sm:p-8">
+        <span className="mx-auto grid size-12 place-items-center rounded-full bg-warning/10 text-warning ring-1 ring-warning/20">
+          <LockKeyhole className="size-5" aria-hidden />
+        </span>
+        <p className="type-overline mt-4 text-primary">Membership</p>
+        <h1 className="type-h2 mt-2">This membership is inactive</h1>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
+          Your account still exists, but access to the member area is paused. Contact{' '}
+          {SUPPORT_EMAIL} from your registered address and an organizer can review the status.
+        </p>
+        <div className="mt-6 flex flex-col items-center justify-center gap-2.5 sm:flex-row">
+          <a href={`mailto:${SUPPORT_EMAIL}`} className={buttonVariants({})}>
+            Contact organizers
+          </a>
+          <form action="/api/auth/signout" method="post">
+            <Button type="submit" variant="secondary" className="w-full sm:w-auto">
+              Sign out
+            </Button>
+          </form>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

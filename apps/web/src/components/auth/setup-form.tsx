@@ -1,15 +1,8 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Link from '@mui/material/Link';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
+import Link from 'next/link';
+import { Alert, Button, buttonVariants, Card, Field, Input, Textarea } from '@gdg/ui';
 import { completeSetupAction, type SetupState } from '@/app/(auth)/invite/accept/actions';
 
 const initial: SetupState = {};
@@ -20,59 +13,60 @@ export function SetupForm({ email }: { email: string }) {
   const [preview, setPreview] = useState<string | null>(null);
 
   return (
-    <Stack component="form" action={action} spacing={2.5} noValidate encType="multipart/form-data">
-      <Alert severity="info">
+    <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
+      <Alert variant="info">
         Status: {email} is invited. Your name and photo are required; you can hide them later.{' '}
-        <Link href="#privacy-settings">Review privacy settings before creating your profile</Link>.
+        <a
+          href="#privacy-settings"
+          className="font-semibold text-primary underline underline-offset-2"
+        >
+          Review privacy settings before creating your profile
+        </a>
+        .
       </Alert>
-      <TextField
-        label="Display name"
-        name="displayName"
-        required
-        fullWidth
-        autoComplete="name"
-        slotProps={{ htmlInput: { maxLength: 60 } }}
-        helperText="Shown on your profile and at the check-in kiosk."
-      />
-      <TextField
-        label="Short bio"
-        name="about"
-        fullWidth
-        multiline
-        minRows={2}
-        slotProps={{ htmlInput: { maxLength: 280 } }}
-        helperText="Optional — a sentence is plenty."
-      />
 
-      <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Profile photo
-        </Typography>
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <Box
-            sx={{
-              width: 72,
-              height: 72,
-              borderRadius: '50%',
-              bgcolor: 'surfaceMuted.main',
-              backgroundImage: preview ? `url(${preview})` : undefined,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              border: '1px solid',
-              borderColor: 'divider',
-              flexShrink: 0,
-            }}
+      <Field
+        label="Display name"
+        htmlFor="setup-display-name"
+        hint="Shown on your profile and at the check-in kiosk."
+        required
+      >
+        <Input
+          id="setup-display-name"
+          name="displayName"
+          required
+          autoComplete="name"
+          maxLength={60}
+        />
+      </Field>
+
+      <Field label="Short bio" htmlFor="setup-about" hint="Optional — a sentence is plenty.">
+        <Textarea id="setup-about" name="about" maxLength={280} rows={2} />
+      </Field>
+
+      <div>
+        <p className="text-sm font-semibold text-foreground">Profile photo</p>
+        <div className="mt-2 flex items-center gap-4">
+          <span
             aria-hidden
+            className="size-[72px] shrink-0 rounded-full border border-border bg-muted bg-cover bg-center"
+            style={{ backgroundImage: preview ? `url(${preview})` : undefined }}
           />
-          <Box>
-            <Button component="label" variant="outlined" size="small">
+          <div className="min-w-0">
+            <label
+              className={buttonVariants({
+                variant: 'secondary',
+                size: 'sm',
+                className: 'cursor-pointer',
+              })}
+            >
               Choose photo
               <input
                 type="file"
                 name="photo"
                 accept="image/jpeg,image/png,image/webp"
                 required
-                hidden
+                className="sr-only"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (!file) {
@@ -84,66 +78,99 @@ export function SetupForm({ email }: { email: string }) {
                   setPreview(URL.createObjectURL(file));
                 }}
               />
-            </Button>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            </label>
+            <p className="mt-1.5 text-[0.78rem] leading-relaxed text-muted-foreground">
               {photoName ?? 'JPEG, PNG or WebP · max 2 MB · cropped to a square'}
-            </Typography>
-          </Box>
-        </Stack>
-      </Box>
+            </p>
+          </div>
+        </div>
+      </div>
 
-      <TextField
+      <Field
         label="Password"
-        name="password"
-        type="password"
+        htmlFor="setup-password"
+        hint="At least 12 characters with a number."
         required
-        fullWidth
-        autoComplete="new-password"
-        helperText="At least 12 characters with a number."
-      />
-      <TextField
-        label="Confirm password"
-        name="confirmPassword"
-        type="password"
-        required
-        fullWidth
-        autoComplete="new-password"
-      />
+      >
+        <Input
+          id="setup-password"
+          name="password"
+          type="password"
+          required
+          autoComplete="new-password"
+        />
+      </Field>
 
-      <Box id="privacy-settings">
-        <Typography variant="h6">Privacy before you join</Typography>
-        <Typography variant="body2" color="text.secondary">
+      <Field label="Confirm password" htmlFor="setup-confirm-password" required>
+        <Input
+          id="setup-confirm-password"
+          name="confirmPassword"
+          type="password"
+          required
+          autoComplete="new-password"
+        />
+      </Field>
+
+      <div id="privacy-settings" className="rounded-2xl border border-border bg-subtle/70 p-4">
+        <h2 className="text-base font-bold">Privacy before you join</h2>
+        <p className="mt-1 text-[0.82rem] leading-relaxed text-muted-foreground">
           Your profile and email are public by default. Choose what is visible now; you can change
           these settings later. A private profile hides all fields, regardless of individual
           choices.
-        </Typography>
-        <FormControlLabel
-          control={<Checkbox name="publicProfile" defaultChecked />}
-          label="Make my profile public"
-        />
-        <FormControlLabel
-          control={<Checkbox name="showEmail" defaultChecked />}
-          label="Show my email on my public profile"
-        />
-      </Box>
-      <FormControlLabel
-        control={<Checkbox name="acceptTerms" required />}
-        label={
-          <Typography variant="body2" color="text.secondary">
-            I understand my privacy choices above and that my card is an identifier, not a password.
-            See the{' '}
-            <Link href="/privacy" target="_blank">
-              privacy note
-            </Link>
-            .
-          </Typography>
-        }
-      />
+        </p>
+        <div className="mt-3 space-y-2.5">
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              name="publicProfile"
+              defaultChecked
+              className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+            />
+            Make my profile public
+          </label>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              name="showEmail"
+              defaultChecked
+              className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+            />
+            Show my email on my public profile
+          </label>
+        </div>
+      </div>
 
-      {state.error ? <Alert severity="error">{state.error}</Alert> : null}
-      <Button type="submit" size="large" variant="contained" disabled={pending}>
+      <label className="flex items-start gap-2.5 text-[0.82rem] leading-relaxed text-muted-foreground">
+        <input
+          type="checkbox"
+          name="acceptTerms"
+          required
+          className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+        />
+        <span>
+          I understand my privacy choices above and that my card is an identifier, not a password.
+          See the{' '}
+          <Link
+            href="/privacy"
+            target="_blank"
+            className="font-semibold text-primary underline underline-offset-2"
+          >
+            privacy note
+          </Link>
+          .
+        </span>
+      </label>
+
+      {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
+
+      <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? 'Creating your profile…' : 'Create my profile'}
       </Button>
-    </Stack>
+
+      <Card className="border-dashed bg-subtle/50 px-4 py-3 text-[0.78rem] leading-relaxed text-muted-foreground">
+        Your invitation is single-use. If something looks wrong, stop and contact the organizers
+        before creating a profile.
+      </Card>
+    </form>
   );
 }

@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import Box from '@mui/material/Box';
-import Container from '@mui/material/Container';
 import { LoadingState } from '@gdg/ui';
 import { CallbackHandler } from '@/components/auth/callback-handler';
 
@@ -12,15 +10,15 @@ export const metadata: Metadata = {
 
 export default function AuthCallbackPage() {
   return (
-    <Container maxWidth="sm" sx={{ py: 10 }}>
+    <div className="py-6 text-center">
       <Suspense fallback={<LoadingState label="Completing sign in" />}>
         <CallbackHandler />
       </Suspense>
-      <Box sx={{ mt: 2 }}>
-        <noscript>
-          <p>JavaScript is required to finish sign in. Contact GDG@PSU for help.</p>
-        </noscript>
-      </Box>
-    </Container>
+      <noscript>
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          JavaScript is required to finish sign in. Contact GDG@PSU for help.
+        </p>
+      </noscript>
+    </div>
   );
 }

@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
+import Link from 'next/link';
+import { buttonVariants } from '@gdg/ui';
+import { RotateCcw } from 'lucide-react';
 
 export default function GlobalError({
   error,
@@ -18,22 +17,24 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <Container maxWidth="sm" sx={{ py: 12, textAlign: 'center' }}>
-      <Typography variant="overline" color="primary">
-        Error
-      </Typography>
-      <Typography variant="h2" sx={{ my: 1.5 }}>
-        That did not load
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
+    <main
+      id="main"
+      className="mx-auto flex w-full max-w-xl flex-col items-center px-4 py-20 text-center"
+    >
+      <p className="type-overline text-primary">Error</p>
+      <h1 className="type-h2 mt-2">That did not load</h1>
+      <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
         The action was not completed. Nothing was awarded or changed unless you saw a confirmation.
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center' }}>
-        <Button variant="contained" onClick={reset}>
+      </p>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <button type="button" onClick={reset} className={buttonVariants({})}>
+          <RotateCcw className="size-4" aria-hidden />
           Try again
-        </Button>
-        <Button href="/">Go home</Button>
-      </Box>
-    </Container>
+        </button>
+        <Link href="/" className={buttonVariants({ variant: 'secondary' })}>
+          Go home
+        </Link>
+      </div>
+    </main>
   );
 }

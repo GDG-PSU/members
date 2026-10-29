@@ -1,14 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { DataTable, StatusChip } from '@gdg/ui';
+import { ArrowLeft } from 'lucide-react';
+import { buttonVariants, Card, CardContent, DataTable, PageShell, StatusChip, cn } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -81,30 +75,28 @@ export default async function EditEventPage({
     .limit(100);
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
+    <PageShell>
       <Flash notice={notice} error={error} />
-      <Button component="a" href="/admin/events" size="small" sx={{ mb: 2 }}>
-        ← All events
-      </Button>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+
+      <Link
+        href="/admin/events"
+        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3 mb-2')}
       >
-        <Box>
-          <Typography variant="overline" color="primary">
-            {event.status as string}
-          </Typography>
-          <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
-            {event.name as string}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
+        <ArrowLeft className="size-4" aria-hidden />
+        All events
+      </Link>
+
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="type-overline text-primary">{event.status as string}</p>
+          <h1 className="type-h2 mt-2">{event.name as string}</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             {formatDateTime(event.starts_at as string)} → {formatDateTime(event.ends_at as string)}
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1}>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
           {(['published', 'completed', 'cancelled'] as const).map((status) => (
-            <Box component="form" action={setEventStatusAction} key={status}>
+            <form action={setEventStatusAction} key={status}>
               <input type="hidden" name="returnTo" value={returnTo} />
               <input type="hidden" name="eventId" value={id} />
               <input type="hidden" name="status" value={status} />
@@ -121,81 +113,72 @@ export default async function EditEventPage({
               >
                 Mark {status}
               </SubmitButton>
-            </Box>
+            </form>
           ))}
-        </Stack>
-      </Stack>
+        </div>
+      </div>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 7 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <EventForm event={values} returnTo={returnTo} />
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, lg: 5 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>
-                Attendance
-              </Typography>
-              <DataTable
-                caption="Event attendance"
-                rows={(attendance ?? []).map((row) => {
-                  const member = Array.isArray(row.members) ? row.members[0] : row.members;
-                  const profile = Array.isArray(member?.member_profiles)
-                    ? member.member_profiles[0]
-                    : member?.member_profiles;
-                  return {
-                    id: row.id as string,
-                    name: (profile?.display_name as string) ?? 'Member',
-                    number: (member?.public_number as string) ?? '',
-                    state: row.state as string,
-                    qualified: Boolean(row.qualified),
-                    reward: row.reward_points as number,
-                    checkedInAt: row.checked_in_at as string,
-                    duration: (row.duration_minutes as number | null) ?? null,
-                  };
-                })}
-                getRowKey={(row) => row.id}
-                emptyMessage="No attendance yet."
-                columns={[
-                  {
-                    key: 'member',
-                    header: 'Member',
-                    render: (row) => (
-                      <Box>
-                        <Typography variant="subtitle2">{row.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {row.number}
-                        </Typography>
-                      </Box>
-                    ),
-                  },
-                  {
-                    key: 'status',
-                    header: 'Status',
-                    render: (row) => (
-                      <StatusChip status={row.qualified ? 'qualified' : row.state} />
-                    ),
-                  },
-                  {
-                    key: 'points',
-                    header: 'Pts',
-                    align: 'right',
-                    render: (row) => <Typography variant="body2">{row.reward}</Typography>,
-                  },
-                ]}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                Corrections are made from the member detail page so each change carries a reason and
-                actor.
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </Container>
+      <div className="grid gap-6 lg:grid-cols-[1.45fr_1fr] lg:items-start">
+        <Card>
+          <CardContent className="p-5 sm:p-6">
+            <EventForm event={values} returnTo={returnTo} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5 sm:p-6">
+            <h2 className="mb-4 text-base font-bold">Attendance</h2>
+            <DataTable
+              caption="Event attendance"
+              rows={(attendance ?? []).map((row) => {
+                const member = Array.isArray(row.members) ? row.members[0] : row.members;
+                const profile = Array.isArray(member?.member_profiles)
+                  ? member.member_profiles[0]
+                  : member?.member_profiles;
+                return {
+                  id: row.id as string,
+                  name: (profile?.display_name as string) ?? 'Member',
+                  number: (member?.public_number as string) ?? '',
+                  state: row.state as string,
+                  qualified: Boolean(row.qualified),
+                  reward: row.reward_points as number,
+                  checkedInAt: row.checked_in_at as string,
+                  duration: (row.duration_minutes as number | null) ?? null,
+                };
+              })}
+              getRowKey={(row) => row.id}
+              emptyMessage="No attendance yet."
+              columns={[
+                {
+                  key: 'member',
+                  header: 'Member',
+                  render: (row) => (
+                    <div>
+                      <p className="text-sm font-semibold">{row.name}</p>
+                      <p className="text-xs text-muted-foreground">{row.number}</p>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  render: (row) => <StatusChip status={row.qualified ? 'qualified' : row.state} />,
+                },
+                {
+                  key: 'points',
+                  header: 'Pts',
+                  align: 'right',
+                  render: (row) => <span className="text-sm tabular-nums">{row.reward}</span>,
+                },
+              ]}
+            />
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              Corrections are made from the member detail page so each change carries a reason and
+              actor.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
   );
 }

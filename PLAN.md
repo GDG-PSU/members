@@ -75,9 +75,9 @@ Because static NFC data is copyable, the system **does not claim cloning prevent
 
 ### 2.6 Design system
 
-Use **Material 3 Expressive** as the sole visual and interaction design source of truth. Implement it as a web-first token and component system with accessible low-level primitives; do not mix in a second design language. Required design tokens include semantic light/dark color roles, typography, shape, elevation, spacing, focus, and motion. Use expressive hierarchy and shapes sparingly but intentionally. Prioritize content density, legibility, responsive behavior, and fast task completion over decoration.
+Use **Tailwind CSS v4 with a code-owned shadcn/ui-style component system** as the sole visual and interaction design source of truth. Implement it as a web-first token and component system with accessible low-level primitives (Radix where interaction requires it); do not mix in a second design language. Required design tokens include semantic light/dark color roles, typography, shape, elevation, spacing, focus, and motion. Use expressive hierarchy and shapes sparingly but intentionally. Prioritize content density, legibility, responsive behavior, and fast task completion over decoration.
 
-Use a custom shared component library in `packages/ui` (or equivalent root workspace package) to keep the design consistent. Low-level accessibility primitives may support the implementation, but their default styles must not replace the Material 3 Expressive design system.
+Use a custom shared component library in `packages/ui` (or equivalent root workspace package) to keep the design consistent. Low-level accessibility primitives may support the implementation, but their default styles must not replace the shared Tailwind/shadcn design system.
 
 ## 3. Scope
 
@@ -117,7 +117,7 @@ Suggested layout (adapt only when the existing repository makes a different arra
 ├── app/                         # Next.js App Router: pages, layouts, route handlers
 ├── components/                  # App-specific components
 ├── packages/
-│   ├── ui/                      # Material 3 Expressive tokens and shared components
+│   ├── ui/                      # Tailwind tokens and shared shadcn-style components
 │   ├── domain/                  # Shared domain types, schemas, pure business rules
 │   └── config/                  # Shared lint/format/TypeScript config if needed
 ├── firmware/
@@ -157,7 +157,7 @@ If there is a strong compatibility reason to place the Next.js application under
 - Vercel hosting for the web app; no secrets in client bundles.
 - Zod (or equivalent strongly typed schema validator) for all environment variables, incoming API requests, and important form input.
 - Vitest for pure/unit tests, Playwright for browser E2E, and pgTAP/`supabase test db` for RLS and database invariants.
-- An accessible low-level component primitive library may be used where useful, but wrap and style it through the Material 3 Expressive shared design system.
+- An accessible low-level component primitive library may be used where useful, but wrap and style it through the Tailwind/shadcn shared design system.
 - Use the latest mutually compatible **stable** versions available at implementation time, not canary/beta releases. Pin the package manager and dependency lockfile. Record the chosen versions in `README.md` or `docs/architecture.md`.
 
 ### 4.2 Firmware stack
@@ -397,11 +397,11 @@ Apply rate limiting to login-related endpoints where feasible, invite/resend ope
 - Record admin activity, auth/security outcomes, device state transitions, attendance validation, point awards/redemptions, card revocation, and profile visibility changes. Audit rows are append-only from application roles.
 - Provide a data export/deletion/retention operations note. Do not delete ledger history as a side effect of member deactivation.
 
-## 9. Material 3 Expressive UI requirements
+## 9. Tailwind + shadcn/ui requirements
 
 ### 9.1 Visual language
 
-Implement a cohesive Material 3 Expressive-inspired system with semantic color roles and a robust light/dark mode. Use expressive typography, clear component hierarchy, intentional shapes, tasteful transitions, generous touch targets, and strong contrast. The UI should look professional on both a phone at an event and a desktop admin workstation.
+Implement a cohesive shadcn/ui-style system built on Tailwind CSS v4 tokens with semantic color roles and a robust light/dark mode. Use expressive typography, clear component hierarchy, intentional shapes, tasteful transitions, generous touch targets, and strong contrast. The UI should look professional on both a phone at an event and a desktop admin workstation.
 
 Required tokens: primary/on-primary, secondary/on-secondary, tertiary, surface/container tiers, background, outline, error, success/warning status roles, scrim, focus ring, typography scale, spacing scale, shape scale, elevation, and duration/easing/reduced-motion behavior. Do not use raw arbitrary hex/radius/shadow values throughout app code. Exceptions must be added to the shared token system.
 
@@ -581,7 +581,7 @@ Provide one well-documented root command such as `pnpm verify` that runs every l
 The resulting repository must include a README and focused runbooks:
 
 - `docs/architecture.md` — components, request/data flow, trust boundaries.
-- `docs/design-system.md` — Material 3 Expressive tokens and usage rules.
+- `docs/design-system.md` — Tailwind/shadcn tokens and usage rules.
 - `docs/development.md` — toolchain, install, local run, test, reset/seed, firmware commands.
 - `docs/deployment.md` — Vercel project settings, domain/DNS, Supabase production config, migrations, environment variables, backups/rollback, CI/CD.
 - `docs/security.md` — roles, RLS, secrets, card cloning caveat, device signing, incident response, privacy.
@@ -623,7 +623,7 @@ The project is done only when all locally verifiable criteria below are true and
 - [ ] Two separate authenticated device identities are supported. A scan cannot award points without staff confirmation.
 - [ ] Card issue/write/read-back/revoke/replace logic is implemented, with old-token revocation and stable profile URL behavior tested.
 - [ ] ESP32 firmware contains no Supabase credentials, no hardcoded personal PSU credentials, no insecure TLS, and has bounded retries/queue behavior.
-- [ ] Material 3 Expressive tokens/components are consistent across public/member/admin/kiosk pages; UI is responsive and accessible.
+- [ ] Shared Tailwind/shadcn tokens and components are consistent across public/member/admin/kiosk pages; UI is responsive and accessible.
 - [ ] Unit, database/RLS, API, E2E, firmware build/test, and responsive visual gates pass wherever the required environment exists. Unavailable gates are precisely documented—not falsely marked passed.
 - [ ] `pnpm verify` and all other documented commands work from a clean checkout in the stated environment.
 - [ ] Deployment/email/hardware/network setup docs give actionable steps without exposing secrets.
@@ -644,7 +644,9 @@ Use current official documentation and verify API/version details against the ve
 - ESP-IDF Wi-Fi Enterprise/security guidance: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/wifi-security.html
 - Adafruit PN532 library (I2C/SPI and tag operations): https://github.com/adafruit/Adafruit-PN532
 - Supplied eduroam background tutorial (Seneca-specific; not PSU authority): https://senecaengineering.org/tutorials/connecting-esp32-to-eduroam/
-- Material 3 design guidance: https://m3.material.io/
+- shadcn/ui documentation: https://ui.shadcn.com/docs
+- Tailwind CSS v4 documentation: https://tailwindcss.com/docs
+- Radix Primitives documentation: https://www.radix-ui.com/primitives
 - OWASP Authentication Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
 - OWASP Session Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
 - OWASP Logging Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html

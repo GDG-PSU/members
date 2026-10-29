@@ -1,15 +1,16 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { EmptyState, MemberAvatar, SectionHeading } from '@gdg/ui';
+import { Trophy } from 'lucide-react';
+import {
+  buttonVariants,
+  Card,
+  DataTable,
+  EmptyState,
+  MemberAvatar,
+  PageShell,
+  SectionHeading,
+  type DataTableColumn,
+} from '@gdg/ui';
 import { listLeaderboard } from '@/lib/public/queries';
 
 export const dynamic = 'force-dynamic';
@@ -19,19 +20,54 @@ export const metadata: Metadata = {
   description: 'The GDG@PSU member leaderboard, built from verified event attendance.',
 };
 
-const podiumStyles = [
-  { height: { xs: 0, md: 210 }, accent: 'star.main', order: 2 },
-  { height: { xs: 0, md: 180 }, accent: 'text.secondary', order: 1 },
-  { height: { xs: 0, md: 160 }, accent: 'secondary.main', order: 3 },
-];
+type Entry = Awaited<ReturnType<typeof listLeaderboard>>[number];
 
 export default async function LeaderboardPage() {
   const entries = await listLeaderboard(100, 0).catch(() => []);
   const top = entries.slice(0, 3);
   const rest = entries.slice(3);
 
+  const columns: DataTableColumn<Entry>[] = [
+    {
+      key: 'rank',
+      header: 'Rank',
+      width: 72,
+      render: (entry) => (
+        <span className="font-mono text-sm font-semibold tabular-nums text-muted-foreground">
+          {entry.rank}
+        </span>
+      ),
+    },
+    {
+      key: 'member',
+      header: 'Member',
+      render: (entry) => (
+        <span className="inline-flex items-center gap-2.5">
+          <MemberAvatar name={entry.displayName} photoUrl={entry.photoUrl} size={30} />
+          <Link
+            href={`/m/${entry.slug}`}
+            className="font-semibold underline-offset-2 hover:text-primary hover:underline"
+          >
+            {entry.displayName}
+          </Link>
+        </span>
+      ),
+    },
+    {
+      key: 'number',
+      header: 'Member no.',
+      render: (entry) => <span className="text-muted-foreground">{entry.memberNumber ?? '—'}</span>,
+    },
+    {
+      key: 'points',
+      header: 'Points',
+      align: 'right',
+      render: (entry) => <span className="font-bold tabular-nums">{entry.points}</span>,
+    },
+  ];
+
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
+    <PageShell width="lg" className="py-10 sm:py-14">
       <SectionHeading
         headingLevel={1}
         eyebrow="Semester standings"
@@ -43,161 +79,94 @@ export default async function LeaderboardPage() {
         <EmptyState
           title="No public rankings yet"
           description="Members choose whether to appear here. Once attendance is confirmed and a member opts in, the board fills up."
+          icon={<Trophy />}
           action={
-            <Button component="a" href="/events" variant="outlined">
+            <Link href="/events" className={buttonVariants({ variant: 'secondary' })}>
               See upcoming events
-            </Button>
+            </Link>
           }
         />
       ) : (
         <>
-          <Grid container spacing={2} sx={{ alignItems: 'flex-end', mb: 5 }}>
+          <div className="mb-8 grid items-end gap-4 md:grid-cols-3">
             {top.map((entry, index) => {
-              const style = podiumStyles[index] ?? podiumStyles[2]!;
+              const rank = index + 1;
+              const order = rank === 1 ? 'md:order-2' : rank === 2 ? 'md:order-1' : 'md:order-3';
+              const height =
+                rank === 1
+                  ? 'md:min-h-[13rem]'
+                  : rank === 2
+                    ? 'md:min-h-[11rem]'
+                    : 'md:min-h-[10rem]';
               return (
-                <Grid key={entry.slug} size={{ xs: 12, md: 4 }} sx={{ order: { md: style.order } }}>
-                  <Card
-                    sx={{
-                      position: 'relative',
-                      minHeight: style.height,
-                      display: 'flex',
-                      alignItems: 'flex-end',
-                      borderColor: index === 0 ? 'star.main' : 'divider',
-                      borderTopWidth: index === 0 ? 4 : 1,
-                    }}
-                  >
-                    <CardContent sx={{ p: 2.5, width: '100%' }}>
-                      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-                        <MemberAvatar
-                          name={entry.displayName}
-                          photoUrl={entry.photoUrl}
-                          size={56}
-                        />
-                        <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography variant="overline" sx={{ color: style.accent }}>
-                            #{entry.rank}
-                          </Typography>
-                          <Typography variant="h5" noWrap>
-                            <Link href={`/m/${entry.slug}`} style={{ textDecoration: 'none' }}>
-                              {entry.displayName}
-                            </Link>
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {entry.memberNumber ?? 'GDG@PSU member'}
-                          </Typography>
-                        </Box>
-                        <Chip
-                          label={`${entry.points} pts`}
-                          color={index === 0 ? 'warning' : 'primary'}
-                        />
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Grid>
+                <Card
+                  key={entry.slug}
+                  className={[
+                    'relative flex flex-col justify-end overflow-hidden p-5 transition-shadow',
+                    order,
+                    height,
+                    rank === 1 ? 'border-star/50 shadow-lift ring-1 ring-star/20' : '',
+                  ].join(' ')}
+                >
+                  {rank === 1 ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(60%_100%_at_50%_0%,rgb(251_188_4/0.18),transparent_70%)]"
+                    />
+                  ) : null}
+                  <div className="relative flex items-center justify-between">
+                    <span
+                      className={[
+                        'type-overline',
+                        rank === 1
+                          ? 'text-star'
+                          : rank === 2
+                            ? 'text-muted-foreground'
+                            : 'text-secondary',
+                      ].join(' ')}
+                    >
+                      #{entry.rank}
+                    </span>
+                    {rank === 1 ? <Trophy className="size-4 text-star" aria-hidden /> : null}
+                  </div>
+                  <div className="relative mt-4 flex items-center gap-3">
+                    <MemberAvatar name={entry.displayName} photoUrl={entry.photoUrl} size={52} />
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/m/${entry.slug}`}
+                        className="block truncate text-base font-bold underline-offset-2 hover:text-primary hover:underline"
+                      >
+                        {entry.displayName}
+                      </Link>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {entry.memberNumber ?? 'GDG@PSU member'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="relative mt-4 flex items-baseline gap-1.5">
+                    <span className="text-2xl font-extrabold tabular-nums tracking-[-0.03em]">
+                      {entry.points}
+                    </span>
+                    <span className="text-xs font-semibold text-muted-foreground">pts</span>
+                  </div>
+                </Card>
               );
             })}
-          </Grid>
+          </div>
 
-          <Card>
-            <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-              <Box
-                component="caption"
-                sx={{
-                  textAlign: 'left',
-                  px: 2.5,
-                  pt: 2,
-                  typography: 'overline',
-                  color: 'text.secondary',
-                }}
-              >
-                Full ranking
-              </Box>
-              <Box component="thead">
-                <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                  {['Rank', 'Member', 'Member no.', 'Points'].map((header) => (
-                    <Box
-                      component="th"
-                      key={header}
-                      scope="col"
-                      sx={{
-                        textAlign: header === 'Points' ? 'right' : 'left',
-                        px: 2.5,
-                        py: 1.5,
-                        typography: 'caption',
-                        fontWeight: 700,
-                        color: 'text.secondary',
-                      }}
-                    >
-                      {header}
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-              <Box component="tbody">
-                {(rest.length > 0 ? rest : top).map((entry) => (
-                  <Box
-                    component="tr"
-                    key={entry.slug}
-                    sx={{
-                      borderBottom: '1px solid',
-                      borderColor: 'divider',
-                      '&:last-child': { borderBottom: 0 },
-                    }}
-                  >
-                    <Box
-                      component="td"
-                      sx={{
-                        px: 2.5,
-                        py: 1.75,
-                        color: 'text.secondary',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {entry.rank}
-                    </Box>
-                    <Box component="td" sx={{ px: 2.5, py: 1.25 }}>
-                      <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-                        <MemberAvatar
-                          name={entry.displayName}
-                          photoUrl={entry.photoUrl}
-                          size={34}
-                        />
-                        <Typography
-                          variant="subtitle2"
-                          component="a"
-                          href={`/m/${entry.slug}`}
-                          sx={{ textDecoration: 'none' }}
-                        >
-                          {entry.displayName}
-                        </Typography>
-                      </Stack>
-                    </Box>
-                    <Box component="td" sx={{ px: 2.5, py: 1.75, color: 'text.secondary' }}>
-                      {entry.memberNumber ?? '—'}
-                    </Box>
-                    <Box
-                      component="td"
-                      sx={{
-                        px: 2.5,
-                        py: 1.75,
-                        textAlign: 'right',
-                        fontWeight: 700,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {entry.points}
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          </Card>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+          <DataTable
+            columns={columns}
+            rows={rest.length > 0 ? rest : top}
+            getRowKey={(entry) => entry.slug}
+            caption="Full ranking"
+          />
+
+          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
             Only members who opted into the leaderboard and public points appear. Missing names are
             not zero-point members.
-          </Typography>
+          </p>
         </>
       )}
-    </Container>
+    </PageShell>
   );
 }

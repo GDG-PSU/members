@@ -1,16 +1,15 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Grid from '@mui/material/Grid';
-import MenuItem from '@mui/material/MenuItem';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import { EmptyState, StatusChip } from '@gdg/ui';
+import Link from 'next/link';
+import {
+  buttonVariants,
+  Card,
+  CardContent,
+  EmptyState,
+  Input,
+  PageShell,
+  Select,
+  StatusChip,
+} from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -24,6 +23,13 @@ export const metadata: Metadata = {
   title: 'Rewards',
   robots: { index: false, follow: false },
 };
+
+const decisions = [
+  { value: 'approve', label: 'Approve' },
+  { value: 'fulfil', label: 'Fulfil' },
+  { value: 'reject', label: 'Reject' },
+  { value: 'cancel', label: 'Cancel' },
+];
 
 export default async function AdminRewardsPage({
   searchParams,
@@ -51,154 +57,155 @@ export default async function AdminRewardsPage({
   ]);
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
+    <PageShell>
       <Flash notice={notice} error={error} />
-      <Grid container spacing={4}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Typography variant="overline" color="primary">
-            Catalogue
-          </Typography>
-          <Typography
-            variant="h2"
-            component="h1"
-            sx={{ mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
-          >
-            Rewards
-          </Typography>
+
+      <div className="grid gap-8 lg:grid-cols-[1.55fr_1fr] lg:items-start">
+        <div>
+          <div className="mb-6">
+            <p className="type-overline text-primary">Catalogue</p>
+            <h1 className="type-h1 mt-2">Rewards</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Points members can spend — stars are never spent.
+            </p>
+          </div>
+
           {!rewards.data || rewards.data.length === 0 ? (
             <EmptyState
               title="No rewards yet"
               description="Add merchandise or perks for members to redeem."
             />
           ) : (
-            <Stack spacing={1.5}>
+            <ul className="space-y-2.5">
               {rewards.data.map((reward) => (
-                <Card key={reward.id as string}>
-                  <CardContent sx={{ p: 2.5 }}>
-                    <Stack
-                      direction={{ xs: 'column', sm: 'row' }}
-                      spacing={2}
-                      sx={{ alignItems: { sm: 'center' } }}
-                    >
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="h5">{reward.name as string}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {reward.cost_points as number} points ·{' '}
-                          {reward.inventory === null
-                            ? 'unlimited'
-                            : `${reward.inventory as number} in stock`}
-                        </Typography>
-                      </Box>
-                      <StatusChip
-                        status={reward.is_active ? 'active' : 'revoked'}
-                        label={reward.is_active ? 'active' : 'inactive'}
-                      />
-                      <Button component="a" href={`/admin/rewards/${reward.id}`} size="small">
-                        Edit
-                      </Button>
-                    </Stack>
-                  </CardContent>
-                </Card>
+                <li key={reward.id as string}>
+                  <Card className="transition-colors hover:border-primary/35">
+                    <CardContent className="p-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[0.95rem] font-bold">
+                            {reward.name as string}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            <span className="font-mono tabular-nums">
+                              {reward.cost_points as number}
+                            </span>{' '}
+                            points ·{' '}
+                            {reward.inventory === null
+                              ? 'unlimited'
+                              : `${reward.inventory as number} in stock`}
+                          </p>
+                        </div>
+                        <StatusChip
+                          status={reward.is_active ? 'active' : 'revoked'}
+                          label={reward.is_active ? 'active' : 'inactive'}
+                        />
+                        <Link
+                          href={`/admin/rewards/${reward.id}`}
+                          className={buttonVariants({ variant: 'secondary', size: 'sm' })}
+                        >
+                          Edit
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </li>
               ))}
-            </Stack>
+            </ul>
           )}
 
-          <Typography variant="h4" sx={{ mt: 4, mb: 2 }}>
-            Redemption queue
-          </Typography>
+          <div className="mb-3 mt-8 flex items-baseline justify-between">
+            <h2 className="type-h3">Redemption queue</h2>
+            <span className="text-xs text-muted-foreground">
+              {(redemptions.data ?? []).length} open
+            </span>
+          </div>
+
           {!redemptions.data || redemptions.data.length === 0 ? (
             <EmptyState
               title="Nothing waiting"
               description="Member requests appear here for approval."
             />
           ) : (
-            <Stack spacing={1.5} divider={<Divider flexItem />}>
+            <ul className="space-y-2.5">
               {redemptions.data.map((row) => {
                 const member = Array.isArray(row.members) ? row.members[0] : row.members;
                 const profile = Array.isArray(member?.member_profiles)
                   ? member.member_profiles[0]
                   : member?.member_profiles;
                 return (
-                  <Card key={row.id as string}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Stack
-                        direction={{ xs: 'column', md: 'row' }}
-                        spacing={2}
-                        sx={{ alignItems: { md: 'center' } }}
-                      >
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
-                            {(profile?.display_name as string) ?? 'Member'} —{' '}
-                            {row.reward_name_snapshot as string}
-                            {Number(row.quantity) > 1 ? ` × ${row.quantity}` : ''}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {member?.public_number as string} · {row.points_debited as number}{' '}
-                            points · {formatDateTime(row.created_at as string)}
-                          </Typography>
-                        </Box>
-                        <StatusChip status={row.status as string} />
-                        <Box
-                          component="form"
+                  <li key={row.id as string}>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex flex-wrap items-start gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[0.95rem] font-semibold leading-snug">
+                              {(profile?.display_name as string) ?? 'Member'} —{' '}
+                              {row.reward_name_snapshot as string}
+                              {Number(row.quantity) > 1 ? ` × ${row.quantity}` : ''}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              <span className="font-mono">{member?.public_number as string}</span> ·{' '}
+                              <span className="font-mono tabular-nums">
+                                {row.points_debited as number}
+                              </span>{' '}
+                              points · {formatDateTime(row.created_at as string)}
+                            </p>
+                          </div>
+                          <StatusChip status={row.status as string} />
+                        </div>
+
+                        <form
                           action={decideRedemptionAction}
-                          sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}
+                          className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3"
                         >
                           <input type="hidden" name="returnTo" value={returnTo} />
                           <input type="hidden" name="redemptionId" value={row.id as string} />
-                          <TextField
+                          <Input
                             name="reason"
-                            size="small"
-                            label="Reason (for reject)"
-                            slotProps={{ htmlInput: { maxLength: 300 } }}
+                            aria-label="Reason (for reject)"
+                            placeholder="Reason (for reject)"
+                            maxLength={300}
+                            className="h-9 min-w-[11rem] flex-1 text-xs"
                           />
-                          <TextField
-                            select
+                          <Select
                             name="action"
-                            size="small"
-                            label="Action"
+                            aria-label="Redemption action"
                             defaultValue={row.status === 'approved' ? 'fulfil' : 'approve'}
-                            sx={{ minWidth: 120 }}
+                            className="h-9 w-[8.5rem] text-xs"
                           >
-                            {[
-                              { value: 'approve', label: 'Approve' },
-                              { value: 'fulfil', label: 'Fulfil' },
-                              { value: 'reject', label: 'Reject' },
-                              { value: 'cancel', label: 'Cancel' },
-                            ].map((option) => (
-                              <MenuItem key={option.value} value={option.value}>
+                            {decisions.map((option) => (
+                              <option key={option.value} value={option.value}>
                                 {option.label}
-                              </MenuItem>
+                              </option>
                             ))}
-                          </TextField>
+                          </Select>
                           <SubmitButton
-                            size="small"
-                            variant="outlined"
                             pendingLabel="Saving…"
                             confirmMessage="Apply this redemption action?"
                           >
                             Apply
                           </SubmitButton>
-                        </Box>
-                      </Stack>
-                    </CardContent>
-                  </Card>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  </li>
                 );
               })}
-            </Stack>
+            </ul>
           )}
-        </Grid>
+        </div>
 
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h4" sx={{ mb: 2 }}>
-                New reward
-              </Typography>
-              <RewardForm returnTo={returnTo} />
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </Container>
+        <Card className="lg:sticky lg:top-24">
+          <CardContent className="pt-5">
+            <h2 className="type-h3">New reward</h2>
+            <p className="mb-4 mt-1 text-xs text-muted-foreground">
+              New items are active immediately unless you uncheck Active.
+            </p>
+            <RewardForm returnTo={returnTo} />
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
   );
 }

@@ -1,12 +1,5 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { StatusChip } from '@gdg/ui';
+import { Card, CardContent, PageShell, SectionHeading, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
@@ -66,75 +59,61 @@ export default async function KioskPage() {
   });
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
-      >
-        <Box>
-          <Typography variant="overline" color="primary">
-            Human confirmation required
-          </Typography>
-          <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
-            Kiosk
-          </Typography>
-          <Typography color="text.secondary">
-            Scans queue here. A tap never awards points; confirm check-in and check-out in person.
-          </Typography>
-        </Box>
-        <StatusChip
-          status={initialScans.length > 0 ? 'active' : 'pending'}
-          label={`${initialScans.length} pending`}
-        />
-      </Stack>
+    <PageShell>
+      <SectionHeading
+        eyebrow="Human confirmation required"
+        title="Kiosk"
+        description="Scans queue here. A tap never awards points; confirm check-in and check-out in person."
+        headingLevel={1}
+        action={
+          <StatusChip
+            status={initialScans.length > 0 ? 'active' : 'draft'}
+            label={`${initialScans.length} pending`}
+          />
+        }
+      />
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 8 }}>
+      <div className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr] lg:items-start">
+        <div>
           <KioskQueue initialScans={initialScans} />
-        </Grid>
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>
-                Lanes
-              </Typography>
-              <Stack spacing={1.5}>
+        </div>
+
+        <aside>
+          <Card className="lg:sticky lg:top-24">
+            <CardContent className="p-5">
+              <h2 className="type-h3 mb-4">Lanes</h2>
+              <div className="space-y-2.5">
                 {(devices.data ?? []).map((device) => (
-                  <Box
+                  <div
                     key={device.id as string}
-                    sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}
+                    className="rounded-xl border border-border bg-subtle/60 p-3"
                   >
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ alignItems: 'center', justifyContent: 'space-between' }}
-                    >
-                      <Typography variant="subtitle2">{device.lane_label as string}</Typography>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">{device.lane_label as string}</p>
                       <StatusChip status={device.status as string} />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
+                    </div>
+                    <p className="mt-1 text-[0.72rem] text-muted-foreground">
                       {device.device_id as string} · {device.mode as string}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    </p>
+                    <p className="text-[0.72rem] text-muted-foreground">
                       Last seen:{' '}
                       {device.last_seen_at
                         ? formatDateTime(device.last_seen_at as string)
                         : 'never'}
                       {device.firmware_version ? ` · ${device.firmware_version as string}` : ''}
-                    </Typography>
-                  </Box>
+                    </p>
+                  </div>
                 ))}
                 {(devices.data ?? []).length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     No devices registered. Register one under Devices before event day.
-                  </Typography>
+                  </p>
                 ) : null}
-              </Stack>
+              </div>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
-    </Container>
+        </aside>
+      </div>
+    </PageShell>
   );
 }

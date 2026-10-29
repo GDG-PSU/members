@@ -1,8 +1,4 @@
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
+import { Field, Input, Textarea } from '@gdg/ui';
 import { saveRewardAction } from '@/app/(admin)/admin/actions';
 import { SubmitButton } from '@/components/admin/ui';
 
@@ -18,63 +14,81 @@ export interface RewardValues {
 
 export function RewardForm({ reward, returnTo }: { reward?: RewardValues; returnTo: string }) {
   return (
-    <Stack component="form" action={saveRewardAction} spacing={2} noValidate>
+    <form action={saveRewardAction} className="space-y-4" noValidate>
       <input type="hidden" name="returnTo" value={returnTo} />
       {reward?.id ? <input type="hidden" name="rewardId" value={reward.id} /> : null}
-      <TextField
-        name="name"
-        label="Reward name"
-        defaultValue={reward?.name}
-        required
-        fullWidth
-        slotProps={{ htmlInput: { maxLength: 80 } }}
-      />
-      <TextField
-        name="description"
-        label="Description"
-        defaultValue={reward?.description}
-        fullWidth
-        multiline
-        minRows={2}
-        slotProps={{ htmlInput: { maxLength: 300 } }}
-      />
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 6 }}>
-          <TextField
+
+      <Field label="Reward name" htmlFor="reward-name" required>
+        <Input
+          id="reward-name"
+          name="name"
+          defaultValue={reward?.name}
+          required
+          maxLength={80}
+          placeholder="GDG sticker pack"
+        />
+      </Field>
+
+      <Field label="Description" htmlFor="reward-description">
+        <Textarea
+          id="reward-description"
+          name="description"
+          defaultValue={reward?.description}
+          maxLength={300}
+          rows={2}
+          placeholder="A short description members will see."
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Cost (points)" htmlFor="reward-cost" required>
+          <Input
+            id="reward-cost"
             name="costPoints"
-            label="Cost (points)"
             type="number"
             defaultValue={reward?.costPoints ?? 50}
             required
-            fullWidth
-            slotProps={{ htmlInput: { min: 1, max: 10000 } }}
+            min={1}
+            max={10000}
+            className="font-mono tabular-nums"
           />
-        </Grid>
-        <Grid size={{ xs: 6 }}>
-          <TextField
+        </Field>
+        <Field label="Inventory" htmlFor="reward-inventory" hint="Blank = unlimited">
+          <Input
+            id="reward-inventory"
             name="inventory"
-            label="Inventory (blank = unlimited)"
             type="number"
             defaultValue={reward?.inventory ?? ''}
-            fullWidth
-            slotProps={{ htmlInput: { min: 0, max: 10000 } }}
+            min={0}
+            max={10000}
+            className="font-mono tabular-nums"
           />
-        </Grid>
-      </Grid>
-      <TextField
-        name="fulfillmentNote"
-        label="Fulfillment note"
-        defaultValue={reward?.fulfillmentNote}
-        fullWidth
-        slotProps={{ htmlInput: { maxLength: 300 } }}
-      />
-      <FormControlLabel
-        control={<Checkbox name="isActive" defaultChecked={reward?.isActive ?? true} />}
-        label="Active"
-      />
+        </Field>
+      </div>
+
+      <Field label="Fulfillment note" htmlFor="reward-fulfillment">
+        <Input
+          id="reward-fulfillment"
+          name="fulfillmentNote"
+          defaultValue={reward?.fulfillmentNote}
+          maxLength={300}
+          placeholder="Where or how the member picks this up"
+        />
+      </Field>
+
+      <label className="flex items-center gap-2.5 text-sm font-semibold">
+        <input
+          type="checkbox"
+          name="isActive"
+          defaultChecked={reward?.isActive ?? true}
+          className="size-4 rounded border-input accent-primary"
+        />
+        Active
+      </label>
+
       <SubmitButton pendingLabel="Saving…">
         {reward?.id ? 'Save reward' : 'Create reward'}
       </SubmitButton>
-    </Stack>
+    </form>
   );
 }

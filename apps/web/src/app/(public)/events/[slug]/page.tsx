@@ -1,17 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import StarBorderOutlinedIcon from '@mui/icons-material/StarBorderOutlined';
-import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
+import { ArrowLeft, Clock, MapPin, Star } from 'lucide-react';
+import { Badge, buttonVariants, Card, CardContent, PageShell, cn } from '@gdg/ui';
 import { getPublicEvent } from '@/lib/public/queries';
 import { formatDate, formatTime } from '@/lib/format';
 
@@ -39,138 +30,114 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   const bonus = sessions.filter((session) => session.kind === 'bonus');
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
-      <Button component="a" href="/events" size="small" sx={{ mb: 3 }}>
-        ← All events
-      </Button>
-      <Grid container spacing={{ xs: 4, md: 6 }}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Chip label={formatDate(event.startsAt)} color="primary" size="small" sx={{ mb: 2 }} />
-          <Typography variant="h1" sx={{ fontSize: { xs: '2.5rem', md: '3.8rem' } }}>
-            {event.name}
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary" sx={{ mt: 2, maxWidth: 620 }}>
-            {event.summary || 'Details will be shared by the organizers.'}
-          </Typography>
-          <Stack direction="row" spacing={2} sx={{ mt: 3, flexWrap: 'wrap', rowGap: 1 }}>
-            <Chip
-              icon={<PlaceOutlinedIcon />}
-              label={event.location || 'Location to be announced'}
-              variant="outlined"
-            />
-            <Chip
-              label={`${formatTime(event.startsAt)} – ${formatTime(event.endsAt)}`}
-              variant="outlined"
-            />
-          </Stack>
+    <PageShell width="lg">
+      <Link
+        href="/events"
+        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-3 mb-4')}
+      >
+        <ArrowLeft className="size-4" aria-hidden />
+        All events
+      </Link>
 
-          <Box sx={{ mt: 5 }}>
-            <Typography variant="h3" sx={{ mb: 2 }}>
-              Sessions
-            </Typography>
-            <Stack spacing={1.5}>
+      <div className="grid gap-8 md:grid-cols-[1.5fr_1fr] md:items-start md:gap-10">
+        <div>
+          <Badge variant="primary">{formatDate(event.startsAt)}</Badge>
+          <h1 className="type-h1 mt-4 text-balance">{event.name}</h1>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
+            {event.summary || 'Details will be shared by the organizers.'}
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Badge variant="outline">
+              <MapPin className="size-3.5" aria-hidden />
+              {event.location || 'Location to be announced'}
+            </Badge>
+            <Badge variant="outline">
+              <Clock className="size-3.5" aria-hidden />
+              {formatTime(event.startsAt)} – {formatTime(event.endsAt)}
+            </Badge>
+          </div>
+
+          <section className="mt-10">
+            <h2 className="type-h3 mb-4">Sessions</h2>
+            <div className="space-y-3">
               {main ? (
                 <Card>
-                  <CardContent sx={{ p: 2.5 }}>
-                    <Stack
-                      direction="row"
-                      sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}
-                    >
-                      <Box>
-                        <Typography variant="overline" color="primary">
-                          Main session
-                        </Typography>
-                        <Typography variant="h5">{main.name}</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          {formatTime(main.startsAt)} – {formatTime(main.endsAt)} · Check out to
-                          qualify
-                        </Typography>
-                      </Box>
-                      <Chip
-                        icon={<StarBorderOutlinedIcon />}
-                        label={`+${main.rewardPoints} pts`}
-                        color="warning"
-                        variant="outlined"
-                      />
-                    </Stack>
+                  <CardContent className="flex items-start justify-between gap-4 p-5">
+                    <div className="min-w-0">
+                      <p className="type-overline text-primary">Main session</p>
+                      <h3 className="mt-1 text-base font-bold">{main.name}</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        {formatTime(main.startsAt)} – {formatTime(main.endsAt)} · Check out to
+                        qualify
+                      </p>
+                    </div>
+                    <Badge variant="star" className="shrink-0">
+                      <Star className="size-3.5" aria-hidden />+{main.rewardPoints} pts
+                    </Badge>
                   </CardContent>
                 </Card>
               ) : null}
+
               {bonus.map((session) => (
                 <Card key={session.id}>
-                  <CardContent sx={{ p: 2.5 }}>
-                    <Stack
-                      direction="row"
-                      sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}
-                    >
-                      <Box>
-                        <Typography variant="overline" color="secondary">
-                          Bonus session
-                        </Typography>
-                        <Typography variant="h6">{session.name}</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                          {formatTime(session.startsAt)} – {formatTime(session.endsAt)} · Requires
-                          its own check-in and check-out
-                        </Typography>
-                      </Box>
-                      <Chip label={`+${session.rewardPoints} pts`} variant="outlined" />
-                    </Stack>
+                  <CardContent className="flex items-start justify-between gap-4 p-5">
+                    <div className="min-w-0">
+                      <p className="type-overline text-secondary">Bonus session</p>
+                      <h3 className="mt-1 text-base font-bold">{session.name}</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        {formatTime(session.startsAt)} – {formatTime(session.endsAt)} · Requires its
+                        own check-in and check-out
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      +{session.rewardPoints} pts
+                    </Badge>
                   </CardContent>
                 </Card>
               ))}
-            </Stack>
-          </Box>
-        </Grid>
+            </div>
+          </section>
+        </div>
 
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card sx={{ position: { md: 'sticky' }, top: { md: 96 } }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h5" sx={{ mb: 1 }}>
-                How attendance works
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
+        <aside>
+          <Card className="md:sticky md:top-24">
+            <CardContent className="p-5 sm:p-6">
+              <h2 className="text-base font-bold">How attendance works</h2>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                 Tap your member card at the organizer&apos;s kiosk, then confirm with the organizer:
-              </Typography>
-              <Stack spacing={1.5} sx={{ my: 2.5 }}>
+              </p>
+
+              <ol className="my-5 space-y-3">
                 {[
                   'Organizer confirms your check-in.',
                   'Stay for the session.',
                   'Organizer confirms your check-out.',
                   'Points and a matching star are added only if you met the minimum duration.',
                 ].map((step, index) => (
-                  <Stack key={step} direction="row" spacing={1.25}>
-                    <Box
-                      sx={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        bgcolor: 'primary.main',
-                        color: 'primary.contrastText',
-                        display: 'grid',
-                        placeItems: 'center',
-                        fontSize: 12,
-                        fontWeight: 800,
-                        flexShrink: 0,
-                      }}
-                    >
+                  <li key={step} className="flex items-start gap-3">
+                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-[0.7rem] font-extrabold text-primary-foreground">
                       {index + 1}
-                    </Box>
-                    <Typography variant="body2">{step}</Typography>
-                  </Stack>
+                    </span>
+                    <span className="text-sm leading-relaxed">{step}</span>
+                  </li>
                 ))}
-              </Stack>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="caption" color="text.secondary">
+              </ol>
+
+              <div className="h-px bg-border" />
+
+              <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
                 No checkout means no attendance points. If something goes wrong, email GDG@PSU from
                 your registered address and an organizer can review it.
-              </Typography>
-              <Button component="a" href="/login" fullWidth variant="contained" sx={{ mt: 2.5 }}>
+              </p>
+
+              <Link href="/login" className={cn(buttonVariants({}), 'mt-4 w-full')}>
                 Member sign in
-              </Button>
+              </Link>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
-    </Container>
+        </aside>
+      </div>
+    </PageShell>
   );
 }

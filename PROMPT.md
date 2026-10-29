@@ -4,7 +4,7 @@ You are the senior product engineer, security engineer, UI designer, firmware en
 
 ## Mission
 
-Implement the GDG@PSU member points platform described in `PLAN.md`: Next.js + Supabase Auth/Postgres/Storage web app, Vercel-ready deployment, Material 3 Expressive design system, public/member/admin/kiosk experiences, immutable points-and-stars ledger, invitation-first activation, privacy-aware permanent member profiles, revocable NFC card URLs, staff-validated attendance, rewards, device API, and PlatformIO ESP32 + PN532 firmware for two independently authenticated lanes.
+Implement the GDG@PSU member points platform described in `PLAN.md`: Next.js + Supabase Auth/Postgres/Storage web app, Vercel-ready deployment, Tailwind CSS + shadcn/ui design system, public/member/admin/kiosk experiences, immutable points-and-stars ledger, invitation-first activation, privacy-aware permanent member profiles, revocable NFC card URLs, staff-validated attendance, rewards, device API, and PlatformIO ESP32 + PN532 firmware for two independently authenticated lanes.
 
 The design should be exceptionally polished, visual-first, uncluttered, responsive, accessible, and practical at a busy in-person event. This is a working product, not a mockup. Do not ship buttons that are inert, fake “success” notifications, unfinished placeholders in core flows, or fake security.
 
@@ -31,7 +31,7 @@ The design should be exceptionally polished, visual-first, uncluttered, responsi
 - Email follows its member-controlled per-field visibility flag and defaults public as the product brief requests; disclose this clearly during activation. Whole-profile privacy overrides every field. Auth identifiers, internal IDs, QR/card locators, and device secrets are never public. Enforce visibility on the server, not just in the UI.
 - ESP32s call only the central versioned HTTPS API; they do not contact Supabase. Use a unique per-device secret and signed requests, replay protection, revocation, TLS certificate verification, bounded retry/queue behavior, and no personal PSU credential embedded in public source.
 - The two devices must be independently registered and revocable. The API and UI must never trust a device-reported points value, role, member ID, or arbitrary URL.
-- Material 3 Expressive is the single UI design system. Reuse shared tokens/components. Don't blend unrelated design systems.
+- Tailwind CSS v4 with the shared shadcn/ui-style component system is the single UI design system. Reuse shared tokens/components. Don't blend unrelated design systems.
 
 ## External blockers and intervention rule
 
@@ -82,7 +82,7 @@ At the end, the repository should contain the implementation specified in `PLAN.
 
 - complete app and server routes for visitor, member, admin, kiosk, and device workflows;
 - migrations, RLS/grants, database functions, seed/test fixtures;
-- responsive shared Material 3 Expressive design system;
+- responsive shared Tailwind/shadcn design system;
 - ESP32/PN532 firmware project and non-secret example configuration;
 - tests and CI workflows;
 - complete operational/security/deployment/hardware/network runbooks;

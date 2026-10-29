@@ -1,14 +1,7 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
-import { EmptyState, SectionHeading } from '@gdg/ui';
+import Link from 'next/link';
+import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
+import { Badge, Card, CardContent, EmptyState, PageShell, SectionHeading, cn } from '@gdg/ui';
 import { listPublicEvents } from '@/lib/public/queries';
 import { formatDate, formatTime } from '@/lib/format';
 
@@ -23,7 +16,7 @@ export default async function EventsPage() {
   const events = await listPublicEvents(60).catch(() => []);
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 5, md: 8 } }}>
+    <PageShell width="lg">
       <SectionHeading
         headingLevel={1}
         eyebrow="Calendar"
@@ -35,68 +28,72 @@ export default async function EventsPage() {
         <EmptyState
           title="No published events yet"
           description="Organizers publish each event here. Check back soon or follow GDG@PSU."
-          icon={<EventOutlinedIcon fontSize="large" />}
+          icon={<CalendarDays />}
         />
       ) : (
-        <Stack spacing={1.5}>
+        <div className="space-y-3">
           {events.map((event) => {
             const upcoming = new Date(event.endsAt) >= new Date();
             return (
-              <Card
+              <Link
                 key={event.id}
-                component="a"
                 href={`/events/${event.slug}`}
-                sx={{
-                  display: 'block',
-                  textDecoration: 'none',
-                  borderLeft: '4px solid',
-                  borderLeftColor: upcoming ? 'primary.main' : 'divider',
-                  '&:hover': { borderColor: 'primary.main' },
-                }}
+                className="group block rounded-2xl focus-visible:outline-none"
               >
-                <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
-                  <Stack
-                    direction={{ xs: 'column', md: 'row' }}
-                    spacing={{ xs: 1.5, md: 3 }}
-                    sx={{ alignItems: { md: 'center' } }}
-                  >
-                    <Box sx={{ minWidth: { md: 132 } }}>
-                      <Typography
-                        variant="overline"
-                        color={upcoming ? 'primary' : 'text.secondary'}
+                <Card
+                  className={cn(
+                    'border-l-4 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/50 group-hover:shadow-lift',
+                    upcoming ? 'border-l-primary' : 'border-l-border',
+                  )}
+                >
+                  <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:gap-6">
+                    <div className="md:w-36 md:shrink-0">
+                      <p
+                        className={cn(
+                          'type-overline',
+                          upcoming ? 'text-primary' : 'text-muted-foreground',
+                        )}
                       >
                         {upcoming ? 'Upcoming' : 'Past'}
-                      </Typography>
-                      <Typography variant="h5">{formatDate(event.startsAt)}</Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      </p>
+                      <p className="mt-1 text-sm font-bold leading-snug">
+                        {formatDate(event.startsAt)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {formatTime(event.startsAt)} – {formatTime(event.endsAt)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="h4" sx={{ mb: 0.5 }}>
+                      </p>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-lg font-bold leading-snug transition-colors group-hover:text-primary">
                         {event.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      </h2>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                         {event.summary || 'Details coming soon.'}
-                      </Typography>
-                    </Box>
+                      </p>
+                    </div>
+
                     {event.location ? (
-                      <Chip label={event.location} variant="outlined" size="small" />
+                      <Badge variant="outline" className="max-w-[16rem] self-start md:self-center">
+                        <MapPin className="size-3" aria-hidden />
+                        <span className="truncate">{event.location}</span>
+                      </Badge>
                     ) : null}
-                    <Button
-                      endIcon={<EventOutlinedIcon />}
-                      size="small"
-                      sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }}
-                    >
+
+                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary md:shrink-0">
                       Details
-                    </Button>
-                  </Stack>
-                </CardContent>
-              </Card>
+                      <ArrowRight
+                        className="size-4 transition-transform group-hover:translate-x-0.5"
+                        aria-hidden
+                      />
+                    </span>
+                  </CardContent>
+                </Card>
+              </Link>
             );
           })}
-        </Stack>
+        </div>
       )}
-    </Container>
+    </PageShell>
   );
 }

@@ -1,18 +1,8 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Grid from '@mui/material/Grid';
-import IconButton from '@mui/material/IconButton';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
+import { Plus, Trash2, UserRound } from 'lucide-react';
+import { Alert, Button, buttonVariants, Card, CardContent, Field, Input, Textarea } from '@gdg/ui';
 import { updateProfileAction, type ActionState } from '@/app/(member)/member/actions';
 
 const initial: ActionState = {};
@@ -41,176 +31,175 @@ export function ProfileForm({
   };
 
   return (
-    <Grid container spacing={3}>
-      <Grid size={{ xs: 12, md: 7 }}>
-        <Card>
-          <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
-            <Stack
-              component="form"
-              action={action}
-              spacing={2.5}
-              noValidate
-              encType="multipart/form-data"
-            >
-              <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-                <Box
-                  sx={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: '50%',
-                    bgcolor: 'surfaceMuted.main',
-                    backgroundImage: preview ? `url(${preview})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    flexShrink: 0,
-                  }}
+    <div className="grid gap-5 md:grid-cols-[1.4fr_1fr]">
+      <Card className="min-w-0">
+        <CardContent className="p-5 pt-5 sm:p-6">
+          <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
+            <div className="flex items-center gap-4">
+              {preview ? (
+                // eslint-disable-next-line @next/next/no-img-element -- local object URLs cannot use next/image
+                <img
+                  src={preview}
+                  alt=""
                   aria-hidden
+                  className="size-20 shrink-0 rounded-full border border-border object-cover"
                 />
-                <Box>
-                  <Button component="label" size="small" variant="outlined">
-                    Replace photo
-                    <input
-                      type="file"
-                      name="photo"
-                      accept="image/jpeg,image/png,image/webp"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        setPreview(file ? URL.createObjectURL(file) : photoUrl);
-                      }}
-                    />
-                  </Button>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: 'block', mt: 0.5 }}
-                  >
-                    Square crop · max 2 MB
-                  </Typography>
-                </Box>
-              </Stack>
+              ) : (
+                <span
+                  aria-hidden
+                  className="grid size-20 shrink-0 place-items-center rounded-full border border-border bg-muted text-muted-foreground"
+                >
+                  <UserRound className="size-7" />
+                </span>
+              )}
+              <div>
+                <label
+                  htmlFor="profile-photo"
+                  className={buttonVariants({
+                    variant: 'secondary',
+                    size: 'sm',
+                    className: 'cursor-pointer',
+                  })}
+                >
+                  Replace photo
+                </label>
+                <input
+                  id="profile-photo"
+                  type="file"
+                  name="photo"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    setPreview(file ? URL.createObjectURL(file) : photoUrl);
+                  }}
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">Square crop · max 2 MB</p>
+              </div>
+            </div>
 
-              <TextField
-                label="Display name"
+            <Field label="Display name" htmlFor="profile-name" required>
+              <Input
+                id="profile-name"
                 name="displayName"
                 defaultValue={initialName}
                 required
-                fullWidth
-                slotProps={{ htmlInput: { maxLength: 60 } }}
+                maxLength={60}
               />
-              <TextField
-                label="Short bio"
+            </Field>
+
+            <Field
+              label="Short bio"
+              htmlFor="profile-about"
+              hint="Up to 280 characters. Rendered as plain text."
+            >
+              <Textarea
+                id="profile-about"
                 name="about"
                 defaultValue={initialAbout}
-                fullWidth
-                multiline
-                minRows={3}
-                slotProps={{ htmlInput: { maxLength: 280 } }}
-                helperText="Up to 280 characters. Rendered as plain text."
+                maxLength={280}
+                rows={3}
               />
+            </Field>
 
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  Links
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  https:// only. Up to six.
-                </Typography>
-                <Stack spacing={1.5} sx={{ mt: 1.5 }}>
-                  {links.map((link, index) => (
-                    <Stack key={index} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                      <TextField
-                        label="Label"
+            <div>
+              <p className="text-sm font-semibold">Links</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">https:// only. Up to six.</p>
+              <div className="mt-2.5 space-y-2">
+                {links.map((link, index) => (
+                  <div key={index} className="grid items-end gap-2 sm:grid-cols-[9rem_1fr_auto]">
+                    <Field label="Label" htmlFor={`link-label-${index}`}>
+                      <Input
+                        id={`link-label-${index}`}
                         value={link.label}
+                        maxLength={40}
                         onChange={(event) => updateLink(index, 'label', event.target.value)}
-                        slotProps={{ htmlInput: { maxLength: 40 } }}
-                        sx={{ sm: { width: 160 } }}
                       />
-                      <TextField
-                        label="https://…"
-                        value={link.url}
-                        onChange={(event) => updateLink(index, 'url', event.target.value)}
-                        sx={{ flex: 1 }}
+                    </Field>
+                    <Field label="https://…" htmlFor={`link-url-${index}`}>
+                      <Input
+                        id={`link-url-${index}`}
                         type="url"
+                        value={link.url}
+                        placeholder="https://"
+                        onChange={(event) => updateLink(index, 'url', event.target.value)}
                       />
-                      <IconButton
-                        aria-label={`Remove link ${link.label || index + 1}`}
-                        onClick={() => setLinks((current) => current.filter((_, i) => i !== index))}
-                      >
-                        <DeleteOutlineIcon />
-                      </IconButton>
-                    </Stack>
-                  ))}
-                  {links.length < 6 ? (
+                    </Field>
                     <Button
-                      startIcon={<AddIcon />}
-                      size="small"
-                      onClick={() => setLinks((current) => [...current, { label: '', url: '' }])}
-                      sx={{ alignSelf: 'flex-start' }}
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove link ${link.label || index + 1}`}
+                      onClick={() => setLinks((current) => current.filter((_, i) => i !== index))}
                     >
-                      Add link
+                      <Trash2 className="size-4" aria-hidden />
                     </Button>
-                  ) : null}
-                </Stack>
-                <input
-                  type="hidden"
-                  name="links"
-                  value={JSON.stringify(links.filter((link) => link.label && link.url))}
-                />
-              </Box>
-
-              {state.error ? <Alert severity="error">{state.error}</Alert> : null}
-              {state.ok ? <Alert severity="success">{state.message}</Alert> : null}
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={pending}
-                sx={{ alignSelf: 'flex-start' }}
-              >
-                {pending ? 'Saving…' : 'Save profile'}
-              </Button>
-            </Stack>
-          </CardContent>
-        </Card>
-      </Grid>
-      <Grid size={{ xs: 12, md: 5 }}>
-        <Card sx={{ position: { md: 'sticky' }, top: { md: 96 }, overflow: 'hidden' }}>
-          <Box
-            sx={{ height: 6, background: 'linear-gradient(90deg, #1450a3, #0f766e, #a16207)' }}
-          />
-          <CardContent sx={{ p: 3 }}>
-            <Typography variant="overline" color="text.secondary">
-              Preview
-            </Typography>
-            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mt: 1.5, mb: 2 }}>
-              <Box
-                sx={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: '50%',
-                  bgcolor: 'primary.main',
-                  backgroundImage: preview ? `url(${preview})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
-                aria-hidden
+                  </div>
+                ))}
+                {links.length < 6 ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setLinks((current) => [...current, { label: '', url: '' }])}
+                  >
+                    <Plus className="size-4" aria-hidden />
+                    Add link
+                  </Button>
+                ) : null}
+              </div>
+              <input
+                type="hidden"
+                name="links"
+                value={JSON.stringify(links.filter((link) => link.label && link.url))}
               />
-              <Box>
-                <Typography variant="h5">{initialName}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Public profile card
-                </Typography>
-              </Box>
-            </Stack>
-            <Typography variant="body2" color="text.secondary">
+            </div>
+
+            {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
+            {state.ok ? <Alert variant="success">{state.message}</Alert> : null}
+
+            <Button type="submit" disabled={pending}>
+              {pending ? 'Saving…' : 'Save profile'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <div className="md:sticky md:top-24 md:self-start">
+        <Card className="overflow-hidden">
+          <div
+            aria-hidden
+            className="h-1.5 w-full bg-[linear-gradient(90deg,#4285f4_0%,#0d7a72_55%,#9a6206_100%)]"
+          />
+          <CardContent className="p-5">
+            <p className="type-overline text-muted-foreground">Preview</p>
+            <div className="mb-3 mt-2.5 flex items-center gap-3">
+              {preview ? (
+                // eslint-disable-next-line @next/next/no-img-element -- local object URLs cannot use next/image
+                <img
+                  src={preview}
+                  alt=""
+                  aria-hidden
+                  className="size-16 shrink-0 rounded-full border border-border object-cover"
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  className="grid size-16 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"
+                >
+                  <UserRound className="size-6" />
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-base font-bold">{initialName}</p>
+                <p className="text-xs text-muted-foreground">Public profile card</p>
+              </div>
+            </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
               Saved changes appear on your public profile immediately. Hidden fields stay hidden
               even if you fill them in here.
-            </Typography>
+            </p>
           </CardContent>
         </Card>
-      </Grid>
-    </Grid>
+      </div>
+    </div>
   );
 }

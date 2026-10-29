@@ -10,7 +10,7 @@ GDG@PSU needs a member identity portal, a privacy-aware public profile and leade
 ## Decision
 
 1. **Next.js App Router on Vercel** for UI and server actions/route handlers. Server Components handle read-heavy pages; route handlers serve device and auth callbacks. Node runtime is used where image processing/database administration is needed.
-2. **pnpm workspace + Turborepo**, with `apps/web`, `packages/ui` (MUI theme/primitives), `packages/contracts` (Zod schemas/types) and an independent PlatformIO firmware project. Shared packages are source-transpiled by Next (`transpilePackages`), avoiding a separate build step for pure TS.
+2. **pnpm workspace + Turborepo**, with `apps/web`, `packages/ui` (Tailwind tokens + shadcn-style primitives), `packages/contracts` (Zod schemas/types) and an independent PlatformIO firmware project. Shared packages are source-transpiled by Next (`transpilePackages`), avoiding a separate build step for pure TS.
 3. **Supabase Postgres/Auth/Storage** as the system of record. Auth invitations/recovery are Supabase-managed; the database stores no passwords. Migrations are SQL files and the only schema source of truth.
 4. **Ledger-derived balances with immutable entries.** Points/stars are append-only ledgers; balances are sums. All value-changing operations are transactional SQL functions (`SECURITY DEFINER`, empty `search_path`, `service_role`-only) that enforce idempotency, inventory and non-negative balances under row locks.
 5. **Server-authoritative authorization.** No member write policies on sensitive tables. The web server authenticates the actor, checks the current role from `user_roles`, and only then uses the service role. Public reads use explicit projection views.
@@ -18,7 +18,7 @@ GDG@PSU needs a member identity portal, a privacy-aware public profile and leade
 7. **Cards are routing tokens, not authentication.** A 256-bit token is stored as a SHA-256 hash for lookup plus an AES-GCM encrypted copy for the owner's authenticated digital ID and one-time write jobs. Device UIDs are never credentials. Write jobs are short-lived, device-bound, single-use, and require read-back verification.
 8. **Device identity is separate from user identity.** Devices use a public ID plus a high-entropy secret with only a verifier stored server-side. Firmware talks only to a narrow HTTPS middleware API, never to Supabase, and never disables certificate validation.
 9. **Polling instead of realtime processes.** Kiosk/device updates use short polling; all authoritative state is in Postgres. This avoids custom servers and in-memory locks on serverless infrastructure.
-10. **MUI v9 as the only component system**, with one central theme supporting light/dark/system color schemes, and branded primitives shared through `packages/ui`.
+10. **Tailwind CSS v4 with code-owned shadcn/ui-style components as the only styling system**, with semantic CSS-variable tokens supporting light/dark/system color schemes, and branded primitives shared through `packages/ui`. Radix primitives provide the few interactive widgets (dialog, switch, checkbox) and lucide-react supplies icons; there is no runtime CSS-in-JS.
 
 ## Alternatives rejected
 

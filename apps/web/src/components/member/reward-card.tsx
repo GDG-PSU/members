@@ -1,15 +1,7 @@
 'use client';
 
 import { useActionState, useRef, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { ConfirmDialog } from '@gdg/ui';
+import { Alert, Badge, Button, Card, CardContent, ConfirmDialog } from '@gdg/ui';
 import { requestRedemptionAction, type ActionState } from '@/app/(member)/member/actions';
 
 const initial: ActionState = {};
@@ -48,42 +40,35 @@ export function RewardCard({
   const disabled = soldOut || !affordable || pending;
 
   return (
-    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <CardContent sx={{ p: 2.75, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Stack
-          direction="row"
-          sx={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}
-        >
-          <Typography variant="h5">{name}</Typography>
-          <Chip
-            label={`${costPoints} pts`}
-            color={affordable ? 'primary' : 'default'}
-            variant="outlined"
-            size="small"
-          />
-        </Stack>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2, flex: 1 }}>
+    <Card className="flex h-full flex-col">
+      <CardContent className="flex flex-1 flex-col p-5 pt-5">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-base font-bold leading-snug">{name}</h3>
+          <Badge variant={affordable ? 'primary' : 'neutral'} className="shrink-0 tabular-nums">
+            {costPoints} pts
+          </Badge>
+        </div>
+
+        <p className="mb-3 mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
           {description || 'A small thank-you from GDG@PSU.'}
-        </Typography>
+        </p>
+
         {inventory !== null ? (
-          <Typography variant="caption" color={soldOut ? 'error.main' : 'text.secondary'}>
+          <p className={`text-xs font-medium ${soldOut ? 'text-danger' : 'text-muted-foreground'}`}>
             {soldOut ? 'Out of stock' : `${inventory} available`}
-          </Typography>
+          </p>
         ) : null}
         {fulfillmentNote ? (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            {fulfillmentNote}
-          </Typography>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{fulfillmentNote}</p>
         ) : null}
 
-        <Box component="form" action={action} ref={formRef} sx={{ mt: 2 }}>
+        <form action={action} ref={formRef} className="mt-4">
           <input type="hidden" name="rewardId" value={id} />
           <input type="hidden" name="quantity" value="1" />
           <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
           <Button
             type="button"
-            variant="contained"
-            fullWidth
+            className="w-full"
             disabled={disabled}
             onClick={() => setConfirm(true)}
           >
@@ -112,16 +97,17 @@ export function RewardCard({
               formRef.current?.requestSubmit();
             }}
           />
-        </Box>
+        </form>
+
         {state.error ? (
-          <Alert severity="error" sx={{ mt: 1.5 }}>
-            {state.error}
-          </Alert>
+          <div className="mt-3">
+            <Alert variant="danger">{state.error}</Alert>
+          </div>
         ) : null}
         {state.ok ? (
-          <Alert severity="success" sx={{ mt: 1.5 }}>
-            {state.message}
-          </Alert>
+          <div className="mt-3">
+            <Alert variant="success">{state.message}</Alert>
+          </div>
         ) : null}
       </CardContent>
     </Card>

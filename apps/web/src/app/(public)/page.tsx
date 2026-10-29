@@ -1,23 +1,45 @@
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
-import NfcIcon from '@mui/icons-material/Nfc';
-import StarBorderOutlinedIcon from '@mui/icons-material/StarBorderOutlined';
-import { EmptyState, MemberAvatar, SectionHeading } from '@gdg/ui';
+import Link from 'next/link';
+import {
+  ArrowRight,
+  CalendarDays,
+  MapPin,
+  Nfc,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Trophy,
+} from 'lucide-react';
+import {
+  buttonVariants,
+  Card,
+  CardContent,
+  EmptyState,
+  MemberAvatar,
+  SectionHeading,
+} from '@gdg/ui';
 import { listLeaderboard, listPublicEvents } from '@/lib/public/queries';
 import { formatDate, formatTime } from '@/lib/format';
 import { SUPPORT_EMAIL } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
+
+const features = [
+  {
+    icon: Nfc,
+    title: 'Your card is a doorway',
+    body: 'A tap opens your permanent profile. It never authorizes a check-in, a purchase or an account action.',
+  },
+  {
+    icon: Star,
+    title: 'Stars are forever',
+    body: 'Every point you earn also becomes a star. Spend points on merch; stars stay as a record of showing up.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'No silent awards',
+    body: 'An organizer confirms check-in and check-out. Miss a checkout and no attendance points are granted.',
+  },
+];
 
 export default async function HomePage() {
   const [leaders, events] = await Promise.all([
@@ -28,293 +50,272 @@ export default async function HomePage() {
 
   return (
     <>
-      <Box
-        sx={{
-          position: 'relative',
-          overflow: 'hidden',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          background:
-            'radial-gradient(1100px 480px at 82% -10%, rgba(20,80,163,0.18), transparent 65%), radial-gradient(700px 400px at 4% 8%, rgba(15,118,110,0.12), transparent 60%)',
-        }}
-      >
-        <Container maxWidth="lg" sx={{ py: { xs: 7, md: 11 } }}>
-          <Grid container spacing={{ xs: 6, md: 8 }} sx={{ alignItems: 'center' }}>
-            <Grid size={{ xs: 12, md: 7 }}>
-              <Chip
-                label="Penn State's student developer community"
-                size="small"
-                sx={{ mb: 3, bgcolor: 'background.paper' }}
-              />
-              <Typography variant="h1" sx={{ maxWidth: 760 }}>
+      <section className="relative overflow-hidden border-b border-border">
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-40" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-aurora" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,transparent,var(--background))]"
+        />
+
+        <div className="relative mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
+            <div className="animate-rise">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1 text-xs font-semibold text-muted-foreground shadow-card backdrop-blur">
+                <Sparkles className="size-3.5 text-primary" aria-hidden />
+                Your GDG@PSU member pass
+              </span>
+
+              <h1 className="type-display mt-5 max-w-[16ch]">
                 Build things.
                 <br />
-                <Box component="span" sx={{ color: 'primary.main' }}>
+                <span className="bg-gradient-to-r from-primary via-brand-blue to-secondary bg-clip-text text-transparent">
                   Belong here.
-                </Box>
-              </Typography>
-              <Typography
-                variant="subtitle1"
-                component="p"
-                sx={{ mt: 3, maxWidth: 520, color: 'text.secondary', fontSize: '1.1rem' }}
-              >
+                </span>
+              </h1>
+
+              <p className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
                 One card. One profile. Every event, workshop and late-night build counted — for the
                 people who show up and make GDG@PSU what it is.
-              </Typography>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 4 }}>
-                <Button
-                  component="a"
-                  href="/events"
-                  variant="contained"
-                  size="large"
-                  endIcon={<ArrowForwardIcon />}
-                >
-                  See what&apos;s next
-                </Button>
-                <Button component="a" href="/login" size="large" variant="outlined">
-                  Member sign in
-                </Button>
-              </Stack>
-              <Typography
-                variant="caption"
-                sx={{ display: 'block', mt: 2, color: 'text.secondary' }}
-              >
-                Membership is by invitation after dues are recorded. Questions? {SUPPORT_EMAIL}
-              </Typography>
-            </Grid>
+              </p>
 
-            <Grid size={{ xs: 12, md: 5 }}>
-              <Card
-                sx={{
-                  p: 0.5,
-                  bgcolor: 'background.paper',
-                  boxShadow: '0 24px 80px rgba(11,18,32,0.14)',
-                }}
-              >
-                <CardContent sx={{ p: 3 }}>
-                  <Stack
-                    direction="row"
-                    sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
-                  >
-                    <Typography variant="overline" color="text.secondary">
-                      This semester&apos;s leaders
-                    </Typography>
-                    <EmojiEventsOutlinedIcon fontSize="small" color="primary" />
-                  </Stack>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link href="/events" className={buttonVariants({ size: 'lg' })}>
+                  See what&apos;s next
+                  <ArrowRight className="size-4" aria-hidden />
+                </Link>
+                <Link
+                  href="/login"
+                  className={buttonVariants({ variant: 'secondary', size: 'lg' })}
+                >
+                  Sign in
+                </Link>
+              </div>
+
+              <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+                Membership is by invitation after dues are recorded. Questions? {SUPPORT_EMAIL}
+              </p>
+            </div>
+
+            <div className="relative animate-rise lg:animate-fade">
+              <div
+                aria-hidden
+                className="absolute -inset-6 rounded-[3rem] bg-gradient-to-tr from-brand-blue/25 via-transparent to-brand-green/20 blur-3xl"
+              />
+              <div className="relative rounded-[1.9rem] border border-border bg-card p-2 shadow-lift">
+                <div className="relative overflow-hidden rounded-[1.35rem] bg-[linear-gradient(135deg,#101d45_0%,#0d1a3c_45%,#0a3b39_100%)] px-5 py-4 text-white">
+                  <div
+                    aria-hidden
+                    className="absolute -right-10 -top-16 size-40 rounded-full bg-white/10 blur-2xl"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-2">
+                      <span aria-hidden className="grid grid-cols-2 gap-[3px]">
+                        <span className="size-[6px] rounded-[2px] bg-brand-blue" />
+                        <span className="size-[6px] rounded-[2px] bg-brand-red" />
+                        <span className="size-[6px] rounded-[2px] bg-brand-yellow" />
+                        <span className="size-[6px] rounded-[2px] bg-brand-green" />
+                      </span>
+                      <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
+                        MemberPass
+                      </span>
+                    </span>
+                    <Nfc className="size-4 text-white/60" aria-hidden />
+                  </div>
+                  <p className="mt-5 font-mono text-[0.7rem] tracking-[0.18em] text-white/50">
+                    GDG @ PENN STATE
+                  </p>
+                  <p className="mt-0.5 text-[0.82rem] font-semibold text-white/90">
+                    Semester leaderboard
+                  </p>
+                </div>
+
+                <div className="px-3 pb-2 pt-4">
+                  <div className="mb-3 flex items-center justify-between px-1">
+                    <p className="type-overline text-muted-foreground">This semester</p>
+                    <Trophy className="size-4 text-star" aria-hidden />
+                  </div>
+
                   {podium.length === 0 ? (
                     <EmptyState
                       title="The board is wide open"
                       description="Points appear as members attend events and check out."
                     />
                   ) : (
-                    <Stack spacing={1.75} divider={<Divider flexItem />}>
+                    <ul className="space-y-1">
                       {podium.map((entry) => (
-                        <Stack
+                        <li
                           key={entry.slug}
-                          direction="row"
-                          spacing={1.5}
-                          sx={{ alignItems: 'center' }}
+                          className="flex items-center gap-3 rounded-xl px-1.5 py-2 transition-colors hover:bg-muted/60"
                         >
-                          <Typography
-                            sx={{
-                              width: 28,
-                              fontWeight: 800,
-                              color: entry.rank === 1 ? 'star.main' : 'text.secondary',
-                              fontVariantNumeric: 'tabular-nums',
-                            }}
+                          <span
+                            className={`w-7 shrink-0 font-mono text-sm font-semibold tabular-nums ${
+                              entry.rank === 1 ? 'text-star' : 'text-muted-foreground'
+                            }`}
                           >
                             {String(entry.rank).padStart(2, '0')}
-                          </Typography>
+                          </span>
                           <MemberAvatar
                             name={entry.displayName}
                             photoUrl={entry.photoUrl}
-                            size={40}
+                            size={36}
                           />
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography variant="subtitle2" noWrap>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">
                               {entry.displayName}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            </span>
+                            <span className="block truncate text-[0.72rem] text-muted-foreground">
                               {entry.memberNumber ?? 'GDG@PSU member'}
-                            </Typography>
-                          </Box>
-                          <Chip
-                            size="small"
-                            label={`${entry.points} pts`}
-                            color="primary"
-                            variant="outlined"
-                          />
-                        </Stack>
+                            </span>
+                          </span>
+                          <span className="shrink-0 rounded-full bg-primary-soft px-2.5 py-0.5 text-[0.72rem] font-bold tabular-nums text-primary">
+                            {entry.points} pts
+                          </span>
+                        </li>
                       ))}
-                    </Stack>
+                    </ul>
                   )}
-                  <Button
-                    component="a"
+
+                  <Link
                     href="/leaderboard"
-                    fullWidth
-                    sx={{ mt: 2.5 }}
-                    endIcon={<ArrowForwardIcon />}
+                    className="mt-3 flex h-10 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold text-primary transition-colors hover:bg-primary-soft/60"
                   >
                     Full leaderboard
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </Container>
-      </Box>
+                    <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <Container maxWidth="lg" sx={{ py: { xs: 7, md: 9 } }}>
+      <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8">
         <SectionHeading
           eyebrow="Upcoming"
           title="Show up. Tap in. Check out."
           description="Attendance is confirmed by an organizer at the door — a tap alone never awards points."
           action={
-            <Button component="a" href="/events" endIcon={<ArrowForwardIcon />}>
+            <Link href="/events" className={buttonVariants({ variant: 'secondary' })}>
               All events
-            </Button>
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
           }
         />
+
         {events.length === 0 ? (
           <EmptyState
             title="Nothing on the calendar yet"
             description="The next workshop or build night will appear here as soon as it is published."
+            icon={<CalendarDays />}
             action={
-              <Button component="a" href="/leaderboard" variant="outlined">
+              <Link href="/leaderboard" className={buttonVariants({ variant: 'secondary' })}>
                 Browse the leaderboard
-              </Button>
+              </Link>
             }
           />
         ) : (
-          <Grid container spacing={2.5}>
+          <div className="grid gap-4 md:grid-cols-3">
             {events.map((event) => (
-              <Grid key={event.id} size={{ xs: 12, md: 4 }}>
-                <Card
-                  component="a"
-                  href={`/events/${event.slug}`}
-                  sx={{
-                    display: 'block',
-                    height: '100%',
-                    textDecoration: 'none',
-                    '&:hover': { borderColor: 'primary.main' },
-                  }}
-                >
-                  <CardContent sx={{ p: 3 }}>
-                    <Typography variant="overline" color="primary">
-                      {formatDate(event.startsAt)}
-                    </Typography>
-                    <Typography variant="h4" sx={{ mt: 1, mb: 1 }}>
+              <Link
+                key={event.id}
+                href={`/events/${event.slug}`}
+                className="group block rounded-2xl focus-visible:outline-none"
+              >
+                <Card className="h-full transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-lift">
+                  <CardContent className="flex h-full flex-col p-5">
+                    <p className="type-overline text-primary">{formatDate(event.startsAt)}</p>
+                    <h3 className="mt-2 text-lg font-bold leading-snug transition-colors group-hover:text-primary">
                       {event.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ minHeight: 48 }}>
+                    </h3>
+                    <p className="mt-1.5 flex-1 text-sm leading-relaxed text-muted-foreground">
                       {event.summary || 'Details coming soon.'}
-                    </Typography>
-                    <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: 'center' }}>
-                      <Chip size="small" label={formatTime(event.startsAt)} variant="outlined" />
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        <CalendarDays className="size-3.5" aria-hidden />
+                        {formatTime(event.startsAt)}
+                      </span>
                       {event.location ? (
-                        <Chip size="small" label={event.location} variant="outlined" />
+                        <span className="inline-flex items-center gap-1.5">
+                          <MapPin className="size-3.5" aria-hidden />
+                          {event.location}
+                        </span>
                       ) : null}
-                    </Stack>
+                    </div>
                   </CardContent>
                 </Card>
-              </Grid>
+              </Link>
             ))}
-          </Grid>
+          </div>
         )}
-      </Container>
+      </section>
 
-      <Box
-        sx={{
-          bgcolor: 'surfaceMuted.main',
-          py: { xs: 7, md: 9 },
-          borderTop: '1px solid',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <Container maxWidth="lg">
-          <Grid container spacing={{ xs: 3, md: 5 }}>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Typography variant="overline" color="primary">
-                How it works
-              </Typography>
-              <Typography variant="h2" sx={{ mt: 1 }}>
-                Built for the people in the room.
-              </Typography>
-            </Grid>
-            <Grid size={{ xs: 12, md: 8 }}>
-              <Grid container spacing={2.5}>
-                {[
-                  {
-                    icon: <NfcIcon />,
-                    title: 'Your card is a doorway',
-                    body: 'A tap opens your permanent profile. It never authorizes a check-in, a purchase or an account action.',
-                  },
-                  {
-                    icon: <StarBorderOutlinedIcon />,
-                    title: 'Stars are forever',
-                    body: 'Every point you earn also becomes a star. Spend points on merch; stars stay as a record of showing up.',
-                  },
-                  {
-                    icon: <EmojiEventsOutlinedIcon />,
-                    title: 'No silent awards',
-                    body: 'An organizer confirms check-in and check-out. Miss a checkout and no attendance points are granted.',
-                  },
-                ].map((item) => (
-                  <Grid key={item.title} size={{ xs: 12, sm: 4 }}>
-                    <Card sx={{ height: '100%', bgcolor: 'background.paper' }}>
-                      <CardContent sx={{ p: 2.75 }}>
-                        <Box sx={{ color: 'primary.main', mb: 1.5 }}>{item.icon}</Box>
-                        <Typography variant="h5" sx={{ mb: 0.75 }}>
-                          {item.title}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {item.body}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </Grid>
-          </Grid>
-        </Container>
-      </Box>
+      <section className="border-y border-border bg-subtle/70">
+        <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8">
+          <div className="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:gap-12">
+            <div>
+              <p className="type-overline text-primary">How it works</p>
+              <h2 className="type-h2 mt-2 max-w-sm">Built for the people in the room.</h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {features.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Card key={item.title} className="h-full bg-card/80">
+                    <CardContent className="p-5">
+                      <span className="mb-3 grid size-10 place-items-center rounded-xl bg-primary-soft text-primary">
+                        <Icon className="size-5" aria-hidden />
+                      </span>
+                      <h3 className="text-[0.95rem] font-bold leading-snug">{item.title}</h3>
+                      <p className="mt-1.5 text-[0.82rem] leading-relaxed text-muted-foreground">
+                        {item.body}
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <Container maxWidth="lg" sx={{ py: { xs: 7, md: 9 } }}>
-        <Card sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', border: 0 }}>
-          <CardContent sx={{ p: { xs: 3, md: 5 } }}>
-            <Grid container spacing={3} sx={{ alignItems: 'center' }}>
-              <Grid size={{ xs: 12, md: 8 }}>
-                <Typography variant="h2" sx={{ color: 'inherit' }}>
-                  Already a member?
-                </Typography>
-                <Typography sx={{ mt: 1, opacity: 0.9, maxWidth: 560 }}>
-                  Sign in to see your points, stars, event history and your digital ID — or to pick
-                  up something from the rewards shelf.
-                </Typography>
-              </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <Stack direction={{ xs: 'column', sm: 'row', md: 'column' }} spacing={1.25}>
-                  <Button
-                    component="a"
-                    href="/login"
-                    variant="contained"
-                    color="inherit"
-                    sx={{ color: 'primary.main', bgcolor: 'common.white' }}
-                    fullWidth
-                  >
-                    Sign in
-                  </Button>
-                  <Button component="a" href="/leaderboard" sx={{ color: 'inherit' }} fullWidth>
-                    Leaderboard
-                  </Button>
-                </Stack>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      </Container>
+      <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16 lg:px-8">
+        <div className="relative overflow-hidden rounded-[2rem] bg-[linear-gradient(120deg,#132a6b_0%,#16357a_45%,#0b4a45_100%)] px-6 py-10 text-white shadow-glow sm:px-10 sm:py-12">
+          <div
+            aria-hidden
+            className="absolute -right-16 -top-24 size-72 rounded-full bg-brand-blue/30 blur-3xl"
+          />
+          <div
+            aria-hidden
+            className="absolute -bottom-24 left-1/3 size-64 rounded-full bg-brand-green/20 blur-3xl"
+          />
+          <div className="relative flex flex-col gap-7 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-xl">
+              <h2 className="type-h2 text-white">Already a member?</h2>
+              <p className="mt-2 text-sm leading-relaxed text-white/75">
+                Sign in to see your points, stars, event history and your digital ID — or to pick up
+                something from the rewards shelf.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2.5 sm:flex-row md:flex-col">
+              <Link href="/login" className={buttonVariants({ variant: 'inverse', size: 'lg' })}>
+                Sign in
+              </Link>
+              <Link
+                href="/leaderboard"
+                className={buttonVariants({
+                  variant: 'ghost',
+                  size: 'lg',
+                  className: 'text-white hover:bg-white/10',
+                })}
+              >
+                Leaderboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
     </>
   );
 }

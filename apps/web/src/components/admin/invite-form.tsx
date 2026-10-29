@@ -1,11 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
+import { Alert, Button, Field, Input, Textarea } from '@gdg/ui';
 import { createInvitationAction, type LinkState } from '@/app/(admin)/admin/actions';
 import { LinkPanel } from '@/components/admin/link-panel';
 
@@ -15,43 +11,31 @@ export function InviteForm() {
   const [state, action, pending] = useActionState(createInvitationAction, initial);
 
   return (
-    <Stack spacing={2}>
-      <Stack component="form" action={action} spacing={2} noValidate>
-        <TextField label="Email" name="email" type="email" required fullWidth autoComplete="off" />
-        <TextField
-          label="Member since (paid date)"
-          name="paidSince"
-          type="date"
-          required
-          fullWidth
-          slotProps={{ inputLabel: { shrink: true } }}
-        />
-        <TextField
-          label="Internal note"
-          name="note"
-          fullWidth
-          multiline
-          minRows={2}
-          slotProps={{ htmlInput: { maxLength: 300 } }}
-        />
-        <Button type="submit" variant="contained" disabled={pending} fullWidth>
+    <div className="space-y-3">
+      <form action={action} className="space-y-3.5" noValidate>
+        <Field label="Email" htmlFor="invite-email">
+          <Input id="invite-email" name="email" type="email" required autoComplete="off" />
+        </Field>
+        <Field label="Member since (paid date)" htmlFor="invite-paid-since" required>
+          <Input id="invite-paid-since" name="paidSince" type="date" required />
+        </Field>
+        <Field label="Internal note" htmlFor="invite-note">
+          <Textarea id="invite-note" name="note" rows={2} maxLength={300} className="min-h-20" />
+        </Field>
+        <Button type="submit" disabled={pending} className="w-full">
           {pending ? 'Generating…' : 'Generate invitation link'}
         </Button>
-      </Stack>
+      </form>
 
-      {state.error ? (
-        <Alert severity="error" role="alert">
-          {state.error}
-        </Alert>
-      ) : null}
+      {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
       {state.link ? (
         <LinkPanel link={state.link} email={state.email} title="Invitation link ready" />
       ) : null}
 
-      <Typography variant="caption" color="text.secondary">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         No email is sent. Copy the link and send it yourself. Duplicate pending invitations are
         blocked; invitations expire after 14 days and can be revoked or reissued.
-      </Typography>
-    </Stack>
+      </p>
+    </div>
   );
 }

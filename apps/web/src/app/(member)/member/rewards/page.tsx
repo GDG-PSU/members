@@ -1,14 +1,15 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import RedeemOutlinedIcon from '@mui/icons-material/RedeemOutlined';
-import { EmptyState, SectionHeading, StatusChip } from '@gdg/ui';
+import { Gift } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  EmptyState,
+  PageShell,
+  SectionHeading,
+  StatusChip,
+} from '@gdg/ui';
 import { requireMember } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getBalances } from '@/lib/member/queries';
@@ -45,7 +46,7 @@ export default async function RewardsPage() {
   const redemptions = redemptionsResult.data ?? [];
 
   return (
-    <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 9 } }}>
+    <PageShell width="lg" className="pb-10 pt-6 sm:pt-8">
       <SectionHeading
         headingLevel={1}
         eyebrow={`${balances.points} points available · ${balances.stars} stars untouched`}
@@ -57,82 +58,88 @@ export default async function RewardsPage() {
         <EmptyState
           title="The shelf is empty"
           description="Organizers will add merchandise and perks here. Your points keep accumulating."
-          icon={<RedeemOutlinedIcon fontSize="large" />}
+          icon={<Gift />}
         />
       ) : (
-        <Grid container spacing={2.5}>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rewards.map((reward) => (
-            <Grid key={reward.id} size={{ xs: 12, sm: 6, md: 4 }}>
-              <RewardCard
-                id={reward.id as string}
-                name={reward.name as string}
-                description={(reward.description as string) ?? ''}
-                costPoints={reward.cost_points as number}
-                inventory={(reward.inventory as number | null) ?? null}
-                fulfillmentNote={(reward.fulfillment_note as string) ?? ''}
-                balance={balances.points}
-              />
-            </Grid>
+            <RewardCard
+              key={reward.id}
+              id={reward.id as string}
+              name={reward.name as string}
+              description={(reward.description as string) ?? ''}
+              costPoints={reward.cost_points as number}
+              inventory={(reward.inventory as number | null) ?? null}
+              fulfillmentNote={(reward.fulfillment_note as string) ?? ''}
+              balance={balances.points}
+            />
           ))}
-        </Grid>
+        </div>
       )}
 
-      <Box sx={{ mt: 6 }}>
-        <Typography variant="h3" sx={{ mb: 2 }}>
-          Your requests
-        </Typography>
+      <section className="mt-8">
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="type-h3">Your requests</h2>
+          {redemptions.length > 0 ? (
+            <Badge variant="neutral" className="tabular-nums">
+              {redemptions.length}
+            </Badge>
+          ) : null}
+        </div>
+
         {redemptions.length === 0 ? (
           <EmptyState
             title="No requests yet"
             description="Anything you redeem will be tracked here."
           />
         ) : (
-          <Stack spacing={1.5}>
-            {redemptions.map((row) => (
-              <Card key={row.id as string}>
-                <CardContent sx={{ p: 2.5 }}>
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={2}
-                    sx={{ alignItems: { sm: 'center' } }}
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y divide-border">
+                {redemptions.map((row) => (
+                  <li
+                    key={row.id as string}
+                    className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5"
                   >
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">
                         {row.reward_name_snapshot as string}
                         {Number(row.quantity) > 1 ? ` × ${row.quantity}` : ''}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                         {formatDateTime(row.created_at as string)} · {row.points_debited as number}{' '}
                         points
                         {row.reason ? ` · ${row.reason as string}` : ''}
-                      </Typography>
-                    </Box>
-                    <StatusChip status={row.status as string} />
-                    {['requested', 'approved'].includes(row.status as string) ? (
-                      <Box component="form" action={cancelRedemptionAction}>
-                        <input type="hidden" name="redemptionId" value={row.id as string} />
-                        <Chip
-                          component="button"
-                          type="submit"
-                          label="Cancel"
-                          variant="outlined"
-                          clickable
-                          aria-label={`Cancel request for ${row.reward_name_snapshot as string}`}
-                        />
-                      </Box>
-                    ) : null}
-                  </Stack>
-                </CardContent>
-              </Card>
-            ))}
-          </Stack>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StatusChip status={row.status as string} />
+                      {['requested', 'approved'].includes(row.status as string) ? (
+                        <form action={cancelRedemptionAction}>
+                          <input type="hidden" name="redemptionId" value={row.id as string} />
+                          <Button
+                            type="submit"
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Cancel request for ${row.reward_name_snapshot as string}`}
+                          >
+                            Cancel
+                          </Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
         )}
-      </Box>
+      </section>
 
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 4 }}>
+      <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
         Signed in as {user.email}. Redemption requests are reviewed by an organizer at the next
         event.
-      </Typography>
-    </Container>
+      </p>
+    </PageShell>
   );
 }

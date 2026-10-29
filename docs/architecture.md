@@ -19,8 +19,8 @@ Admin kiosk browser ── authenticated admin → confirms or rejects pending s
 
 The repository is a pnpm workspace with Turborepo:
 
-- `apps/web` — the only deployable web app (Next.js, strict TypeScript, MUI).
-- `packages/ui` — central MUI theme/tokens and branded primitives.
+- `apps/web` — the only deployable web app (Next.js, strict TypeScript, Tailwind CSS v4 + shadcn/ui-style components).
+- `packages/ui` — central Tailwind token layer, shadcn-style primitives and branded components.
 - `packages/contracts` — framework-neutral Zod schemas and public types.
 - `supabase/migrations` — schema, policies, functions, storage configuration.
 - `scripts` — migration runner and transactional database verification.

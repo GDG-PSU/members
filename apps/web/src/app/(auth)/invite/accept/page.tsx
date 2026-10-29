@@ -1,12 +1,7 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { Button, buttonVariants, Card, CardContent } from '@gdg/ui';
 import { SetupForm } from '@/components/auth/setup-form';
 import { getViewer } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
@@ -34,77 +29,64 @@ export default async function InviteAcceptPage() {
   const expired = invitation?.expires_at ? new Date(invitation.expires_at) < new Date() : false;
   const usable = invitation?.status === 'pending' && !expired;
 
+  if (usable) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <p className="type-overline text-primary">One-time setup</p>
+          <h1 className="type-h2 mt-2">Make it yours</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Set a password, add the name and photo organizers will see, and your permanent profile
+            is created. Membership since {formatDate(invitation.paid_since)}.
+          </p>
+        </div>
+        <SetupForm email={viewer.user.email ?? ''} />
+      </div>
+    );
+  }
+
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 5, md: 9 } }}>
-      {usable ? (
-        <Stack spacing={3}>
-          <Box>
-            <Typography variant="overline" color="primary">
-              One-time setup
-            </Typography>
-            <Typography
-              variant="h2"
-              component="h1"
-              sx={{ mt: 1, mb: 1, fontSize: { xs: '2.1rem', md: '2.6rem' } }}
-            >
-              Make it yours
-            </Typography>
-            <Typography color="text.secondary">
-              Set a password, add the name and photo organizers will see, and your permanent profile
-              is created. Membership since {formatDate(invitation.paid_since)}.
-            </Typography>
-          </Box>
-          <SetupForm email={viewer.user.email ?? ''} />
-        </Stack>
-      ) : (
-        <Card>
-          <CardContent sx={{ p: { xs: 3, md: 4 } }}>
-            <Typography variant="overline" color="primary">
-              Membership
-            </Typography>
-            <Typography
-              variant="h2"
-              component="h1"
-              sx={{ mt: 1, mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
-            >
-              {invitation?.status === 'accepted'
-                ? 'This invitation was already used'
-                : expired
-                  ? 'This invitation has expired'
-                  : invitation?.status === 'revoked'
-                    ? 'This invitation was revoked'
-                    : 'No active invitation found'}
-            </Typography>
-            <Typography color="text.secondary" sx={{ mb: 2 }}>
-              Signed in as {viewer.user.email}. Invitations are single-use and expire after 14 days.
-            </Typography>
-            <Typography color="text.secondary" sx={{ mb: 3 }}>
-              Email{' '}
-              <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
-                {SUPPORT_EMAIL}
-              </Box>{' '}
-              from this address and an organizer will check your membership record or issue a fresh
-              invitation.
-            </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <Button
-                href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('GDG@PSU invitation help')}`}
-                variant="contained"
-              >
-                Contact organizers
-              </Button>
-              <form action="/api/auth/signout" method="post">
-                <Button type="submit" color="inherit">
-                  Sign out
-                </Button>
-              </form>
-              <Button component="a" href="/">
-                Go home
-              </Button>
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-    </Container>
+    <Card className="overflow-hidden">
+      <div
+        aria-hidden
+        className="h-1.5 w-full bg-[linear-gradient(90deg,#4285f4_0%,#ea4335_25%,#fbbc04_50%,#34a853_75%,#4285f4_100%)]"
+      />
+      <CardContent className="p-6 sm:p-8">
+        <p className="type-overline text-primary">Membership</p>
+        <h1 className="type-h2 mt-2">
+          {invitation?.status === 'accepted'
+            ? 'This invitation was already used'
+            : expired
+              ? 'This invitation has expired'
+              : invitation?.status === 'revoked'
+                ? 'This invitation was revoked'
+                : 'No active invitation found'}
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          Signed in as <span className="font-semibold text-foreground">{viewer.user.email}</span>.
+          Invitations are single-use and expire after 14 days.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Email <span className="font-semibold text-foreground">{SUPPORT_EMAIL}</span> from this
+          address and an organizer will check your membership record or issue a fresh invitation.
+        </p>
+        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+          <a
+            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('GDG@PSU invitation help')}`}
+            className={buttonVariants({})}
+          >
+            Contact organizers
+          </a>
+          <form action="/api/auth/signout" method="post">
+            <Button type="submit" variant="secondary" className="w-full sm:w-auto">
+              Sign out
+            </Button>
+          </form>
+          <Link href="/" className={buttonVariants({ variant: 'ghost' })}>
+            Go home
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,17 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import WifiOffIcon from '@mui/icons-material/WifiOff';
-import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined';
-import { MemberAvatar } from '@gdg/ui';
+import { CheckCircle2, ScanLine, WifiOff, X } from 'lucide-react';
+import { Alert, Badge, Button, Card, CardContent, MemberAvatar } from '@gdg/ui';
 
 interface Scan {
   id: string;
@@ -88,89 +79,97 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
   };
 
   return (
-    <Stack spacing={2}>
+    <div className="space-y-3">
       {offline ? (
-        <Alert severity="warning" icon={<WifiOffIcon />} role="status">
+        <Alert
+          variant="warning"
+          role="status"
+          icon={<WifiOff className="mt-0.5 size-4 shrink-0" aria-hidden />}
+        >
           Kiosk connection lost. Confirmations are disabled until the server responds. Nothing is
           awarded offline.
         </Alert>
       ) : null}
-      {message ? <Alert severity={message.kind}>{message.text}</Alert> : null}
+      {message ? (
+        <Alert variant={message.kind === 'success' ? 'success' : 'danger'}>{message.text}</Alert>
+      ) : null}
 
       {scans.length === 0 ? (
-        <Card>
-          <CardContent sx={{ p: 6, textAlign: 'center' }}>
-            <Typography variant="h4" sx={{ mb: 1 }}>
-              Waiting for a tap
-            </Typography>
-            <Typography color="text.secondary">
+        <Card className="border-dashed bg-subtle">
+          <CardContent className="flex flex-col items-center px-6 py-14 text-center">
+            <span className="relative mb-4 grid size-14 place-items-center rounded-full border border-border bg-card text-primary">
+              <span
+                aria-hidden
+                className="absolute inset-0 animate-ping rounded-full border border-primary/25"
+              />
+              <ScanLine className="size-6" aria-hidden />
+            </span>
+            <h2 className="type-h3">Waiting for a tap</h2>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
               Card taps appear here for human confirmation. Keep this tab open at the door.
-            </Typography>
+            </p>
           </CardContent>
         </Card>
       ) : (
         scans.map((scan) => {
           const expired = false;
+          const nextAction = scan.suggestedAction === 'check_out' ? 'check_out' : 'check_in';
           return (
-            <Card key={scan.id} sx={{ borderLeft: '6px solid', borderLeftColor: 'primary.main' }}>
-              <CardContent sx={{ p: 3 }}>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={2.5}
-                  sx={{ alignItems: { sm: 'center' } }}
-                >
-                  <MemberAvatar name={scan.memberName} photoUrl={scan.photoUrl} size={80} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="h3" sx={{ fontSize: { xs: '1.6rem', md: '2rem' } }}>
+            <Card key={scan.id} className="overflow-hidden border-l-4 border-l-primary">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <MemberAvatar name={scan.memberName} photoUrl={scan.photoUrl} size={76} />
+
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-extrabold leading-tight tracking-[-0.02em] sm:text-2xl">
                       {scan.memberName}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    </h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       {scan.memberNumber} · {scan.lane}
-                    </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    </p>
+                    <p className="mt-1.5 text-sm font-medium">
                       {scan.eventName} · {scan.sessionName}
-                    </Typography>
+                    </p>
                     {expired ? (
-                      <Chip
-                        size="small"
-                        color="error"
-                        label="Expired — ask for a fresh tap"
-                        sx={{ mt: 1 }}
-                      />
+                      <Badge variant="danger" className="mt-2">
+                        Expired — ask for a fresh tap
+                      </Badge>
                     ) : null}
-                  </Box>
-                  <Stack direction={{ xs: 'row', sm: 'column' }} spacing={1} sx={{ minWidth: 190 }}>
+                  </div>
+
+                  <div className="flex w-full gap-2 sm:w-52 sm:flex-col">
                     <Button
-                      variant="contained"
-                      size="large"
-                      startIcon={<CheckCircleOutlinedIcon />}
+                      size="lg"
                       disabled={busyId === scan.id || expired}
-                      onClick={() =>
-                        confirm(
-                          scan,
-                          scan.suggestedAction === 'check_out' ? 'check_out' : 'check_in',
-                        )
-                      }
+                      onClick={() => confirm(scan, nextAction)}
+                      className="flex-1 sm:w-full"
                     >
-                      Confirm {scan.suggestedAction === 'check_out' ? 'check-out' : 'check-in'}
+                      <CheckCircle2 className="size-4" aria-hidden />
+                      {busyId === scan.id
+                        ? 'Confirming…'
+                        : `Confirm ${nextAction === 'check_out' ? 'check-out' : 'check-in'}`}
                     </Button>
                     <Button
-                      color="inherit"
+                      variant="ghost"
+                      size="lg"
                       disabled={busyId === scan.id}
                       onClick={() => confirm(scan, 'reject')}
+                      className="shrink-0 text-muted-foreground sm:w-full"
                     >
+                      <X className="size-4" aria-hidden />
                       Reject
                     </Button>
-                  </Stack>
-                </Stack>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           );
         })
       )}
-      <Typography variant="caption" color="text.secondary">
+
+      <p className="pt-1 text-[0.72rem] leading-relaxed text-muted-foreground">
         Point and star awards happen only on confirmed check-out when the session threshold is met.
-      </Typography>
-    </Stack>
+      </p>
+    </div>
   );
 }

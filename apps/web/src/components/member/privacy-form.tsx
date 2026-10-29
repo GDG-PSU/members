@@ -1,18 +1,8 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Divider from '@mui/material/Divider';
-import Switch from '@mui/material/Switch';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { Alert, Button, Card, CardContent, Switch, VisibilityControl } from '@gdg/ui';
 import type { Visibility } from '@gdg/contracts';
-import { VisibilityControl } from '@gdg/ui';
 import { updatePrivacyAction, type ActionState } from '@/app/(member)/member/actions';
 
 const initial: ActionState = {};
@@ -48,76 +38,55 @@ export function PrivacyForm({ initial: initialSettings }: { initial: Visibility 
 
   return (
     <Card>
-      <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
-        <Stack component="form" action={action} spacing={2.5}>
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: 2,
-              bgcolor: 'surfaceMuted.main',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-            }}
-          >
-            <Box>
-              <Typography variant="h5">Public profile</Typography>
-              <Typography variant="caption" color="text.secondary">
+      <CardContent className="p-5 pt-5 sm:p-6">
+        <form action={action} className="space-y-4">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-subtle p-4">
+            <div className="min-w-0">
+              <p className="text-base font-bold">Public profile</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                 {settings.publicProfile
                   ? 'Anyone with your link can see the fields you enabled below.'
                   : 'Your profile link shows a neutral private state.'}
-              </Typography>
-            </Box>
-            <FormControlLabel
-              sx={{ m: 0 }}
-              control={
-                <Switch
-                  checked={settings.publicProfile}
-                  onChange={(event) => set('publicProfile', event.target.checked)}
-                  slotProps={{ input: { 'aria-label': 'Public profile' } }}
-                  color="primary"
-                />
-              }
-              label=""
+              </p>
+            </div>
+            <Switch
+              checked={settings.publicProfile}
+              aria-label="Public profile"
+              onCheckedChange={(value) => set('publicProfile', value)}
             />
-          </Box>
+          </div>
 
-          {fields.map((field, index) => (
-            <Box key={field.key}>
-              {index === 8 ? <Divider sx={{ mb: 1 }} /> : null}
-              <VisibilityControl
-                label={field.label}
-                description={field.description}
-                checked={settings[field.key]}
-                disabled={!settings.publicProfile}
-                onChange={(value) => set(field.key, value)}
-              />
-            </Box>
-          ))}
+          <div className="divide-y divide-border">
+            {fields.map((field) => (
+              <div key={field.key} className="py-0.5">
+                <VisibilityControl
+                  label={field.label}
+                  description={field.description}
+                  checked={settings[field.key]}
+                  disabled={!settings.publicProfile}
+                  onChange={(value) => set(field.key, value)}
+                />
+              </div>
+            ))}
+          </div>
 
           {Object.entries(settings).map(([key, value]) => (
             <input key={key} type="hidden" name={key} value={value ? 'on' : 'off'} />
           ))}
 
           {!settings.publicProfile ? (
-            <Alert severity="info">
+            <Alert variant="info">
               Your profile is private. Visible fields are saved but not shown until you switch it
               back on.
             </Alert>
           ) : null}
-          {state.error ? <Alert severity="error">{state.error}</Alert> : null}
-          {state.ok ? <Alert severity="success">{state.message}</Alert> : null}
+          {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
+          {state.ok ? <Alert variant="success">{state.message}</Alert> : null}
 
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={pending}
-            sx={{ alignSelf: 'flex-start' }}
-          >
+          <Button type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save privacy settings'}
           </Button>
-        </Stack>
+        </form>
       </CardContent>
     </Card>
   );

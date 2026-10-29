@@ -1,17 +1,10 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import QRCode from 'qrcode';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
-import { EmptyState, StatusChip } from '@gdg/ui';
+import { BadgeCheck, Nfc } from 'lucide-react';
+import { Badge, buttonVariants, Card, CardContent, PageShell, SectionHeading } from '@gdg/ui';
 import { requireMember } from '@/lib/auth/viewer';
-import { getActiveCardUrl, getCardStatus } from '@/lib/member/queries';
+import { SITE_URL } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,77 +14,88 @@ export const metadata: Metadata = {
 };
 
 export default async function DigitalIdPage() {
-  const { member, supabase } = await requireMember();
-  const [cardUrl, card] = await Promise.all([
-    getActiveCardUrl(supabase, member.id),
-    getCardStatus(supabase, member.id),
-  ]);
-
-  const qr =
-    cardUrl !== null
-      ? await QRCode.toDataURL(cardUrl, {
-          width: 640,
-          margin: 1,
-          errorCorrectionLevel: 'M',
-          color: { dark: '#0b1220', light: '#ffffff' },
-        })
-      : null;
+  const { member } = await requireMember();
+  const profileUrl = `${SITE_URL}/m/${member.slug}`;
+  const qr = await QRCode.toDataURL(profileUrl, {
+    width: 640,
+    margin: 1,
+    errorCorrectionLevel: 'M',
+    color: { dark: '#0b1220', light: '#ffffff' },
+  });
 
   return (
-    <Container maxWidth="sm" sx={{ pb: { xs: 6, md: 9 } }}>
-      <Stack spacing={1} sx={{ mb: 3 }}>
-        <Typography variant="overline" color="primary">
-          Fallback identification
-        </Typography>
-        <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.6rem' } }}>
-          Your digital ID
-        </Typography>
-        <Typography color="text.secondary">
-          Show this to an organizer if your card is unavailable. It opens your public profile — it
-          is not a password and does not authorize attendance by itself.
-        </Typography>
-      </Stack>
+    <PageShell width="md" className="pb-10 pt-6 sm:pt-8">
+      <SectionHeading
+        headingLevel={1}
+        eyebrow="Card-free fallback"
+        title="Your digital ID"
+        description="Show this to an organizer if your card is unavailable. It opens your public profile — it is not a password and does not authorize attendance by itself."
+      />
 
-      <Card>
-        <CardContent sx={{ p: 3.5 }}>
-          {qr ? (
-            <Stack spacing={2.5} sx={{ alignItems: 'center', textAlign: 'center' }}>
-              <Chip icon={<BadgeOutlinedIcon />} label={member.publicNumber} variant="outlined" />
-              <Box
-                component="img"
-                src={qr}
-                alt={`QR code linking to ${member.displayName}'s GDG@PSU profile`}
-                sx={{
-                  width: '100%',
-                  maxWidth: 320,
-                  borderRadius: 2,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                }}
-              />
-              <Typography variant="h5">{member.displayName}</Typography>
-              <StatusChip status="active" label="Active card" />
-              <Typography variant="caption" color="text.secondary">
-                This screen is only visible while signed in. Do not post it publicly.
-              </Typography>
-            </Stack>
-          ) : (
-            <EmptyState
-              title={card.status === 'pending' ? 'Your card is queued' : 'No active card yet'}
-              description={
-                card.status === 'pending'
-                  ? 'An organizer has prepared your card but has not written it yet. Your digital ID unlocks automatically once the write is verified.'
-                  : 'Ask an organizer to issue a card at the next event. Your profile link already works without one.'
-              }
-              action={
-                <Button component="a" href={`/m/${member.slug}`} variant="outlined">
-                  Open public profile
-                </Button>
-              }
+      <Card className="mx-auto max-w-md overflow-hidden">
+        <div className="relative overflow-hidden bg-[linear-gradient(135deg,#101d45_0%,#0d1a3c_45%,#0a3b39_100%)] px-5 py-4 text-white">
+          <div
+            aria-hidden
+            className="absolute -right-10 -top-16 size-40 rounded-full bg-white/10 blur-2xl"
+          />
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2">
+              <span aria-hidden className="grid grid-cols-2 gap-[3px]">
+                <span className="size-[6px] rounded-[2px] bg-brand-blue" />
+                <span className="size-[6px] rounded-[2px] bg-brand-red" />
+                <span className="size-[6px] rounded-[2px] bg-brand-yellow" />
+                <span className="size-[6px] rounded-[2px] bg-brand-green" />
+              </span>
+              <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
+                MemberPass
+              </span>
+            </span>
+            <Nfc className="size-4 text-white/60" aria-hidden />
+          </div>
+          <p className="mt-5 font-mono text-[0.7rem] tracking-[0.18em] text-white/50">
+            GDG @ PENN STATE
+          </p>
+          <p className="mt-0.5 truncate text-[0.82rem] font-semibold text-white/90">
+            {member.displayName}
+          </p>
+        </div>
+
+        <CardContent className="flex flex-col items-center gap-4 p-5 pt-6 text-center sm:p-6">
+          <Badge variant="outline" className="font-mono tracking-wide">
+            <BadgeCheck className="size-3.5" aria-hidden />
+            {member.publicNumber}
+          </Badge>
+
+          <div className="rounded-2xl border border-border bg-white p-3 shadow-card">
+            {/* eslint-disable-next-line @next/next/no-img-element -- QR data URLs cannot use next/image */}
+            <img
+              src={qr}
+              alt={`QR code linking to ${member.displayName}'s MemberPass profile`}
+              width={640}
+              height={640}
+              className="size-56"
             />
-          )}
+          </div>
+
+          <div>
+            <h2 className="type-h3">{member.displayName}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              Scanning opens your permanent profile. Organizers still confirm every check-in and
+              check-out in person.
+            </p>
+          </div>
+
+          <Link
+            href={`/m/${member.slug}`}
+            className={buttonVariants({ variant: 'secondary', className: 'w-full sm:w-auto' })}
+          >
+            Open public profile
+          </Link>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            This screen is only visible while signed in. Do not post it publicly.
+          </p>
         </CardContent>
       </Card>
-    </Container>
+    </PageShell>
   );
 }

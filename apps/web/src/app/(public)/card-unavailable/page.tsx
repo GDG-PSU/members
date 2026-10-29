@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
+import Link from 'next/link';
+import { CircleSlash } from 'lucide-react';
+import { buttonVariants, PageShell } from '@gdg/ui';
 
 export const metadata: Metadata = {
   title: 'Card unavailable',
@@ -11,25 +10,26 @@ export const metadata: Metadata = {
 
 export default function CardUnavailablePage() {
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 8, md: 12 }, textAlign: 'center' }}>
-      <Typography variant="overline" color="primary">
-        Card link
-      </Typography>
-      <Typography variant="h2" component="h1" sx={{ mt: 1, mb: 2 }}>
-        This card link is not active
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 4 }}>
-        It may have been replaced or reported lost. Ask an organizer at the next event and they can
-        issue a fresh card without changing your profile.
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <Button component="a" href="/" variant="contained">
-          Go home
-        </Button>
-        <Button component="a" href="/login">
-          Sign in for a digital ID
-        </Button>
-      </Box>
-    </Container>
+    <PageShell width="sm" className="py-16 sm:py-24">
+      <div className="flex flex-col items-center text-center">
+        <span className="mb-5 grid size-14 place-items-center rounded-2xl border border-border bg-card text-muted-foreground shadow-card">
+          <CircleSlash className="size-6" aria-hidden />
+        </span>
+        <p className="type-overline text-primary">Card link</p>
+        <h1 className="type-h2 mt-2">This card link is not active</h1>
+        <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+          It may have been replaced or reported lost. Ask an organizer at the next event and they
+          can issue a fresh card without changing your profile.
+        </p>
+        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+          <Link href="/" className={buttonVariants({})}>
+            Go home
+          </Link>
+          <Link href="/login" className={buttonVariants({ variant: 'secondary' })}>
+            Sign in for a digital ID
+          </Link>
+        </div>
+      </div>
+    </PageShell>
   );
 }

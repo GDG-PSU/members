@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { PageShell, SectionHeading } from '@gdg/ui';
 import { requireMember } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
@@ -30,25 +28,19 @@ export default async function ProfilePage() {
     : [];
 
   return (
-    <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 9 } }}>
-      <Stack spacing={1} sx={{ mb: 3 }}>
-        <Typography variant="overline" color="primary">
-          Public identity
-        </Typography>
-        <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.6rem' } }}>
-          Your profile
-        </Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 560 }}>
-          This is what people see at /m/{profile?.profile_slug ?? member.slug}. Name and photo are
-          required, but you can hide either from the public view in Privacy.
-        </Typography>
-      </Stack>
+    <PageShell width="lg" className="pb-10 pt-6 sm:pt-8">
+      <SectionHeading
+        headingLevel={1}
+        eyebrow="Public identity"
+        title="Your profile"
+        description={`This is what people see at /m/${profile?.profile_slug ?? member.slug}. Name and photo are required, but you can hide either from the public view in Privacy.`}
+      />
       <ProfileForm
         initialName={profile?.display_name ?? member.displayName}
         initialAbout={(profile?.about as string | null) ?? ''}
         initialLinks={links}
         photoUrl={profilePhotoUrl(member.slug)}
       />
-    </Container>
+    </PageShell>
   );
 }

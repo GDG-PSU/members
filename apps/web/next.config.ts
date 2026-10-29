@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   transpilePackages: ['@gdg/ui', '@gdg/contracts'],
   experimental: {
-    optimizePackageImports: ['@mui/material', '@mui/icons-material'],
+    optimizePackageImports: ['lucide-react'],
   },
   async headers() {
     const securityHeaders = [
@@ -19,8 +19,8 @@ const nextConfig: NextConfig = {
           "default-src 'self'",
           "img-src 'self' data: blob: https://*.supabase.co",
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-          "style-src 'self' 'unsafe-inline'",
-          "font-src 'self' data:",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' data: https://fonts.gstatic.com",
           "connect-src 'self' https://*.supabase.co",
           "frame-ancestors 'none'",
           "base-uri 'self'",

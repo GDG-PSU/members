@@ -1,11 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { ArrowLeft } from 'lucide-react';
+import { Card, CardContent, PageShell } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { RewardForm, type RewardValues } from '@/components/admin/reward-form';
@@ -39,23 +36,25 @@ export default async function EditRewardPage({ params }: { params: Promise<{ id:
   };
 
   return (
-    <Container maxWidth="sm" sx={{ pb: 8 }}>
-      <Button component="a" href="/admin/rewards" size="small" sx={{ mb: 2 }}>
-        ← Rewards
-      </Button>
-      <Stack spacing={1} sx={{ mb: 3 }}>
-        <Typography variant="overline" color="primary">
-          Catalogue
-        </Typography>
-        <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
-          {reward.name}
-        </Typography>
-      </Stack>
+    <PageShell width="md">
+      <Link
+        href="/admin/rewards"
+        className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-3.5" aria-hidden />
+        Rewards
+      </Link>
+
+      <div className="mb-6">
+        <p className="type-overline text-primary">Catalogue</p>
+        <h1 className="type-h1 mt-2">{reward.name}</h1>
+      </div>
+
       <Card>
-        <CardContent sx={{ p: 3 }}>
+        <CardContent className="pt-5">
           <RewardForm reward={reward} returnTo={`/admin/rewards/${id}`} />
         </CardContent>
       </Card>
-    </Container>
+    </PageShell>
   );
 }

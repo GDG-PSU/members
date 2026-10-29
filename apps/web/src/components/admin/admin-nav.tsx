@@ -1,11 +1,4 @@
-'use client';
-
-import Link from 'next/link';
-
-import { usePathname } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
+import { NavTabs } from '@/components/nav-tabs';
 
 const links = [
   { href: '/admin', label: 'Overview' },
@@ -20,26 +13,5 @@ const links = [
 ];
 
 export function AdminNav() {
-  const pathname = usePathname();
-  const current =
-    links
-      .filter((link) => pathname === link.href || pathname.startsWith(`${link.href}/`))
-      .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? '/admin';
-
-  return (
-    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: { xs: 3, md: 4 } }}>
-      <Tabs value={current} variant="scrollable" scrollButtons="auto" aria-label="Admin sections">
-        {links.map((link) => (
-          <Tab
-            key={link.href}
-            value={link.href}
-            label={link.label}
-            component={Link}
-            href={link.href}
-            sx={{ minHeight: 48, fontWeight: 600 }}
-          />
-        ))}
-      </Tabs>
-    </Box>
-  );
+  return <NavTabs items={links} ariaLabel="Admin sections" />;
 }

@@ -1,14 +1,12 @@
-import Box from '@mui/material/Box';
-import Container from '@mui/material/Container';
 import { MemberNav } from '@/components/member/member-nav';
 
 export default function MemberLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Box component="main" id="main">
-      <Container maxWidth="lg" sx={{ pt: { xs: 2, md: 3 } }}>
+    <main id="main">
+      <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-6 lg:px-8">
         <MemberNav />
-      </Container>
+      </div>
       {children}
-    </Box>
+    </main>
   );
 }

@@ -1,8 +1,23 @@
 'use client';
 
 import { useFormStatus } from 'react-dom';
-import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
+import { Alert, Button, cn } from '@gdg/ui';
+
+type LegacyVariant = 'contained' | 'outlined' | 'text';
+type LegacyColor = 'primary' | 'error' | 'inherit' | 'success';
+type LegacySize = 'small' | 'medium' | 'large';
+
+const variantMap = {
+  contained: 'default',
+  outlined: 'secondary',
+  text: 'ghost',
+} as const;
+
+const sizeMap = {
+  small: 'sm',
+  medium: 'default',
+  large: 'lg',
+} as const;
 
 export function SubmitButton({
   children,
@@ -12,24 +27,30 @@ export function SubmitButton({
   size = 'medium',
   fullWidth = false,
   confirmMessage,
+  className,
 }: {
   children: React.ReactNode;
   pendingLabel?: string;
-  variant?: 'contained' | 'outlined' | 'text';
-  color?: 'primary' | 'error' | 'inherit' | 'success';
-  size?: 'small' | 'medium' | 'large';
+  variant?: LegacyVariant;
+  color?: LegacyColor;
+  size?: LegacySize;
   fullWidth?: boolean;
   confirmMessage?: string;
+  className?: string;
 }) {
   const { pending } = useFormStatus();
+  const textDanger = variant === 'text' && color === 'error';
   return (
     <Button
       type="submit"
-      variant={variant}
-      color={color}
-      size={size}
-      fullWidth={fullWidth}
+      variant={textDanger ? 'ghost' : color === 'error' ? 'destructive' : variantMap[variant]}
+      size={sizeMap[size]}
       disabled={pending}
+      className={cn(
+        fullWidth && 'w-full',
+        textDanger && 'text-danger hover:bg-danger/10 hover:text-danger',
+        className,
+      )}
       onClick={
         confirmMessage
           ? (event) => {
@@ -46,7 +67,7 @@ export function SubmitButton({
 export function Flash({ notice, error }: { notice?: string; error?: string }) {
   if (!notice && !error) return null;
   return (
-    <Alert severity={error ? 'error' : 'success'} sx={{ mb: 2 }} role="status">
+    <Alert variant={error ? 'danger' : 'success'} className="mb-4" role="status">
       {error ?? notice}
     </Alert>
   );

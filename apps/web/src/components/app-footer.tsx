@@ -1,49 +1,50 @@
 import Link from 'next/link';
-import Box from '@mui/material/Box';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
 import { Wordmark } from '@gdg/ui';
 import { SUPPORT_EMAIL } from '@/lib/env';
 
 export function AppFooter() {
   return (
-    <Box component="footer" sx={{ mt: 8, borderTop: '1px solid', borderColor: 'divider' }}>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}
-        >
-          <Box>
+    <footer className="mt-16 border-t border-border bg-subtle/60">
+      <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div>
             <Wordmark compact />
-            <Typography variant="caption" component="p" sx={{ color: 'text.secondary', mt: 0.5 }}>
-              Google Developer Group at Penn State · Student-run community
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={2.5} sx={{ flexWrap: 'wrap' }}>
-            <Link href="/events" style={{ textDecoration: 'none' }}>
-              <Typography variant="caption" color="text.secondary">
-                Events
-              </Typography>
+            <p className="mt-2 max-w-xs text-xs leading-relaxed text-muted-foreground">
+              The member pass for Google Developer Group at Penn State.
+            </p>
+          </div>
+          <nav
+            aria-label="Footer"
+            className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium"
+          >
+            <Link
+              href="/events"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Events
             </Link>
-            <Link href="/privacy" style={{ textDecoration: 'none' }}>
-              <Typography variant="caption" color="text.secondary">
-                Privacy
-              </Typography>
+            <Link
+              href="/leaderboard"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Leaderboard
             </Link>
-            <Typography variant="caption" color="text.secondary">
-              Support: {SUPPORT_EMAIL}
-            </Typography>
-          </Stack>
-        </Stack>
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="caption" color="text.secondary">
-          Card links are identifiers, not credentials. Attendance always requires a human check-in
-          and check-out.
-        </Typography>
-      </Container>
-    </Box>
+            <Link
+              href="/privacy"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Privacy
+            </Link>
+            <span className="text-muted-foreground">Support: {SUPPORT_EMAIL}</span>
+          </nav>
+        </div>
+        <div className="mt-6 border-t border-border pt-5">
+          <p className="text-[0.72rem] leading-relaxed text-muted-foreground">
+            Card links are identifiers, not credentials. Attendance always requires a human check-in
+            and check-out.
+          </p>
+        </div>
+      </div>
+    </footer>
   );
 }

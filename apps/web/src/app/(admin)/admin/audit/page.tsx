@@ -1,11 +1,5 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import { DataTable, EmptyState } from '@gdg/ui';
+import { DataTable, EmptyState, Field, Input, PageShell, Button } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -39,37 +33,31 @@ export default async function AuditPage({
   const { data } = await query;
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
-      >
-        <Box>
-          <Typography variant="overline" color="primary">
-            Immutable
-          </Typography>
-          <Typography variant="h2" component="h1" sx={{ fontSize: { xs: '2rem', md: '2.5rem' } }}>
-            Audit log
-          </Typography>
-          <Typography color="text.secondary">
+    <PageShell>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="type-overline text-primary">Immutable</p>
+          <h1 className="type-h1 mt-2">Audit log</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Append-only record of organizer and security actions.
-          </Typography>
-        </Box>
-        <Box component="form" method="get" sx={{ display: 'flex', gap: 1 }}>
-          <TextField
-            name="action"
-            defaultValue={action}
-            label="Filter action"
-            size="small"
-            placeholder="e.g. card or attendance"
-            slotProps={{ htmlInput: { 'aria-label': 'Filter audit actions' } }}
-          />
-          <Button type="submit" variant="outlined">
+          </p>
+        </div>
+        <form method="get" className="flex items-end gap-2">
+          <Field label="Filter action" htmlFor="audit-action" className="w-56">
+            <Input
+              id="audit-action"
+              name="action"
+              defaultValue={action}
+              placeholder="e.g. card or attendance"
+              aria-label="Filter audit actions"
+              className="h-10 text-sm"
+            />
+          </Field>
+          <Button type="submit" variant="secondary" className="h-10">
             Filter
           </Button>
-        </Box>
-      </Stack>
+        </form>
+      </div>
 
       {!data || data.length === 0 ? (
         <EmptyState
@@ -86,49 +74,51 @@ export default async function AuditPage({
               key: 'when',
               header: 'When',
               render: (row) => (
-                <Typography variant="caption">
+                <span className="whitespace-nowrap font-mono text-[0.7rem] tabular-nums text-muted-foreground">
                   {formatDateTime(row.created_at as string)}
-                </Typography>
+                </span>
               ),
             },
             {
               key: 'action',
               header: 'Action',
-              render: (row) => <Typography variant="subtitle2">{row.action as string}</Typography>,
+              render: (row) => (
+                <span className="text-sm font-semibold">{row.action as string}</span>
+              ),
             },
             {
               key: 'target',
               header: 'Target',
               render: (row) => (
-                <Typography variant="caption" color="text.secondary">
+                <span className="text-xs text-muted-foreground">
                   {row.target_type as string}
                   {row.target_id ? ` · ${row.target_id as string}` : ''}
-                </Typography>
+                </span>
               ),
             },
             {
               key: 'reason',
               header: 'Reason',
               render: (row) => (
-                <Typography variant="caption">{(row.reason as string | null) ?? '—'}</Typography>
+                <span className="text-xs">{(row.reason as string | null) ?? '—'}</span>
               ),
             },
             {
               key: 'actor',
               header: 'Actor',
               render: (row) => (
-                <Typography variant="caption" color="text.secondary">
+                <span className="font-mono text-xs text-muted-foreground">
                   {(row.actor_auth_id as string | null)?.slice(0, 8) ?? 'system'}…
-                </Typography>
+                </span>
               ),
             },
           ]}
         />
       )}
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
         Audit rows cannot be updated or deleted (enforced by database triggers). Secrets, tokens and
         invitation links are never written here.
-      </Typography>
-    </Container>
+      </p>
+    </PageShell>
   );
 }

@@ -1,12 +1,15 @@
 import type { Metadata } from 'next';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Grid from '@mui/material/Grid';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { EmptyState, StatusChip } from '@gdg/ui';
+import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  PageShell,
+  StatusChip,
+} from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -37,75 +40,71 @@ export default async function AdminEventsPage({
     .limit(60);
 
   return (
-    <Container maxWidth="xl" sx={{ pb: 8 }}>
+    <PageShell>
       <Flash notice={notice} error={error} />
-      <Grid container spacing={4}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Typography variant="overline" color="primary">
-            Calendar
-          </Typography>
-          <Typography
-            variant="h2"
-            component="h1"
-            sx={{ mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}
-          >
-            Events
-          </Typography>
+
+      <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr] lg:items-start">
+        <section>
+          <p className="type-overline text-primary">Calendar</p>
+          <h1 className="type-h2 mb-4 mt-2">Events</h1>
+
           {!events || events.length === 0 ? (
             <EmptyState title="No events yet" description="Create the first event with the form." />
           ) : (
-            <Stack spacing={1.5}>
+            <div className="space-y-3">
               {events.map((event) => {
                 const sessions = Array.isArray(event.event_sessions) ? event.event_sessions : [];
                 const main = sessions.find((session) => session.kind === 'main');
                 return (
-                  <Card
+                  <Link
                     key={event.id as string}
-                    component="a"
                     href={`/admin/events/${event.id}`}
-                    sx={{ textDecoration: 'none', '&:hover': { borderColor: 'primary.main' } }}
+                    className="group block rounded-2xl focus-visible:outline-none"
                   >
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Stack
-                        direction="row"
-                        spacing={2}
-                        sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
-                      >
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="h5">{event.name as string}</Typography>
-                          <Typography variant="caption" color="text.secondary">
+                    <Card className="transition-colors group-hover:border-primary/50 group-hover:shadow-lift">
+                      <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <h2 className="text-base font-bold leading-snug">
+                            {event.name as string}
+                          </h2>
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {formatDateTime(event.starts_at as string)} →{' '}
                             {formatDateTime(event.ends_at as string)}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
                             {main
                               ? `Main reward ${main.reward_points as number} pts · min ${main.minimum_duration_minutes as number} min`
                               : 'No main session'}
-                          </Typography>
-                        </Box>
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                           {event.is_public ? null : <StatusChip status="draft" label="private" />}
                           <StatusChip status={event.status as string} />
-                        </Stack>
-                      </Stack>
-                    </CardContent>
-                  </Card>
+                          <ArrowRight
+                            className="ml-1 size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+                            aria-hidden
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
                 );
               })}
-            </Stack>
+            </div>
           )}
-        </Grid>
-        <Grid size={{ xs: 12, md: 5 }}>
+        </section>
+
+        <section className="lg:sticky lg:top-24">
           <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h4" sx={{ mb: 2 }}>
-                New event
-              </Typography>
+            <CardHeader>
+              <CardTitle>New event</CardTitle>
+            </CardHeader>
+            <CardContent>
               <EventForm returnTo="/admin/events" />
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
-    </Container>
+        </section>
+      </div>
+    </PageShell>
   );
 }

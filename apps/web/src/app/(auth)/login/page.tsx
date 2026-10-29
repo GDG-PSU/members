@@ -1,13 +1,7 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import { Alert, Card, CardContent } from '@gdg/ui';
 import { LoginForm } from '@/components/auth/login-form';
 import { getViewer } from '@/lib/auth/viewer';
 import { SUPPORT_EMAIL } from '@/lib/env';
@@ -29,66 +23,67 @@ export default async function LoginPage({
   const { notice } = await searchParams;
 
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 6, md: 10 } }}>
-      <Card>
-        <CardContent sx={{ p: { xs: 3, md: 4 } }}>
-          <Typography variant="overline" color="primary">
-            Member access
-          </Typography>
-          <Typography
-            variant="h2"
-            component="h1"
-            sx={{ mt: 1, mb: 1, fontSize: { xs: '2rem', md: '2.6rem' } }}
-          >
-            Welcome back
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
+    <div>
+      <Card className="overflow-hidden">
+        <div
+          aria-hidden
+          className="h-1.5 w-full bg-[linear-gradient(90deg,#4285f4_0%,#ea4335_25%,#fbbc04_50%,#34a853_75%,#4285f4_100%)]"
+        />
+        <CardContent className="p-6 sm:p-8">
+          <p className="type-overline text-primary">Member access</p>
+          <h1 className="type-h2 mt-2">Welcome back</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             Use the email your invitation was sent to.
-          </Typography>
-          {notice === 'signed-out' ? (
-            <Typography variant="body2" sx={{ mb: 2, color: 'success.main' }} role="status">
-              You have been signed out.
-            </Typography>
-          ) : null}
-          {notice === 'invalid-link' ? (
-            <Typography variant="body2" sx={{ mb: 2, color: 'error.main' }} role="alert">
-              That sign-in link is invalid or has already been used. Ask GDG@PSU for a fresh link,
-              or sign in with your password.
-            </Typography>
-          ) : null}
-          <LoginForm />
-          <Divider sx={{ my: 3 }} />
-          <Stack spacing={1}>
-            <Typography variant="body2" color="text.secondary">
+          </p>
+
+          <div className="mt-5 space-y-3">
+            {notice === 'signed-out' ? (
+              <Alert variant="success">You have been signed out.</Alert>
+            ) : null}
+            {notice === 'invalid-link' ? (
+              <Alert variant="danger">
+                That sign-in link is invalid or has already been used. Ask GDG@PSU for a fresh link,
+                or sign in with your password.
+              </Alert>
+            ) : null}
+          </div>
+
+          <div className="mt-5">
+            <LoginForm />
+          </div>
+
+          <div className="my-6 border-t border-border" />
+
+          <div className="space-y-2.5 text-[0.82rem] leading-relaxed text-muted-foreground">
+            <p>
               Forgot your password? Email{' '}
-              <Box
-                component="a"
+              <a
                 href={`mailto:${SUPPORT_EMAIL}?subject=GDG%40PSU%20password%20reset`}
-                sx={{ color: 'primary.main' }}
+                className="font-semibold text-primary underline-offset-2 hover:underline"
               >
                 {SUPPORT_EMAIL}
-              </Box>{' '}
+              </a>{' '}
               from your registered address. An admin will send a recovery link.
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Not a member yet? Membership opens after dues are recorded — no public signup.
-            </Typography>
-            <Button
-              component="a"
+            </p>
+            <p>Not a member yet? Membership opens after dues are recorded — no public signup.</p>
+            <Link
               href="/forgot-password"
-              size="small"
-              sx={{ alignSelf: 'flex-start', px: 0 }}
+              className="inline-flex font-semibold text-primary underline-offset-2 hover:underline"
             >
               Password help
-            </Button>
-          </Stack>
+            </Link>
+          </div>
         </CardContent>
       </Card>
-      <Stack direction="row" spacing={1} sx={{ mt: 3, justifyContent: 'center' }}>
-        <Button component="a" href="/" size="small" color="inherit">
-          ← Back to GDG@PSU
-        </Button>
-      </Stack>
-    </Container>
+
+      <div className="mt-5 text-center">
+        <Link
+          href="/"
+          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          ← Back to MemberPass
+        </Link>
+      </div>
+    </div>
   );
 }

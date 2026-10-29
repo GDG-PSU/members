@@ -1,11 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
-import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
+import { Alert, Button, Field, Input } from '@gdg/ui';
 import { inviteAdministratorAction, type LinkState } from '@/app/(admin)/admin/actions';
 import { LinkPanel } from '@/components/admin/link-panel';
 
@@ -16,35 +12,36 @@ export function AdminInviteForm() {
   const [state, action, pending] = useActionState(inviteAdministratorAction, initial);
 
   return (
-    <Stack spacing={2}>
-      <Stack component="form" action={action} spacing={2} noValidate>
-        <TextField
+    <div className="space-y-3">
+      <form action={action} className="space-y-3.5" noValidate>
+        <Field
           label="Email"
-          name="email"
-          type="email"
-          required
-          fullWidth
-          autoComplete="off"
-          helperText="The invitee must enroll an authenticator before /admin opens."
-        />
-        <Button type="submit" variant="outlined" disabled={pending} fullWidth>
+          htmlFor="admin-invite-email"
+          hint="The invitee must enroll an authenticator before /admin opens."
+        >
+          <Input
+            id="admin-invite-email"
+            name="email"
+            type="email"
+            required
+            autoComplete="off"
+            aria-describedby="admin-invite-email-message"
+          />
+        </Field>
+        <Button type="submit" variant="secondary" disabled={pending} className="w-full">
           {pending ? 'Generating…' : 'Generate admin invite link'}
         </Button>
-      </Stack>
+      </form>
 
-      {state.error ? (
-        <Alert severity="error" role="alert">
-          {state.error}
-        </Alert>
-      ) : null}
+      {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
       {state.link ? (
         <LinkPanel link={state.link} email={state.email} title="Admin invite link ready" />
       ) : null}
 
-      <Typography variant="caption" color="text.secondary">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         No email is sent. The invitee sets their password from this one-time link, then enrolls TOTP
         at /admin-mfa. Granting the role is audited.
-      </Typography>
-    </Stack>
+      </p>
+    </div>
   );
 }

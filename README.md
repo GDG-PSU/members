@@ -13,7 +13,7 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 
 - Next.js 16 App Router, React 19, strict TypeScript, Server Components + Server Actions
 - pnpm workspace + Turborepo
-- MUI v9 theme/primitives, light/dark/system color schemes
+- Tailwind CSS v4 + code-owned shadcn/ui-style components (Radix primitives, lucide icons), light/dark/system color schemes
 - Supabase Postgres, Auth, Storage; SQL migrations, RLS, `SECURITY DEFINER` domain functions
 - Zod contracts shared via `packages/contracts`
 - ESP32/PN532 firmware with PlatformIO (Arduino framework)
@@ -29,7 +29,7 @@ The table below reflects the hosted state verified on 2026-10-29. Re-run the rel
 | Public pages: `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[slug]`, `/c/[token]`, `/privacy`            | Implemented                                                                                                       |
 | Auth: login, invite confirmation, one-time setup, password setting/recovery, sign out, password-help page        | Implemented                                                                                                       |
 | Member portal: dashboard, activity, rewards + cancel, profile edit/photo, privacy toggles, digital ID QR         | Implemented                                                                                                       |
-| Design system: MUI theme, primitives, theme toggle (System/Light/Dark)                                           | Implemented                                                                                                       |
+| Design system: Tailwind tokens, shadcn-style primitives, theme toggle (System/Light/Dark)                        | Implemented                                                                                                       |
 | Audit log, rate-limit function, token hashing/encryption, server-side photo processing                           | Implemented                                                                                                       |
 | ESP32/PN532 firmware project + host-testable NDEF parser                                                         | Compiled for esp32dev with example configuration; physical hardware untested                                      |
 | Admin portal: invitations, members, cards, events, kiosk, rewards, devices, audit; TOTP MFA gate at `/admin-mfa` | Implemented; all surfaces exercised through the real UI in the full-surface run                                   |
@@ -136,7 +136,7 @@ apps/web/                 Next.js app (public, auth, member routes; API + server
   src/app/api/            Public JSON, admin kiosk, device v1, auth routes
   src/lib/                Supabase clients, auth viewer, tokens/crypto, photo pipeline, API helpers
 tests/e2e/                Playwright public + authenticated invitation/setup suite
-packages/ui/              MUI theme/tokens + branded primitives (PageShell, MetricCard, …)
+packages/ui/              Tailwind tokens + shadcn-style primitives and branded components (PageShell, MetricCard, …)
 packages/contracts/       Zod schemas/types for profiles, events, rewards, devices
 supabase/migrations/      Schema, RLS, functions, storage, rate limits
 scripts/                  Migration runner, DB verification, admin bootstrap, guarded seed

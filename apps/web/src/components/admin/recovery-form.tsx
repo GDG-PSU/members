@@ -1,10 +1,7 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Typography from '@mui/material/Typography';
+import { Alert, Button } from '@gdg/ui';
 import { sendRecoveryAction, type LinkState } from '@/app/(admin)/admin/actions';
 import { LinkDialog } from '@/components/admin/link-panel';
 
@@ -16,21 +13,21 @@ export function RecoveryForm({ email }: { email: string }) {
   const open = Boolean(state.link) && dismissed !== state.link;
 
   return (
-    <Box>
-      <Box component="form" action={action}>
+    <div>
+      <form action={action}>
         <input type="hidden" name="email" value={email} />
-        <Button type="submit" size="small" variant="outlined" disabled={pending}>
+        <Button type="submit" size="sm" variant="secondary" disabled={pending}>
           {pending ? 'Generating…' : 'Generate recovery link'}
         </Button>
-      </Box>
+      </form>
       {state.error ? (
-        <Alert severity="error" sx={{ mt: 1.5 }} role="alert">
+        <Alert variant="danger" className="mt-3" role="alert">
           {state.error}
         </Alert>
       ) : null}
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+      <p className="mt-2 text-[0.78rem] leading-relaxed text-muted-foreground">
         No email is sent. Copy the link and deliver it privately.
-      </Typography>
+      </p>
       <LinkDialog
         open={open}
         onClose={() => setDismissed(state.link ?? null)}
@@ -38,6 +35,6 @@ export function RecoveryForm({ email }: { email: string }) {
         email={state.email}
         title="Recovery link"
       />
-    </Box>
+    </div>
   );
 }
