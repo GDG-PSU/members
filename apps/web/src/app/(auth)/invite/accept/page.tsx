@@ -36,8 +36,8 @@ export default async function InviteAcceptPage() {
           <p className="type-overline text-primary">One-time setup</p>
           <h1 className="type-h2 mt-2">Make it yours</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Set a password, add the name and photo organizers will see, and your permanent profile
-            is created. Membership since {formatDate(invitation.paid_since)}.
+            Set a password, add the name and clear face photo organizers will see at the door, and
+            your permanent profile is created. Membership since {formatDate(invitation.paid_since)}.
           </p>
         </div>
         <SetupForm email={viewer.user.email ?? ''} />

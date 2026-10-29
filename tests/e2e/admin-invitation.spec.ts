@@ -100,10 +100,7 @@ test.describe('admin invitation and member setup', () => {
         await expect(ready).toBeVisible({ timeout: 20_000 });
         await expect(ready).toContainText(memberEmail);
 
-        invitationLink = await page
-          .getByLabel('One-time sign-in link')
-          .locator('textarea:not([aria-hidden="true"])')
-          .inputValue();
+        invitationLink = await page.getByLabel('One-time sign-in link').inputValue();
         expect(new URL(invitationLink).origin).toBe(origin);
         expect(new URL(invitationLink).pathname).toBe('/auth/confirm');
         expect(new URL(invitationLink).searchParams.get('next')).toBe('/invite/accept');
@@ -137,7 +134,16 @@ test.describe('admin invitation and member setup', () => {
           });
           await memberPage.locator('input[name="password"]').fill(memberPassword);
           await memberPage.locator('input[name="confirmPassword"]').fill(memberPassword);
-          await memberPage.locator('input[name="acceptTerms"]').check({ force: true });
+          await memberPage
+            .locator('label')
+            .filter({ hasText: 'I confirm this is a clear, current photo of my face' })
+            .click();
+          await expect(memberPage.locator('input[name="photoAttestation"]')).toBeChecked();
+          await memberPage
+            .locator('label')
+            .filter({ hasText: 'I understand my privacy choices above' })
+            .click();
+          await expect(memberPage.locator('input[name="acceptTerms"]')).toBeChecked();
           await memberPage.getByRole('button', { name: 'Create my profile' }).click();
 
           await expect(memberPage).toHaveURL(/\/member\?welcome=1/, { timeout: 30_000 });

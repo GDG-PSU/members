@@ -32,8 +32,8 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ## Two-lane operation during an event
 
 1. Member taps their card at lane A or B. Firmware parses only `https://<configured-host>/c/<43-char token>` and posts one scan with an idempotency key. **[pending]**
-2. The kiosk shows the pending scan with member name/photo and current attendance state. **Nothing is awarded yet.**
-3. An organizer compares the person to the photo and presses **Confirm check-in**. Duplicate taps show a clear "already checked in" state.
+2. The kiosk shows the pending scan with member name/photo and current attendance state. **Nothing is awarded yet.** If it says **Photo changed in the last 48 hours**, ask for the member's PSU ID.
+3. An organizer compares the person to the photo, and for a recent photo change matches the PSU ID and ticks **I checked this member's PSU ID**. Then press **Confirm check-in**; the server rejects the confirmation if the check is missing. Duplicate taps show a clear "already checked in" state.
 4. At the end, the member taps again; the organizer confirms **Check-out**. The server computes duration. Only at/over the session threshold are points and stars added.
 5. A member who leaves without checkout gets no attendance. Do not confirm a checkout they did not make.
 6. Bonus sessions are separate: tap and confirm them independently. A main-session check-out does not qualify a bonus session.

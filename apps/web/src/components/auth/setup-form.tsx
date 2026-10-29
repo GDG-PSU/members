@@ -15,7 +15,8 @@ export function SetupForm({ email }: { email: string }) {
   return (
     <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
       <Alert variant="info">
-        Status: {email} is invited. Your name and photo are required; you can hide them later.{' '}
+        Status: {email} is invited. Your name and a clear face photo are required; you can hide them
+        later.{' '}
         <a
           href="#privacy-settings"
           className="font-semibold text-primary underline underline-offset-2"
@@ -45,7 +46,11 @@ export function SetupForm({ email }: { email: string }) {
       </Field>
 
       <div>
-        <p className="text-sm font-semibold text-foreground">Profile photo</p>
+        <p className="text-sm font-semibold text-foreground">Face photo (required)</p>
+        <p className="mt-1 text-[0.82rem] leading-relaxed text-muted-foreground">
+          A clear, front-facing photo of your face. No filters, masks, group shots or photos of
+          someone else — organizers match this photo to you at the door.
+        </p>
         <div className="mt-2 flex items-center gap-4">
           <span
             aria-hidden
@@ -84,6 +89,18 @@ export function SetupForm({ email }: { email: string }) {
             </p>
           </div>
         </div>
+        <label className="mt-3 flex items-start gap-2.5 text-[0.82rem] leading-relaxed text-muted-foreground">
+          <input
+            type="checkbox"
+            name="photoAttestation"
+            required
+            className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+          />
+          <span>
+            I confirm this is a clear, current photo of my face, without filters, masks or other
+            people.
+          </span>
+        </label>
       </div>
 
       <Field
@@ -148,8 +165,9 @@ export function SetupForm({ email }: { email: string }) {
           className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
         />
         <span>
-          I understand my privacy choices above and that my card is an identifier, not a password.
-          See the{' '}
+          I understand my privacy choices above, that my card is an identifier rather than a
+          password, and that a photo change within 48 hours requires a PSU ID check at the next
+          event. See the{' '}
           <Link
             href="/privacy"
             target="_blank"

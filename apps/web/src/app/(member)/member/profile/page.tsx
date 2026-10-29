@@ -33,7 +33,7 @@ export default async function ProfilePage() {
         headingLevel={1}
         eyebrow="Public identity"
         title="Your profile"
-        description={`This is what people see at /m/${profile?.profile_slug ?? member.slug}. Name and photo are required, but you can hide either from the public view in Privacy.`}
+        description={`This is what people see at /m/${profile?.profile_slug ?? member.slug}. Your name and a clear face photo are required for identity checks, but you can hide either from the public view in Privacy.`}
       />
       <ProfileForm
         initialName={profile?.display_name ?? member.displayName}

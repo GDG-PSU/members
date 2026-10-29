@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ScanLine, WifiOff, X } from 'lucide-react';
 import { Alert, Badge, Button, Card, CardContent, MemberAvatar } from '@gdg/ui';
+import { formatDateTime } from '@/lib/format';
 
 interface Scan {
   id: string;
@@ -10,6 +11,8 @@ interface Scan {
   memberName: string;
   memberNumber: string;
   photoUrl: string | null;
+  photoChangedAt: string | null;
+  photoChangedRecently: boolean;
   eventName: string;
   sessionName: string;
   suggestedAction: string;
@@ -23,6 +26,7 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
   const [offline, setOffline] = useState(false);
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [identityChecks, setIdentityChecks] = useState<Record<string, boolean>>({});
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -51,7 +55,11 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
       const response = await fetch('/api/admin/kiosk/confirm', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scanId: scan.id, action }),
+        body: JSON.stringify({
+          scanId: scan.id,
+          action,
+          identityCheck: scan.photoChangedRecently ? true : undefined,
+        }),
       });
       const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!response.ok) {
@@ -67,6 +75,11 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
               : 'Scan rejected.',
       });
       setScans((current) => current.filter((item) => item.id !== scan.id));
+      setIdentityChecks((current) => {
+        const next = { ...current };
+        delete next[scan.id];
+        return next;
+      });
       void refresh();
     } catch (cause) {
       setMessage({
@@ -113,6 +126,8 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
       ) : (
         scans.map((scan) => {
           const expired = false;
+          const identityChecked = Boolean(identityChecks[scan.id]);
+          const requiresIdentityCheck = scan.photoChangedRecently;
           const nextAction = scan.suggestedAction === 'check_out' ? 'check_out' : 'check_in';
           return (
             <Card key={scan.id} className="overflow-hidden border-l-4 border-l-primary">
@@ -137,17 +152,21 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
                     ) : null}
                   </div>
 
-                  <div className="flex w-full gap-2 sm:w-52 sm:flex-col">
+                  <div className="flex w-full flex-col gap-2 sm:w-52">
                     <Button
                       size="lg"
-                      disabled={busyId === scan.id || expired}
+                      disabled={
+                        busyId === scan.id || expired || (requiresIdentityCheck && !identityChecked)
+                      }
                       onClick={() => confirm(scan, nextAction)}
                       className="flex-1 sm:w-full"
                     >
                       <CheckCircle2 className="size-4" aria-hidden />
                       {busyId === scan.id
                         ? 'Confirming…'
-                        : `Confirm ${nextAction === 'check_out' ? 'check-out' : 'check-in'}`}
+                        : requiresIdentityCheck && !identityChecked
+                          ? 'PSU ID required'
+                          : `Confirm ${nextAction === 'check_out' ? 'check-out' : 'check-in'}`}
                     </Button>
                     <Button
                       variant="ghost"
@@ -161,6 +180,33 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
                     </Button>
                   </div>
                 </div>
+
+                {requiresIdentityCheck ? (
+                  <Alert
+                    variant="warning"
+                    title="Photo changed in the last 48 hours"
+                    className="mt-4"
+                  >
+                    <p>
+                      Last changed {formatDateTime(scan.photoChangedAt)}. Ask for this member&apos;s
+                      PSU ID and match the face before confirming.
+                    </p>
+                    <label className="mt-2.5 flex items-start gap-2.5 text-sm font-semibold text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={identityChecked}
+                        onChange={(event) =>
+                          setIdentityChecks((current) => ({
+                            ...current,
+                            [scan.id]: event.target.checked,
+                          }))
+                        }
+                        className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+                      />
+                      I checked this member&apos;s PSU ID
+                    </label>
+                  </Alert>
+                ) : null}
               </CardContent>
             </Card>
           );

@@ -78,8 +78,8 @@ Limitation: the limiter bucket is per token, not per client IP. Cycling many val
 
 ## Admin endpoints
 
-- `GET /api/admin/kiosk/pending` — poll the pending scan queue; returns member name/photo, event/session and suggested action. Requires an admin cookie session.
-- `POST /api/admin/kiosk/confirm` — body `{ scanId, action: 'check_in'|'check_out'|'reject', reason? }`; calls `confirm_scan` atomically, applies a per-admin rate limit (60/min), and returns `{ ok, attendanceId }`. A scan is never awarded automatically.
+- `GET /api/admin/kiosk/pending` — poll the pending scan queue; returns member name/photo, `photoChangedAt`, `photoChangedRecently` (within 48 hours), event/session and suggested action. Requires an admin cookie session.
+- `POST /api/admin/kiosk/confirm` — body `{ scanId, action: 'check_in'|'check_out'|'reject', reason?, identityCheck? }`; calls `confirm_scan` atomically, applies a per-admin rate limit (60/min), and returns `{ ok, attendanceId }`. If the member's photo changed within 48 hours, a check-in or check-out without `identityCheck: true` is rejected with 400; a successful check writes an `attendance.identity_checked` audit row. A scan is never awarded automatically.
 
 All other admin mutations are Server Actions (below). They require `getViewer().isAdmin` on the server and write an `audit_log` row; most finish with `redirect()` to the originating page with a notice/error query parameter. Link-returning actions instead return `{ ok, email, link }` to a client form (never a redirect URL), so tokens are not placed in browser history or server logs. Delivery is manual: the admin copies the link, sends it privately, and the app never calls an email provider.
 

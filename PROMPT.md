@@ -24,6 +24,7 @@ The design should be exceptionally polished, visual-first, uncluttered, responsi
 - The stable profile is `/m/<opaque-random-public-id>`; it is created only after successful invite acceptance/setup.
 - The physical card stores only an HTTPS NDEF URI at `/c/<random-card-locator>`. `/c/` redirects to `/m/` only while that card locator is active. Never put member data, an Auth ID, a password, points, email, Wi-Fi credentials, a device secret, or a session token on the tag.
 - A card URL is readable/copyable and is not an authentication credential. No scan grants points. Authenticated staff must review the photo/member details and explicitly confirm attendance or activity.
+- The profile photo must clearly show the member's face. If the photo changed within 48 hours, the kiosk must require a PSU ID check and the server must refuse attendance confirmation until the organizer records it.
 - Supabase Auth is the only password/hash/session implementation. No open sign-up. Supabase secret/admin credentials remain server-only.
 - Use RLS and minimal grants for every exposed table. Verify authorization on every server operation. No client-side role checks as a security boundary.
 - Points are spendable; stars equal lifetime positive point earnings and never get spent. Awards, attendance, redemptions, refunds, and balance updates must be atomic, idempotent, and auditable.

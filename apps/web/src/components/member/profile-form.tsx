@@ -61,7 +61,7 @@ export function ProfileForm({
                     className: 'cursor-pointer',
                   })}
                 >
-                  Replace photo
+                  Change face photo
                 </label>
                 <input
                   id="profile-photo"
@@ -74,7 +74,10 @@ export function ProfileForm({
                     setPreview(file ? URL.createObjectURL(file) : photoUrl);
                   }}
                 />
-                <p className="mt-1.5 text-xs text-muted-foreground">Square crop · max 2 MB</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  Square crop · max 2 MB. Use a clear, front-facing photo of your face. A new photo
+                  triggers a PSU ID check at your next event.
+                </p>
               </div>
             </div>
 

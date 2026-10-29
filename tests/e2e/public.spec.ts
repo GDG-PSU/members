@@ -6,17 +6,25 @@ test.describe('public experience', () => {
     expect(response?.status()).toBe(200);
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Build things');
     await expect(page.getByRole('link', { name: /see what's next/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /member sign in/i }).first()).toBeVisible();
-    await expect(page.getByText(/this semester.s leaders/i)).toBeVisible();
+    await expect(
+      page
+        .locator('main')
+        .getByRole('link', { name: /^sign in$/i })
+        .first(),
+    ).toBeVisible();
+    await expect(page.getByText(/semester leaderboard/i).first()).toBeVisible();
   });
 
-  test('leaderboard is reachable and has an accessible table or empty state', async ({ page }) => {
+  test('leaderboard is reachable and lists rankings or an empty state', async ({ page }) => {
     const response = await page.goto('/leaderboard');
     expect(response?.status()).toBe(200);
     await expect(page.getByRole('heading', { name: 'The leaderboard' })).toBeVisible();
     const table = page.locator('table');
+    const podium = page.getByRole('list', { name: /top of the leaderboard/i });
     const empty = page.getByText(/no public rankings yet/i);
-    expect((await table.count()) + (await empty.count())).toBeGreaterThan(0);
+    expect((await table.count()) + (await podium.count()) + (await empty.count())).toBeGreaterThan(
+      0,
+    );
   });
 
   test('events page renders without horizontal overflow at mobile width', async ({ page }) => {
@@ -31,7 +39,12 @@ test.describe('public experience', () => {
 
   test('theme toggle exposes system, light and dark choices', async ({ page }) => {
     await page.goto('/');
-    const group = page.getByRole('group', { name: /color theme/i });
+    const openNav = page.getByRole('button', { name: /open navigation/i });
+    const compact = await openNav.isVisible();
+    if (compact) await openNav.click();
+    const group = compact
+      ? page.getByRole('dialog').getByRole('group', { name: /color theme/i })
+      : page.getByRole('group', { name: /color theme/i });
     await expect(group).toBeVisible();
     await expect(group.getByRole('button', { name: /light theme/i })).toBeVisible();
     await group.getByRole('button', { name: /dark theme/i }).click();

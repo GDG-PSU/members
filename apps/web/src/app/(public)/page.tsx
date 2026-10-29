@@ -18,6 +18,7 @@ import {
   SectionHeading,
 } from '@gdg/ui';
 import { listLeaderboard, listPublicEvents } from '@/lib/public/queries';
+import { getViewer } from '@/lib/auth/viewer';
 import { formatDate, formatTime } from '@/lib/format';
 import { SUPPORT_EMAIL } from '@/lib/env';
 
@@ -42,6 +43,15 @@ const features = [
 ];
 
 export default async function HomePage() {
+  const viewer = await getViewer().catch(() => null);
+  const dashboard = viewer?.member
+    ? { href: '/member', label: 'My dashboard' }
+    : viewer?.isAdmin
+      ? { href: '/admin', label: 'Open admin' }
+      : viewer?.user
+        ? { href: '/invite/accept', label: 'Finish setup' }
+        : null;
+
   const [leaders, events] = await Promise.all([
     listLeaderboard(5, 0).catch(() => []),
     listPublicEvents(3).catch(() => []),
@@ -84,12 +94,21 @@ export default async function HomePage() {
                   See what&apos;s next
                   <ArrowRight className="size-4" aria-hidden />
                 </Link>
-                <Link
-                  href="/login"
-                  className={buttonVariants({ variant: 'secondary', size: 'lg' })}
-                >
-                  Sign in
-                </Link>
+                {dashboard ? (
+                  <Link
+                    href={dashboard.href}
+                    className={buttonVariants({ variant: 'secondary', size: 'lg' })}
+                  >
+                    {dashboard.label}
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login"
+                    className={buttonVariants({ variant: 'secondary', size: 'lg' })}
+                  >
+                    Sign in
+                  </Link>
+                )}
               </div>
 
               <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
@@ -109,16 +128,8 @@ export default async function HomePage() {
                     className="absolute -right-10 -top-16 size-40 rounded-full bg-white/10 blur-2xl"
                   />
                   <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2">
-                      <span aria-hidden className="grid grid-cols-2 gap-[3px]">
-                        <span className="size-[6px] rounded-[2px] bg-brand-blue" />
-                        <span className="size-[6px] rounded-[2px] bg-brand-red" />
-                        <span className="size-[6px] rounded-[2px] bg-brand-yellow" />
-                        <span className="size-[6px] rounded-[2px] bg-brand-green" />
-                      </span>
-                      <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
-                        MemberPass
-                      </span>
+                    <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
+                      MemberPass
                     </span>
                     <Nfc className="size-4 text-white/60" aria-hidden />
                   </div>
@@ -292,16 +303,28 @@ export default async function HomePage() {
           />
           <div className="relative flex flex-col gap-7 md:flex-row md:items-center md:justify-between">
             <div className="max-w-xl">
-              <h2 className="type-h2 text-white">Already a member?</h2>
+              <h2 className="type-h2 text-white">
+                {dashboard ? "You're already in." : 'Already a member?'}
+              </h2>
               <p className="mt-2 text-sm leading-relaxed text-white/75">
-                Sign in to see your points, stars, event history and your digital ID — or to pick up
-                something from the rewards shelf.
+                {dashboard
+                  ? 'Pick up where you left off — your points, stars, event history and digital ID are waiting.'
+                  : 'Sign in to see your points, stars, event history and your digital ID — or to pick up something from the rewards shelf.'}
               </p>
             </div>
             <div className="flex flex-col gap-2.5 sm:flex-row md:flex-col">
-              <Link href="/login" className={buttonVariants({ variant: 'inverse', size: 'lg' })}>
-                Sign in
-              </Link>
+              {dashboard ? (
+                <Link
+                  href={dashboard.href}
+                  className={buttonVariants({ variant: 'inverse', size: 'lg' })}
+                >
+                  {dashboard.label}
+                </Link>
+              ) : (
+                <Link href="/login" className={buttonVariants({ variant: 'inverse', size: 'lg' })}>
+                  Sign in
+                </Link>
+              )}
               <Link
                 href="/leaderboard"
                 className={buttonVariants({

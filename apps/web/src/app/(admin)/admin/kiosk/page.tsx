@@ -3,6 +3,7 @@ import { Card, CardContent, PageShell, SectionHeading, StatusChip } from '@gdg/u
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
+import { photoChangedWithin } from '@/lib/profile/identity';
 import { formatDateTime } from '@/lib/format';
 import { KioskQueue } from '@/components/admin/kiosk-queue';
 
@@ -21,7 +22,7 @@ export default async function KioskPage() {
     admin
       .from('device_scans')
       .select(
-        'id, action, status, created_at, expires_at, member_id, members(public_number, member_profiles(display_name, profile_slug)), event_sessions(name, events(name)), devices(device_id, lane_label)',
+        'id, action, status, created_at, expires_at, member_id, members(public_number, member_profiles(display_name, profile_slug, photo_changed_at)), event_sessions(name, events(name)), devices(device_id, lane_label)',
       )
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())
@@ -43,12 +44,15 @@ export default async function KioskPage() {
       : scan.event_sessions;
     const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
     const device = Array.isArray(scan.devices) ? scan.devices[0] : scan.devices;
+    const photoChangedAt = (profile?.photo_changed_at as string | undefined) ?? null;
     return {
       id: scan.id as string,
       memberId: scan.member_id as string,
       memberName: (profile?.display_name as string) ?? 'Member',
       memberNumber: (member?.public_number as string) ?? '',
       photoUrl: profilePhotoUrl((profile?.profile_slug as string) ?? null),
+      photoChangedAt,
+      photoChangedRecently: photoChangedWithin(photoChangedAt),
       eventName: (event?.name as string) ?? 'Event',
       sessionName: (session?.name as string) ?? 'Session',
       suggestedAction: (scan.action as string) ?? 'check_in',

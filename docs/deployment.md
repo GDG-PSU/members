@@ -46,9 +46,9 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
    supabase db push
    ```
 
-   Use the Supabase CLI/GitHub integration as the single migration authority. On 2026-10-29 the project was reset and every file in `supabase/migrations` (0001–0009) was applied and stamped in `supabase_migrations.schema_migrations`, so `supabase db push` and the GitHub integration both see the current schema as applied. The legacy `pnpm db:migrate` keeps a separate history and must not be mixed in; it now refuses any database that has CLI migration history.
+   Use the Supabase CLI/GitHub integration as the single migration authority. On 2026-10-29 the project was reset and every file in `supabase/migrations` (0001–0010) was applied and stamped in `supabase_migrations.schema_migrations`, so `supabase db push` and the GitHub integration both see the current schema as applied. The legacy `pnpm db:migrate` keeps a separate history and must not be mixed in; it now refuses any database that has CLI migration history.
 
-   Migration `0006_profile_privacy.sql` makes the `avatars` bucket private, protects photo delivery and sets public-by-default email for new profiles without changing existing choices. Migration `0007_device_signatures.sql` requires all existing device secrets to be rotated before use; `0008_admin_rls_mfa.sql` enforces MFA in database admin policies; `0009_controlled_erasure.sql` makes documented account closure possible without weakening the append-only guards. All four are applied in the hosted project.
+   Migration `0006_profile_privacy.sql` makes the `avatars` bucket private, protects photo delivery and sets public-by-default email for new profiles without changing existing choices. Migration `0007_device_signatures.sql` requires all existing device secrets to be rotated before use; `0008_admin_rls_mfa.sql` enforces MFA in database admin policies; `0009_controlled_erasure.sql` makes documented account closure possible without weakening the append-only guards; `0010_photo_identity.sql` records when the current photo was uploaded and enforces the 48-hour PSU ID check at the kiosk. All five are applied in the hosted project.
 
 2. **Auth settings:**
    - Site URL: the final public origin (`https://member.gdgpsu.dev`). Keep it in sync with Vercel's `NEXT_PUBLIC_SITE_URL`.

@@ -73,7 +73,11 @@ export async function updateProfileAction(
     .eq('member_id', member.id)
     .maybeSingle();
   let photoPath = (current?.photo_path as string | undefined) ?? member.photoPath;
+  if (!photoPath) {
+    return { error: 'Add a clear photo of your face before saving.' };
+  }
 
+  let photoChanged = false;
   const photo = formData.get('photo');
   if (photo instanceof File && photo.size > 0) {
     try {
@@ -85,6 +89,7 @@ export async function updateProfileAction(
           .catch(() => {});
       }
       photoPath = nextPath;
+      photoChanged = true;
     } catch (error) {
       return { error: error instanceof PhotoError ? error.message : 'Photo upload failed.' };
     }
@@ -116,6 +121,7 @@ export async function updateProfileAction(
       display_name: parsed.data.displayName,
       about: parsed.data.about,
       links: parsed.data.links,
+      photo_changed: photoChanged,
     },
     p_request_id: null,
   });

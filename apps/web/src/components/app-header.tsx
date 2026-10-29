@@ -32,11 +32,12 @@ export function AppHeader({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  const showAdmin = isSignedIn && isAdmin;
   const links = [
     ...publicLinks,
     ...(isSignedIn ? [{ href: '/member', label: 'My dashboard' }] : []),
-    ...(isAdmin ? [{ href: '/admin', label: 'Admin' }] : []),
   ];
+  const mobileLinks = [...links, ...(showAdmin ? [{ href: '/admin', label: 'Admin' }] : [])];
   const onAuthPage =
     pathname === '/login' ||
     pathname === '/forgot-password' ||
@@ -80,6 +81,17 @@ export function AppHeader({
 
         <div className="ml-auto flex items-center gap-2">
           <ThemeModeToggle className="hidden md:inline-flex" />
+          {showAdmin ? (
+            <Link
+              href="/admin"
+              className={cn(
+                buttonVariants({ variant: 'secondary', size: 'sm' }),
+                'hidden sm:inline-flex',
+              )}
+            >
+              Admin
+            </Link>
+          ) : null}
           {isSignedIn ? (
             <>
               <span className="hidden max-w-[9rem] truncate text-sm font-semibold lg:block">
@@ -133,7 +145,7 @@ export function AppHeader({
 
           <nav aria-label="Mobile navigation" className="mt-6">
             <ul className="space-y-1">
-              {links.map((link) => {
+              {mobileLinks.map((link) => {
                 const active = isActive(link.href);
                 return (
                   <li key={link.href}>

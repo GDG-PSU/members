@@ -2,23 +2,14 @@ import type { ReactNode } from 'react';
 import { cn } from './lib/cn';
 
 export function Wordmark({ compact = false }: { compact?: boolean }) {
-  const dot = compact ? 'size-1.5' : 'size-[7px]';
   return (
-    <span className="inline-flex items-center gap-2">
-      <span aria-hidden className={cn('grid grid-cols-2', compact ? 'gap-[2px]' : 'gap-[3px]')}>
-        <span className={cn('rounded-[2px] bg-brand-blue', dot)} />
-        <span className={cn('rounded-[2px] bg-brand-red', dot)} />
-        <span className={cn('rounded-[2px] bg-brand-yellow', dot)} />
-        <span className={cn('rounded-[2px] bg-brand-green', dot)} />
-      </span>
-      <span
-        className={cn(
-          'font-extrabold leading-none tracking-[-0.045em]',
-          compact ? 'text-[1.02rem]' : 'text-[1.12rem]',
-        )}
-      >
-        Member<span className="text-primary">Pass</span>
-      </span>
+    <span
+      className={cn(
+        'inline-flex items-baseline font-extrabold leading-none tracking-[-0.045em]',
+        compact ? 'text-[1.02rem]' : 'text-[1.12rem]',
+      )}
+    >
+      Member<span className="text-primary">Pass</span>
     </span>
   );
 }

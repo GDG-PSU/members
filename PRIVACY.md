@@ -5,7 +5,7 @@ GDG@PSU is a student-run community at Penn State. This notice describes what the
 ## What we collect
 
 - **Account:** your email address (from your invitation) and authentication records managed by Supabase Auth. This application never stores your password.
-- **Profile:** display name (required), profile photo (required), optional short bio and up to six `https://` links.
+- **Profile:** display name (required), a clear face photo (required), optional short bio and up to six `https://` links.
 - **Membership:** member-since date, public member number, membership status and internal account identifiers.
 - **Participation:** event attendance (check-in/check-out times, session, duration, qualification), points ledger and stars ledger, reward requests and redemptions.
 - **Cards and devices:** card status and issuance/revocation events (never the printed card token in logs), plus organizer audit records of actions taken on your account.
@@ -20,6 +20,10 @@ Payment processing is out of scope. Do not send payment-card details to organize
 - **Email:** public by default. You can hide it during setup or at any time in Privacy settings.
 - **Never public:** internal account identifiers, card token/hash, admin notes, invitations, device credentials, audit metadata and private attendance details beyond your visibility choices.
 - **Organizers (admins):** member records, attendance, ledgers, card status and audit history, as needed to run events and resolve issues. Admin actions are audited. Admin access requires MFA.
+
+## Identity checks
+
+Organizers use your profile photo to confirm that the person at the door is the member on the card. The photo must clearly show your face. If you change it, the kiosk treats that as an unverified identity claim for 48 hours: you will be asked to show a PSU ID, and the organizer records that check in the audit log before attendance can be confirmed.
 
 ## Your card
 

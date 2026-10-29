@@ -224,6 +224,8 @@ export const scanConfirmSchema = z.object({
   scanId: uuidSchema,
   action: z.enum(['check_in', 'check_out', 'reject']),
   reason: z.string().trim().max(300).optional(),
+  // Required by the API when the member changed their photo in the last 48h.
+  identityCheck: z.boolean().optional(),
 });
 
 export const interactionRewardSchema = z.object({

@@ -34,7 +34,7 @@ export default async function LeaderboardPage() {
       width: 72,
       render: (entry) => (
         <span className="font-mono text-sm font-semibold tabular-nums text-muted-foreground">
-          {entry.rank}
+          #{entry.rank}
         </span>
       ),
     },
@@ -88,23 +88,19 @@ export default async function LeaderboardPage() {
         />
       ) : (
         <>
-          <div className="mb-8 grid items-end gap-4 md:grid-cols-3">
+          <div
+            role="list"
+            aria-label="Top of the leaderboard"
+            className="mb-8 grid gap-4 md:grid-cols-3"
+          >
             {top.map((entry, index) => {
               const rank = index + 1;
-              const order = rank === 1 ? 'md:order-2' : rank === 2 ? 'md:order-1' : 'md:order-3';
-              const height =
-                rank === 1
-                  ? 'md:min-h-[13rem]'
-                  : rank === 2
-                    ? 'md:min-h-[11rem]'
-                    : 'md:min-h-[10rem]';
               return (
                 <Card
                   key={entry.slug}
+                  role="listitem"
                   className={[
-                    'relative flex flex-col justify-end overflow-hidden p-5 transition-shadow',
-                    order,
-                    height,
+                    'relative flex h-full flex-col overflow-hidden p-5 transition-shadow',
                     rank === 1 ? 'border-star/50 shadow-lift ring-1 ring-star/20' : '',
                   ].join(' ')}
                 >
@@ -114,54 +110,65 @@ export default async function LeaderboardPage() {
                       className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(60%_100%_at_50%_0%,rgb(251_188_4/0.18),transparent_70%)]"
                     />
                   ) : null}
-                  <div className="relative flex items-center justify-between">
-                    <span
-                      className={[
-                        'type-overline',
-                        rank === 1
-                          ? 'text-star'
-                          : rank === 2
-                            ? 'text-muted-foreground'
-                            : 'text-secondary',
-                      ].join(' ')}
-                    >
-                      #{entry.rank}
-                    </span>
-                    {rank === 1 ? <Trophy className="size-4 text-star" aria-hidden /> : null}
-                  </div>
-                  <div className="relative mt-4 flex items-center gap-3">
-                    <MemberAvatar name={entry.displayName} photoUrl={entry.photoUrl} size={52} />
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/m/${entry.slug}`}
-                        className="block truncate text-base font-bold underline-offset-2 hover:text-primary hover:underline"
+                  <div className="relative flex h-full flex-col justify-between gap-6">
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={[
+                          'type-overline',
+                          rank === 1
+                            ? 'text-star'
+                            : rank === 2
+                              ? 'text-muted-foreground'
+                              : 'text-secondary',
+                        ].join(' ')}
                       >
-                        {entry.displayName}
-                      </Link>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {entry.memberNumber ?? 'GDG@PSU member'}
-                      </p>
+                        #{entry.rank}
+                      </span>
+                      {rank === 1 ? <Trophy className="size-4 text-star" aria-hidden /> : null}
                     </div>
-                  </div>
-                  <div className="relative mt-4 flex items-baseline gap-1.5">
-                    <span className="text-2xl font-extrabold tabular-nums tracking-[-0.03em]">
-                      {entry.points}
-                    </span>
-                    <span className="text-xs font-semibold text-muted-foreground">pts</span>
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <MemberAvatar
+                          name={entry.displayName}
+                          photoUrl={entry.photoUrl}
+                          size={52}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/m/${entry.slug}`}
+                            className="block truncate text-base font-bold underline-offset-2 hover:text-primary hover:underline"
+                          >
+                            {entry.displayName}
+                          </Link>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {entry.memberNumber ?? 'GDG@PSU member'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-baseline gap-1.5">
+                        <span className="text-2xl font-extrabold tabular-nums tracking-[-0.03em]">
+                          {entry.points}
+                        </span>
+                        <span className="text-xs font-semibold text-muted-foreground">pts</span>
+                      </div>
+                    </div>
                   </div>
                 </Card>
               );
             })}
           </div>
 
-          <DataTable
-            columns={columns}
-            rows={rest.length > 0 ? rest : top}
-            getRowKey={(entry) => entry.slug}
-            caption="Full ranking"
-          />
+          {rest.length > 0 ? (
+            <DataTable
+              columns={columns}
+              rows={rest}
+              getRowKey={(entry) => entry.slug}
+              caption="Full ranking"
+            />
+          ) : null}
 
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+            {rest.length === 0 ? 'Those are all the public rankings so far. ' : ''}
             Only members who opted into the leaderboard and public points appear. Missing names are
             not zero-point members.
           </p>

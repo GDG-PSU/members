@@ -45,7 +45,7 @@ A newly activated member profile defaults to public for profile-presentation fie
 
 Internal database IDs, Supabase Auth IDs, raw card tokens, device secrets, invite tokens, and audit metadata are never public. A visible member code may be a separate random display identifier and can have its own visibility toggle; it must not be the database key. Email visibility must be enforced server-side on every profile projection and cache/image/leaderboard path, not only hidden in the UI.
 
-A member who chooses a fully private profile still must supply a display name and photo during activation. Those details remain available only to authorized admins/kiosk operators for identity confirmation. `/m/...` then shows a neutral private-profile state with no member details. Card URLs continue to respect the profile's privacy setting.
+A member who chooses a fully private profile still must supply a display name and a clear face photo during activation. Those details remain available only to authorized admins/kiosk operators for identity confirmation. The photo must clearly show the member's face: it is the identity anchor for attendance, not decoration. A photo change inside 48 hours is an unverified identity claim, so the kiosk requires a PSU ID check before attendance is confirmed. `/m/...` then shows a neutral private-profile state with no member details. Card URLs continue to respect the profile's privacy setting.
 
 ### 2.3 Points, stars, and attendance
 
@@ -190,7 +190,7 @@ Every server mutation checks the caller's authorization at the server/database b
 1. Admin records the verified paid member's email and sends an invitation from the admin portal.
 2. Store a pending invitation row and status/timestamps. The Supabase invite email contains a secure one-time link, not a permanent profile URL or a card URL.
 3. The member opens the link, completes Supabase's invite/verification flow, sets a password, and establishes a server-managed session.
-4. Activation collects a display name and photo, shows the default visibility behavior clearly, and allows the member to change visibility before completing setup.
+4. Activation collects a display name and a clear face photo (face visible, no filters, masks, group shots or another person), shows the default visibility behavior clearly, and allows the member to change visibility before completing setup.
 5. In a transaction/idempotent activation workflow, create the profile ID and public member code, mark the invitation/member active, and create the profile route identity. Do not create a profile permalink or card token earlier.
 6. The member lands on their dashboard. They can view the permanent profile URL and edit settings. No physical card is assumed to exist yet.
 7. Admin can later initiate card issuance. Once the card is physically written and verified, send the configured “card ready” notification using the configured mail delivery path. If production email is not configured, show an honest actionable status instead of pretending an email was delivered.
@@ -203,15 +203,15 @@ The member page should include a visually prominent name/photo, points balance, 
 
 Use an explicit `profile_is_public` control and per-field settings for photo, display name, email, about text, links, member-since, member code, points, stars, and event history. These profile fields default public, except QR/card-token data and non-profile account/security metadata, which are never public. Clearly disclose the public-by-default email choice during first-run activation. An overall private profile must override individual public-field settings. Verify the privacy rules on the server for every public profile, leaderboard, event list, image endpoint, and API response.
 
-Photos must be validated, size-limited, and stored in a private Supabase Storage bucket. Serve public avatar requests through a server endpoint that checks the current privacy flags before returning the image; avoid leaving public bucket URLs or indefinitely cached signed URLs behind when a member switches their profile private. Strip EXIF metadata by re-encoding images; only permit supported image formats and set a conservative upload limit (for example 5 MB).
+Photos must be validated, size-limited, and stored in a private Supabase Storage bucket. The photo must clearly show the member's face; setup and profile copy state this, and an organizer verifies it at the door. Serve public avatar requests through a server endpoint that checks the current privacy flags before returning the image; avoid leaving public bucket URLs or indefinitely cached signed URLs behind when a member switches their profile private. Strip EXIF metadata by re-encoding images; only permit supported image formats and set a conservative upload limit (for example 5 MB).
 
 ### 5.4 Kiosk attendance flow
 
 1. An admin configures the active event/session and which lane devices are available.
 2. The PN532 reads one NDEF URI and the ESP32 sends the card locator to the server with its signed device request.
 3. The server validates the device identity, request signature, timestamp, nonce/idempotency ID, input size, and token format. It records a pending scan; it changes no attendance or points.
-4. The authenticated kiosk UI surfaces the pending scan with timestamp, lane, member name/photo, current attendance status, and the available next action. If no active member/card is found, show a generic invalid/inactive-card state without disclosing other member data.
-5. A staff operator compares the displayed photo with the person and explicitly confirms Check in, Check out, or Dismiss. For a valid member scan, the server rechecks permissions, card/member status, event/session state, duplicate scans, and attendance state inside the transaction.
+4. The authenticated kiosk UI surfaces the pending scan with timestamp, lane, member name/photo, current attendance status, and the available next action. If the current photo was changed within 48 hours, it must also show a prominent PSU ID required state. If no active member/card is found, show a generic invalid/inactive-card state without disclosing other member data.
+5. A staff operator compares the displayed photo with the person and explicitly confirms Check in, Check out, or Dismiss. When the photo changed within 48 hours, the operator must check the PSU ID and tick that confirmation; the server rejects attendance confirmation without it. For a valid member scan, the server rechecks permissions, card/member status, event/session state, duplicate scans, and attendance state inside the transaction.
 6. A member can only have one open attendance interval for an event/session. Duplicate scan submissions and retries must not duplicate attendance or point entries.
 7. Check-out calculates elapsed time using server timestamps, not an ESP32-supplied clock. The server applies the configured attendance rules. If the check-out is too early, attendance is recorded but points are not awarded. If there is no check-out, award no points. A completed eligible attendance creates the configured points and equal stars atomically.
 8. The scan is marked handled and the audit trail records who confirmed/dismissed it, the event/session, lane/device, and result. Avoid storing more device/network metadata than needed.

@@ -7,7 +7,7 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 - Backend: Supabase Postgres/Auth/Storage with transactional, ledger-derived points and append-only audit history.
 - Firmware: ESP32 + PN532 reader/writer that talks only to a narrow HTTPS device API.
 
-> **Status: hosted backend verified, production data reset to a clean slate, and one administrator (`sainaman@psu.edu`) created; not yet deployed.** All nine migrations, the private photo bucket, 46 database assertions and the browser suites pass. The administrator must still open their one-time link, set a password and enroll TOTP before `/admin` opens. Remaining operator steps are Vercel/DNS, production environment variables and hardware validation. Static NFC URLs can be cloned; staff must confirm attendance.
+> **Status: hosted backend verified, production data reset to a clean slate, and one administrator (`sainaman@psu.edu`) created; not yet deployed.** All ten migrations, the private photo bucket, 46 database assertions and the browser suites pass. The administrator must still open their one-time link, set a password and enroll TOTP before `/admin` opens. Remaining operator steps are Vercel/DNS, production environment variables and hardware validation. Static NFC URLs can be cloned; staff must confirm attendance.
 
 ## Stack
 
@@ -22,26 +22,27 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 
 The table below reflects the hosted state verified on 2026-10-29. Re-run the release checks after any change.
 
-| Area                                                                                                             | State                                                                                                             |
-| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Hosted Supabase migrations                                                                                       | All nine migrations applied to `potjjlmgnrqxseeendmx`; Supabase CLI-compatible history stamped for 0001–0009      |
-| Database invariant/RLS verification (`db:verify`)                                                                | 46 assertions passed against the hosted project, including controlled erasure and the private bucket              |
-| Public pages: `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[slug]`, `/c/[token]`, `/privacy`            | Implemented                                                                                                       |
-| Auth: login, invite confirmation, one-time setup, password setting/recovery, sign out, password-help page        | Implemented                                                                                                       |
-| Member portal: dashboard, activity, rewards + cancel, profile edit/photo, privacy toggles, digital ID QR         | Implemented                                                                                                       |
-| Design system: Tailwind tokens, shadcn-style primitives, theme toggle (System/Light/Dark)                        | Implemented                                                                                                       |
-| Audit log, rate-limit function, token hashing/encryption, server-side photo processing                           | Implemented                                                                                                       |
-| ESP32/PN532 firmware project + host-testable NDEF parser                                                         | Compiled for esp32dev with example configuration; physical hardware untested                                      |
-| Admin portal: invitations, members, cards, events, kiosk, rewards, devices, audit; TOTP MFA gate at `/admin-mfa` | Implemented; all surfaces exercised through the real UI in the full-surface run                                   |
-| Device middleware API `/api/device/v1/*`                                                                         | Implemented; hardware flow untested                                                                               |
-| Public JSON endpoints `/api/public/*`                                                                            | Implemented                                                                                                       |
-| Publishable key wired into the SSR client; secret key limited to admin operations                                | Done                                                                                                              |
-| Hosted first admin and MFA                                                                                       | `sainaman@psu.edu` created with an activation link; password + TOTP enrollment still required                     |
-| Manual invitation/recovery links generated in the admin UI (no SMTP dependency)                                  | Implemented; links confirm at `/auth/confirm` on the app origin, independent of Supabase redirect allowlists      |
-| PSU network approval for ESP32 lanes                                                                             | Not independently verified                                                                                        |
-| License                                                                                                          | MIT                                                                                                               |
-| Unit tests and browser tests                                                                                     | 25 unit tests; 19 Playwright checks (1 intentionally skipped) and a 34-step full-surface authenticated run passed |
-| Admin bootstrap + guarded demo seed scripts, local `seed.sql`                                                    | Implemented                                                                                                       |
+| Area                                                                                                                   | State                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Hosted Supabase migrations                                                                                             | All ten migrations applied to `potjjlmgnrqxseeendmx`; Supabase CLI-compatible history stamped for 0001–0010       |
+| Database invariant/RLS verification (`db:verify`)                                                                      | 46 assertions passed against the hosted project, including controlled erasure and the private bucket              |
+| Public pages: `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[slug]`, `/c/[token]`, `/privacy`                  | Implemented                                                                                                       |
+| Auth: login, invite confirmation, one-time setup, password setting/recovery, sign out, password-help page              | Implemented                                                                                                       |
+| Member portal: dashboard, activity, rewards + cancel, profile edit/required face photo, privacy toggles, digital ID QR | Implemented                                                                                                       |
+| Design system: Tailwind tokens, shadcn-style primitives, theme toggle (System/Light/Dark)                              | Implemented                                                                                                       |
+| Audit log, rate-limit function, token hashing/encryption, server-side photo processing                                 | Implemented                                                                                                       |
+| ESP32/PN532 firmware project + host-testable NDEF parser                                                               | Compiled for esp32dev with example configuration; physical hardware untested                                      |
+| Admin portal: invitations, members, cards, events, kiosk, rewards, devices, audit; TOTP MFA gate at `/admin-mfa`       | Implemented; all surfaces exercised through the real UI in the full-surface run                                   |
+| Kiosk identity check: photos changed within 48h require a recorded PSU ID check before confirmation                    | Implemented and server-enforced                                                                                   |
+| Device middleware API `/api/device/v1/*`                                                                               | Implemented; hardware flow untested                                                                               |
+| Public JSON endpoints `/api/public/*`                                                                                  | Implemented                                                                                                       |
+| Publishable key wired into the SSR client; secret key limited to admin operations                                      | Done                                                                                                              |
+| Hosted first admin and MFA                                                                                             | `sainaman@psu.edu` created with an activation link; password + TOTP enrollment still required                     |
+| Manual invitation/recovery links generated in the admin UI (no SMTP dependency)                                        | Implemented; links confirm at `/auth/confirm` on the app origin, independent of Supabase redirect allowlists      |
+| PSU network approval for ESP32 lanes                                                                                   | Not independently verified                                                                                        |
+| License                                                                                                                | MIT                                                                                                               |
+| Unit tests and browser tests                                                                                           | 25 unit tests; 19 Playwright checks (1 intentionally skipped) and a 34-step full-surface authenticated run passed |
+| Admin bootstrap + guarded demo seed scripts, local `seed.sql`                                                          | Implemented                                                                                                       |
 
 All test accounts, members, invitations, device and event rows, audit entries and profile photos were erased on 2026-10-29; only the production administrator remains. Hardware-in-the-loop testing, axe/manual accessibility review, the shared firmware signature vector, comprehensive secret scanning and a pgTAP matrix are still missing. `pnpm verify` exits nonzero because those gates are not implemented; it does not certify a release.
 
@@ -151,7 +152,7 @@ docs/                     Architecture, data model, API, threat model, deploymen
 - A scan creates only a pending row; attendance requires admin-confirmed check-in **and** check-out with a threshold.
 - Card tokens are 256-bit, hashed for lookup, encrypted for owner-only display/write; NFC UID is never a credential.
 - Public data uses explicit projection views; email is public by default and can be hidden during setup or later.
-- Photos are validated/re-encoded server-side (2 MB, JPEG/PNG/WebP) and stored under random paths.
+- Photos are validated/re-encoded server-side (2 MB, JPEG/PNG/WebP) and stored under random paths. Members must upload a clear face photo; a change within 48 hours requires a PSU ID check at the kiosk.
 - Security headers (CSP, nosniff, referrer policy, frame denial) are configured in `apps/web/next.config.ts`.
 
 Details: [docs/threat-model.md](docs/threat-model.md), [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md).
@@ -167,7 +168,7 @@ Recorded on 2026-10-29 against hosted Supabase and the production build (`next s
 - `pnpm build` — PASS (Next.js production build, all routes)
 - `pnpm db:verify` — PASS, **46/46** database assertions (ledger, concurrency, attendance, privacy, RLS, MFA, erasure, private bucket)
 - `pnpm e2e` — 19 passed, 1 intentionally skipped (mobile admin spec)
-- Full-surface authenticated run — 34/34 checks: every admin page, member invitation/setup, admin invitation → password → TOTP gate, points, events, card redirect/revoke, kiosk scan confirmation, rewards, suspension, privacy, device registration, audit and fixture cleanup
+- Full-surface authenticated run — 34/34 checks: every admin page, member invitation/setup, admin invitation → password → TOTP gate, points, events, card redirect/revoke, kiosk scan confirmation including the 48h photo-change PSU ID gate, rewards, suspension, privacy, device registration, audit and fixture cleanup
 - Recovery-link password flow — verified with a disposable user; the new password then signed in successfully
 - Firmware NDEF parser host test — PASS. Firmware compile was unavailable in the final environment (no PlatformIO on PATH and no local `secrets.h`).
 - Live HTTP smoke: `/`, `/leaderboard`, `/events`, `/privacy`, `/login` return 200; `/admin` and `/member` redirect to login; unsigned device heartbeat returns 401

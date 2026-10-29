@@ -39,16 +39,8 @@ export default async function DigitalIdPage() {
             className="absolute -right-10 -top-16 size-40 rounded-full bg-white/10 blur-2xl"
           />
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-2">
-              <span aria-hidden className="grid grid-cols-2 gap-[3px]">
-                <span className="size-[6px] rounded-[2px] bg-brand-blue" />
-                <span className="size-[6px] rounded-[2px] bg-brand-red" />
-                <span className="size-[6px] rounded-[2px] bg-brand-yellow" />
-                <span className="size-[6px] rounded-[2px] bg-brand-green" />
-              </span>
-              <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
-                MemberPass
-              </span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
+              MemberPass
             </span>
             <Nfc className="size-4 text-white/60" aria-hidden />
           </div>

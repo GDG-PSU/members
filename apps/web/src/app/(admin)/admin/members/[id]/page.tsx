@@ -19,6 +19,7 @@ import {
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
+import { photoChangedWithin } from '@/lib/profile/identity';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
   adjustMemberPointsAction,
@@ -53,7 +54,7 @@ export default async function AdminMemberDetailPage({
   const { data: row } = await admin
     .from('members')
     .select(
-      'id, status, public_number, member_since, created_at, member_profiles(profile_slug, display_name, photo_path), member_private(email, admin_note)',
+      'id, status, public_number, member_since, created_at, member_profiles(profile_slug, display_name, photo_path, photo_changed_at), member_private(email, admin_note)',
     )
     .eq('id', id)
     .maybeSingle();
@@ -125,6 +126,9 @@ export default async function AdminMemberDetailPage({
                   </p>
                   <div className="mt-2.5 flex flex-wrap items-center gap-2">
                     <StatusChip status={row.status as string} />
+                    {photoChangedWithin(profile?.photo_changed_at as string | undefined) ? (
+                      <Badge variant="warning">Photo changed &lt;48h</Badge>
+                    ) : null}
                     {profile?.profile_slug ? (
                       <Link href={`/m/${profile.profile_slug}`} className="rounded-full">
                         <Badge

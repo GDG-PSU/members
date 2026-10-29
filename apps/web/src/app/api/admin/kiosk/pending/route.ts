@@ -2,6 +2,7 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { getApiViewer } from '@/lib/auth/api-guard';
 import { jsonError, jsonOk, requestId } from '@/lib/api';
 import { profilePhotoUrl } from '@/lib/profile/photo';
+import { photoChangedWithin } from '@/lib/profile/identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   const { data, error } = await admin
     .from('device_scans')
     .select(
-      'id, member_id, action, created_at, expires_at, members(public_number, member_profiles(display_name, profile_slug)), event_sessions(name, events(name)), devices(lane_label)',
+      'id, member_id, action, created_at, expires_at, members(public_number, member_profiles(display_name, profile_slug, photo_changed_at)), event_sessions(name, events(name)), devices(lane_label)',
     )
     .eq('status', 'pending')
     .gt('expires_at', new Date().toISOString())
@@ -37,12 +38,15 @@ export async function GET(request: Request) {
       : scan.event_sessions;
     const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
     const device = Array.isArray(scan.devices) ? scan.devices[0] : scan.devices;
+    const photoChangedAt = profile?.photo_changed_at ?? null;
     return {
       id: scan.id,
       memberId: scan.member_id,
       memberName: profile?.display_name ?? 'Member',
       memberNumber: member?.public_number ?? '',
       photoUrl: profilePhotoUrl(profile?.profile_slug ?? null),
+      photoChangedAt,
+      photoChangedRecently: photoChangedWithin(photoChangedAt),
       eventName: event?.name ?? 'Event',
       sessionName: session?.name ?? 'Session',
       suggestedAction: scan.action ?? 'check_in',

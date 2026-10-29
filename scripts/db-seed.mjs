@@ -93,7 +93,7 @@ try {
       [id, name, slug],
     );
     await client.query(
-      `select public.grant_points($1, 25, 'admin_adjustment', $2, 'Demo seed grant')`,
+      `select public.grant_points($1::uuid, 25, 'admin_adjustment', $2::text, 'Demo seed grant')`,
       [id, `demo:grant:${id}`],
     );
   }

@@ -39,12 +39,12 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+      {caption ? (
+        <div className="border-b border-border bg-subtle px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+          {caption}
+        </div>
+      ) : null}
       <table aria-label={caption} className="w-full text-sm max-sm:block">
-        {caption ? (
-          <caption className="border-b border-border bg-subtle px-4 py-3 text-left text-xs font-medium text-muted-foreground">
-            {caption}
-          </caption>
-        ) : null}
         <thead className="bg-subtle max-sm:hidden">
           <tr className="border-b border-border">
             {columns.map((column) => (

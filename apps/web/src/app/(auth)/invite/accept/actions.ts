@@ -50,9 +50,13 @@ export async function completeSetupAction(
     return { error: 'Please confirm the privacy and card terms.' };
   }
 
+  if (formData.get('photoAttestation') !== 'on') {
+    return { error: 'Confirm that your photo clearly shows your face.' };
+  }
+
   const photo = formData.get('photo');
   if (!(photo instanceof File) || photo.size === 0) {
-    return { error: 'Add a profile photo.' };
+    return { error: 'Add a clear photo of your face.' };
   }
 
   let photoPath: string;

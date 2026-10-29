@@ -14,6 +14,8 @@ Current migration order:
 | `0006_profile_privacy.sql`       | Private photos and activation privacy controls                                          |
 | `0007_device_signatures.sql`     | Signed device requests and replay protection                                            |
 | `0008_admin_rls_mfa.sql`         | MFA enforcement for admin database policies                                             |
+| `0009_controlled_erasure.sql`    | Controlled erasure without weakening append-only guards                                 |
+| `0010_photo_identity.sql`        | Photo-change timestamp and the 48-hour kiosk identity window                            |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -45,7 +47,9 @@ Admin-only identity data: `email` (normalized, indexed) and an optional `admin_n
 
 ### `member_profiles`
 
-One row per member: immutable `profile_slug` (22–64 URL-safe chars), required `display_name` (2–60), required `photo_path`, optional `about` (280), `links` JSONB array (max 6, application validates `https://`).
+One row per member: immutable `profile_slug` (22–64 URL-safe chars), required `display_name` (2–60), required `photo_path` (a clear face photo), `photo_changed_at` (when the current photo was uploaded), optional `about` (280), `links` JSONB array (max 6, application validates `https://`).
+
+`photo_changed_at` defaults to the insert time and a trigger advances it whenever `photo_path` changes. The kiosk treats a value inside 48 hours as an unverified identity claim and requires a PSU ID check before attendance confirmation; the confirm endpoint enforces the same rule server-side.
 
 Visibility flags (all boolean, stored as columns):
 
