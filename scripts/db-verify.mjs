@@ -70,12 +70,15 @@ await client.connect();
 await client.query('begin');
 
 try {
+  // GoTrue's admin API scans these columns into non-nullable values; a partial
+  // row makes /auth/v1/admin/users fail with a 500 until it is repaired.
   const { rows: users } = await client.query(`
-    insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at)
+    insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+      raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
     values
-      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.admin@example.test', now(), now(), now()),
-      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.a@example.test', now(), now(), now()),
-      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.b@example.test', now(), now(), now())
+      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.admin@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0),
+      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.a@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0),
+      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.b@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0)
     returning id, email
   `);
   const adminId = users.find((u) => u.email.startsWith('verify.admin')).id;
@@ -473,10 +476,14 @@ try {
   await racer.connect();
   let raceUserId = null;
   let raceRewardId = null;
+  let eraseAuthId = null;
+  let eraseMemberId = null;
   try {
     const { rows: raceUser } = await concurrency.query(
-      `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at)
-       values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', $1, now(), now(), now())
+      `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+         raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
+       values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', $1, now(), now(), now(),
+         '{}'::jsonb, '{}'::jsonb, 0)
        returning id`,
       [`verify.race.${Date.now()}@example.test`],
     );
@@ -526,14 +533,79 @@ try {
       [memberId],
     );
     check('balance never goes negative', finalBalance[0].points === 0);
-  } finally {
-    if (raceRewardId) {
-      await concurrency
-        .query(`delete from public.rewards where id = $1`, [raceRewardId])
-        .catch(() => {});
+
+    // ---- Controlled erasure (migration 0009) -------------------------------
+    // Account closure must remove history even though the ledgers are
+    // append-only; ordinary deletes must stay blocked afterwards.
+    const { rows: eraseUser } = await concurrency.query(
+      `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+         raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
+       values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', $1, now(), now(), now(),
+         '{}'::jsonb, '{}'::jsonb, 0)
+       returning id`,
+      [`verify.erase.${Date.now()}@example.test`],
+    );
+    eraseAuthId = eraseUser[0].id;
+    const { rows: eraseMember } = await concurrency.query(
+      `insert into public.members (auth_user_id, public_number, member_since)
+       values ($1, $2, current_date) returning id`,
+      [eraseAuthId, `GDG-E${String(Date.now()).slice(-5)}`],
+    );
+    eraseMemberId = eraseMember[0].id;
+    await concurrency.query(
+      `select public.grant_points($1, 50, 'admin_adjustment', $2, 'Erasure setup')`,
+      [eraseMemberId, `verify:erase:${eraseAuthId}`],
+    );
+
+    let plainDeleteBlocked = false;
+    try {
+      await concurrency.query(`delete from public.point_ledger where member_id = $1`, [
+        eraseMemberId,
+      ]);
+    } catch (error) {
+      plainDeleteBlocked = /append_only_relation/.test(error.message);
     }
-    if (raceUserId) {
-      await concurrency.query(`delete from auth.users where id = $1`, [raceUserId]).catch(() => {});
+    const ledgerIntact = await concurrency.query(
+      `select count(*)::int as n from public.point_ledger where member_id = $1`,
+      [eraseMemberId],
+    );
+    check(
+      'ordinary deletes stay blocked outside erasure',
+      plainDeleteBlocked && ledgerIntact.rows[0].n === 1,
+    );
+
+    const erased = await concurrency.query(`select public.erase_member($1) as id`, [eraseAuthId]);
+    const erasedRows = await concurrency.query(
+      `select (select count(*)::int from public.members where id = $1) as member,
+              (select count(*)::int from public.point_ledger where member_id = $1) as ledger,
+              (select count(*)::int from public.member_profiles where member_id = $1) as profile`,
+      [eraseMemberId],
+    );
+    check('erasure returns the erased member id', erased.rows[0].id === eraseMemberId);
+    check(
+      'erasure removes the member and its ledger',
+      erasedRows.rows[0].member === 0 &&
+        erasedRows.rows[0].ledger === 0 &&
+        erasedRows.rows[0].profile === 0,
+    );
+  } finally {
+    for (const authId of [raceUserId, eraseAuthId]) {
+      if (!authId) continue;
+      try {
+        await concurrency.query(`select public.erase_member($1)`, [authId]);
+      } catch (error) {
+        // Already erased inside the test body.
+        if (!/auth_user_not_found/.test(error.message)) {
+          failures.push(`cleanup: erase_member(${authId}) failed — ${error.message}`);
+        }
+      }
+    }
+    if (raceRewardId) {
+      try {
+        await concurrency.query(`delete from public.rewards where id = $1`, [raceRewardId]);
+      } catch (error) {
+        failures.push(`cleanup: reward delete failed — ${error.message}`);
+      }
     }
     await concurrency.end().catch(() => {});
     await racer.end().catch(() => {});

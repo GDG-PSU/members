@@ -43,6 +43,9 @@ test('device signatures are required and nonces cannot be replayed', async ({ re
     const hash = createHash('sha256').update(raw).digest('hex');
     return {
       'content-type': 'application/json',
+      // Device traffic must arrive over TLS in production; a local `next start`
+      // is plain HTTP, so declare the terminating proxy header.
+      'x-forwarded-proto': 'https',
       'x-device-id': deviceId,
       'x-device-timestamp': timestamp,
       'x-request-id': nonce,

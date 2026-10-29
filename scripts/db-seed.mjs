@@ -32,9 +32,27 @@ if (!isLocal && env.SEED_ALLOW_HOSTED !== 'yes') {
 }
 
 const DEMO_MEMBERS = [
-  ['11111111-1111-4111-8111-111111111101', 'demo.ada@example.test', 'Ada Demo', 'GDG-DEMO01', 'demo-profile-ada-aaaaaaaa'],
-  ['11111111-1111-4111-8111-111111111102', 'demo.blake@example.test', 'Blake Sample', 'GDG-DEMO02', 'demo-profile-blake-bbbbbbbb'],
-  ['11111111-1111-4111-8111-111111111103', 'demo.casey@example.test', 'Casey Fixture', 'GDG-DEMO03', 'demo-profile-casey-cccccccc'],
+  [
+    '11111111-1111-4111-8111-111111111101',
+    'demo.ada@example.test',
+    'Ada Demo',
+    'GDG-DEMO01',
+    'demo-profile-ada-aaaaaaaa',
+  ],
+  [
+    '11111111-1111-4111-8111-111111111102',
+    'demo.blake@example.test',
+    'Blake Sample',
+    'GDG-DEMO02',
+    'demo-profile-blake-bbbbbbbb',
+  ],
+  [
+    '11111111-1111-4111-8111-111111111103',
+    'demo.casey@example.test',
+    'Casey Fixture',
+    'GDG-DEMO03',
+    'demo-profile-casey-cccccccc',
+  ],
 ];
 
 const client = new Client({
@@ -48,8 +66,12 @@ try {
 
   for (const [id, email, name, number, slug] of DEMO_MEMBERS) {
     await client.query(
-      `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at)
-       values ('00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated', $2, now(), now(), now())
+      // GoTrue's admin API scans these columns into non-nullable values, so a
+      // partial row makes /auth/v1/admin/users fail with a 500.
+      `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+         raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
+       values ('00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated', $2, now(), now(), now(),
+         '{"provider":"email","providers":["email"]}'::jsonb, '{"email_verified":true}'::jsonb, 0)
        on conflict (id) do nothing`,
       [id, email],
     );

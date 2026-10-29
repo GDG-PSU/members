@@ -6,8 +6,9 @@
  * Usage:
  *   DATABASE_URL=postgresql://... node scripts/db-migrate.mjs [--dry-run]
  *
- * The Supabase CLI (`supabase db push`) remains the canonical production path;
- * this script exists for environments without Docker or the CLI and for CI.
+ * Legacy runner for databases initialized with this script only. It does not
+ * share migration history with the Supabase CLI or GitHub integration.
+ * Use the Supabase CLI for new databases and never mix the two runners.
  */
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -31,6 +32,24 @@ const client = new Client({
 });
 
 await client.connect();
+
+// Replaying these migrations on a CLI-managed database can temporarily make the
+// avatars bucket public, even if a later migration normally makes it private.
+const { rows: historyTable } = await client.query(
+  "select to_regclass('supabase_migrations.schema_migrations') as name",
+);
+if (historyTable[0].name) {
+  const { rows: history } = await client.query(
+    'select exists(select 1 from supabase_migrations.schema_migrations) as has_migrations',
+  );
+  if (history[0].has_migrations) {
+    console.error(
+      'Refusing to run: this database has Supabase CLI migration history. Use the Supabase CLI; never mix migration runners.',
+    );
+    await client.end();
+    process.exit(1);
+  }
+}
 
 await client.query(`
   create table if not exists public.applied_migrations (

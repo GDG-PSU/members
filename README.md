@@ -7,7 +7,7 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 - Backend: Supabase Postgres/Auth/Storage with transactional, ledger-derived points and append-only audit history.
 - Firmware: ESP32 + PN532 reader/writer that talks only to a narrow HTTPS device API.
 
-> **Status: development only; not production ready.** Local database and browser tests cover manual invitation links, MFA, privacy and signed device requests. The hosted project's settings and migration state could not be verified with the connected account. Hardware, offline scanning, deployment, and several release gates remain unverified. Static NFC URLs can be cloned; staff must confirm attendance.
+> **Status: hosted backend migrated and verified; not yet deployed.** The hosted Supabase project (`potjjlmgnrqxseeendmx`) has all nine migrations, a private photo bucket, and passing database and browser checks. Remaining blockers are operator-side: Vercel/DNS, Supabase Auth URL settings, first-admin bootstrap, hardware, and the release gates listed in `docs/test-plan.md`. Static NFC URLs can be cloned; staff must confirm attendance.
 
 ## Stack
 
@@ -20,12 +20,12 @@ Member identity, NFC card, event attendance, points/stars and rewards for the Go
 
 ## Current status
 
-The table below records earlier work and is not evidence of the current hosted project state. Re-run all release checks before deployment.
+The table below reflects the hosted state verified on 2026-10-29. Re-run the release checks after any change.
 
 | Area                                                                                                             | State                                                                                                                    |
 | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Hosted Supabase migrations                                                                                       | Unverified; connected account returned 403. Migrations 0006–0008 tested locally only                                     |
-| Database invariant/RLS verification (`db:verify`)                                                                | 43 assertions passed locally                                                                                             |
+| Hosted Supabase migrations                                                                                       | All nine migrations applied to `potjjlmgnrqxseeendmx`; Supabase CLI-compatible history stamped for 0001–0009             |
+| Database invariant/RLS verification (`db:verify`)                                                                | 46 assertions passed against the hosted project, including controlled erasure and the private bucket                     |
 | Public pages: `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[slug]`, `/c/[token]`, `/privacy`            | Implemented                                                                                                              |
 | Auth: login, invite callback, one-time setup, sign out, password-help page                                       | Implemented                                                                                                              |
 | Member portal: dashboard, activity, rewards + cancel, profile edit/photo, privacy toggles, digital ID QR         | Implemented                                                                                                              |
@@ -36,11 +36,11 @@ The table below records earlier work and is not evidence of the current hosted p
 | Device middleware API `/api/device/v1/*`                                                                         | Implemented; hardware flow untested                                                                                      |
 | Public JSON endpoints `/api/public/*`                                                                            | Implemented                                                                                                              |
 | Publishable key wired into the SSR client; secret key limited to admin operations                                | Done                                                                                                                     |
-| Hosted first admin and MFA                                                                                       | Unverified in the specified project                                                                                      |
+| Hosted first admin and MFA                                                                                       | Not bootstrapped yet; the operator runs `pnpm db:bootstrap-admin` with the real admin address, then enrolls TOTP         |
 | Manual invitation/recovery links generated in the admin UI (no SMTP dependency)                                  | Implemented                                                                                                              |
 | PSU network approval for ESP32 lanes                                                                             | Not independently verified                                                                                               |
 | License                                                                                                          | MIT                                                                                                                      |
-| Unit tests and browser tests                                                                                     | 25 unit tests; public smoke, manual invitation/privacy, and device-signature checks passed locally                       |
+| Unit tests and browser tests                                                                                     | 25 unit tests; 19 browser checks passed against the hosted project (1 skipped)                                           |
 | Admin bootstrap + guarded demo seed scripts, local `seed.sql`                                                    | Implemented                                                                                                              |
 
 Hardware-in-the-loop and browser coverage for remaining admin surfaces (cards, kiosk, events, devices) remain unverified. Offline scan persistence and the full release gates are not implemented. Do not use for live members or events until the outstanding security and operational checks are completed. `pnpm verify` exits nonzero while required release gates remain incomplete; it does not certify a release.
@@ -52,12 +52,12 @@ Prerequisites: Node 20.9+ (24 used locally), pnpm 11, and a Supabase project (ho
 ```bash
 pnpm install
 cp .env.example .env.local   # fill in values; .env.local is gitignored
-pnpm db:migrate              # applies supabase/migrations/*.sql (or: supabase db push)
+pnpm dlx supabase@2.122.0 start  # applies migrations to a local Supabase stack
 pnpm db:verify               # optional: transactional invariants + RLS checks
 pnpm dev                     # http://localhost:3000
 ```
 
-`pnpm db:migrate` needs `DATABASE_URL` (use the Supabase pooler URL if direct IPv6 is unavailable). `pnpm db:verify` runs in a rolled-back transaction but creates/removes one temporary concurrency fixture; use local/staging.
+Use the Supabase CLI or GitHub integration as the single migration authority. The legacy `pnpm db:migrate` uses separate history and must never be mixed with the CLI; it refuses databases with CLI migration history. `pnpm db:verify` needs `DATABASE_URL` and runs in a rolled-back transaction but creates/removes one temporary concurrency fixture; use local/staging.
 
 ### Environment variables
 
@@ -106,7 +106,7 @@ The script prints no passwords or links: it writes a one-time recovery link to t
 | `pnpm lint`                         | ESLint (Next core-web-vitals + TS)                                                                                                                                                  |
 | `pnpm test`                         | Vitest unit tests (23)                                                                                                                                                              |
 | `pnpm format` / `pnpm format:check` | Prettier                                                                                                                                                                            |
-| `pnpm db:migrate`                   | Apply SQL migrations in order                                                                                                                                                       |
+| `pnpm db:migrate`                   | Legacy migration runner for its own databases only; use Supabase CLI for new environments                                                                                           |
 | `pnpm db:verify`                    | Rollback-safe DB/RLS/ledger checks                                                                                                                                                  |
 | `pnpm e2e`                          | Playwright public + authenticated invitation/setup suite (requires `pnpm e2e:install`, a running app and Supabase admin credentials; disposable fixtures are removed automatically) |
 | `pnpm db:bootstrap-admin`           | Grant the admin role and write a one-time recovery link (`--out`) for an existing/new Auth user                                                                                     |

@@ -10,7 +10,7 @@ Never award attendance or points "to fix it later" without a reason and an audit
 
 ## Admin authenticator (TOTP)
 
-Admin routes require AAL2. The `gdg@psu.edu` factor is enrolled; add the manual key from `.local/gdg-admin-totp.txt` to the organizer's authenticator app (time-based, SHA1, 6 digits, 30 seconds), sign in once to confirm, then delete the file and rotate the bootstrap password.
+Admin routes require AAL2. Enrollment in the target project has not been verified. The first administrator must enroll an authenticator through `/admin-mfa` and verify sign-in; do not assume an existing factor or local key belongs to the target project.
 
 To enroll a replacement device, reset the existing factor in Supabase Auth (an organizer with account access), then run:
 
@@ -26,7 +26,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 2. **Devices:** both lanes active, correct lane labels, assigned to the event/session, firmware version and last-seen recent.
 3. **Network:** kiosk shows online, server time sane, certificate valid. Do not disable TLS. **[pending]**
 4. **Test card:** perform a write test only on a non-production test card. **[pending writer + hardware]**
-5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, photos load. **[TOTP enrolled; rotate the bootstrap password]**
+5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, photos load. **[target-project enrollment unverified]**
 6. **Offline plan:** know the support email flow and where the manual attendance log is kept if the API is down. Offline scans are never buffered/replayed as verified attendance.
 
 ## Two-lane operation during an event
@@ -71,17 +71,17 @@ Corrections are admin-only, require a reason, and are audited.
 
 ## Incidents
 
-| Incident | Immediate steps |
-| --- | --- |
-| Suspected device key leak | Disable/rotate the device; inspect scans/jobs from it; reflash the unit; audit log review |
-| Compromised admin account | Revoke the role (`user_roles.revoked_at`), reset the TOTP factor in Supabase Auth, force sign-out/rotate credentials, review `audit_log`, check card/ledger changes |
-| Lost admin authenticator | Reset the factor in Supabase Auth, sign in with the password, re-enroll with `pnpm admin:enroll-totp`; do not disable the AAL2 gate |
-| Bad ledger grant | Do **not** delete. Use `reverse_grant` with actor + reason, then verify sums |
-| Card token list exposed | Revoke affected cards, issue replacements; profile URLs unaffected |
-| Supabase/Vercel outage | Post the offline notice, use manual attendance logging, allow no offline point awards; reconcile through audited corrections afterwards |
-| Failed migration | Stop deploys; restore pre-migration dump into a disposable project; fix forward with a new migration |
+| Incident                                                  | Immediate steps                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suspected device key leak                                 | Disable/rotate the device; inspect scans/jobs from it; reflash the unit; audit log review                                                                                                                                                                                                                                                                                     |
+| Compromised admin account                                 | Revoke the role (`user_roles.revoked_at`), reset the TOTP factor in Supabase Auth, force sign-out/rotate credentials, review `audit_log`, check card/ledger changes                                                                                                                                                                                                           |
+| Lost admin authenticator                                  | Reset the factor in Supabase Auth, sign in with the password, re-enroll with `pnpm admin:enroll-totp`; do not disable the AAL2 gate                                                                                                                                                                                                                                           |
+| Bad ledger grant                                          | Do **not** delete. Use `reverse_grant` with actor + reason, then verify sums                                                                                                                                                                                                                                                                                                  |
+| Card token list exposed                                   | Revoke affected cards, issue replacements; profile URLs unaffected                                                                                                                                                                                                                                                                                                            |
+| Supabase/Vercel outage                                    | Post the offline notice, use manual attendance logging, allow no offline point awards; reconcile through audited corrections afterwards                                                                                                                                                                                                                                       |
+| Failed migration                                          | Stop deploys; restore pre-migration dump into a disposable project; fix forward with a new migration                                                                                                                                                                                                                                                                          |
 | Auth admin API returns 500 "Database error finding users" | Usually legacy `auth.users` rows created outside GoTrue with NULL token/metadata columns. Normalize `confirmation_token`, `recovery_token`, `email_change_token_new`, `email_change`, `phone_change`, `phone_change_token`, `email_change_token_current`, `reauthentication_token` to `''` and metadata JSON to `'{}'`; retest `GET /auth/v1/admin/users` before blaming keys |
-| Photo deleted/broken | Member re-uploads; avatar falls back to initials meanwhile |
+| Photo deleted/broken                                      | Member re-uploads; avatar falls back to initials meanwhile                                                                                                                                                                                                                                                                                                                    |
 
 ## Support email flow
 
@@ -89,7 +89,14 @@ Corrections are admin-only, require a reason, and are audited.
 2. Organizer verifies the sender against the member record; never disclose account details to a different address.
 3. Password reset: admin opens the member, chooses **Generate recovery link** (audited), copies the one-time link and sends it from their own mailbox. Never email a password. Links expire per the project's Auth OTP setting; regenerate if needed.
 4. Attendance/points issue: inspect attendance + ledger + audit; correct with a reason if warranted; reply with the outcome, not ledger internals.
-5. Privacy/account closure: confirm identity, explain retention, follow `PRIVACY.md`; account deletion is reviewed because member ledger/attendance history is removed. Audit rows remain, retaining the actor UUID as an opaque historical identifier (migration 0005).
+5. Privacy/account closure: confirm identity, explain retention, follow `PRIVACY.md`; account deletion is reviewed because member ledger/attendance history is removed. Audit rows remain, retaining the actor UUID as an opaque historical identifier (migration 0005). Run the reviewed erasure as a service role or the `postgres` role, using the Auth user id from `auth.users`:
+
+   ```sql
+   select public.erase_member('AUTH_USER_ID_HERE');
+   ```
+
+   It removes the Auth user and cascades profiles, cards, attendance and ledger rows (migration 0009); it refuses unknown ids. `delete from auth.users` directly still fails by design while the append-only guards are active. Re-check `auth.users`, `members` and `storage.objects` afterwards, and delete the member's avatar objects under `member/<auth_user_id>/`.
+
 6. Log the interaction in the internal support notes without pasting sensitive data into public channels.
 
 ## Closing an event

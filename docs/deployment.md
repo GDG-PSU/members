@@ -2,7 +2,7 @@
 
 Target: Next.js app on Vercel, Supabase Postgres/Auth/Storage, custom domain `member.gdgpsu.dev`.
 
-The specified Supabase project's configuration could not be independently verified: the connected account received HTTP 403. Migrations 0006–0008 have been tested locally only and must not be assumed present remotely. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
+The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all nine migrations applied from a clean schema, history recorded in `supabase_migrations.schema_migrations`, the `avatars` bucket private, `db:verify` passing 46/46, and the authenticated browser suite passing. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
 
 ## 1. Prerequisites (user/operator action)
 
@@ -10,10 +10,10 @@ The specified Supabase project's configuration could not be independently verifi
 | ---------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------- |
 | Vercel account/project with access to the repo | Hosting                     | BLOCKED — CLI has no authenticated session; anonymous temporary deployments are refused |
 | DNS control for `gdgpsu.dev`                   | `member.gdgpsu.dev`         | BLOCKED                                                                                 |
-| Supabase project ownership + a publishable key | Auth/DB; see key note below | Unverified — connected account is forbidden from accessing the specified project        |
+| Supabase project ownership + a publishable key | Auth/DB; see key note below | Verified — keys accepted, schema applied, RLS and storage checked                       |
 | Invitation/recovery delivery                   | Link delivery               | Manual — an admin copies links into their own mail client; no SMTP                      |
 | PSU IT approval for ESP32 network access       | Hardware lanes              | Unverified — confirm the approved network, device policy, SSID and CA                   |
-| Admin bootstrap identity (real email)          | First admin                 | Unverified in the target project                                                        |
+| Admin bootstrap identity (real email)          | First admin                 | Pending operator action — no admin account exists in the project yet                    |
 
 ## 2. Environment variables (names only)
 
@@ -40,13 +40,16 @@ The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails 
 ## 3. Supabase configuration
 
 1. **Apply migrations** from the repository (never hand-edit the hosted schema):
+
    ```bash
    supabase link --project-ref <project-ref>
    supabase db push
-   # or, without the CLI:
-   DATABASE_URL="postgresql://…pooler…" pnpm db:migrate
    ```
-   Migration `0006_profile_privacy.sql` makes the `avatars` bucket private, protects photo delivery and sets public-by-default email for new profiles without changing existing choices. Migration `0007_device_signatures.sql` requires all existing device secrets to be rotated before use; `0008_admin_rls_mfa.sql` enforces MFA in database admin policies. Verify all three migrations and the private bucket before allowing member data. Migration `0005_audit_actor_retention.sql` preserves audit actors after account deletion.
+
+   Use the Supabase CLI/GitHub integration as the single migration authority. On 2026-10-29 the project was reset and every file in `supabase/migrations` (0001–0009) was applied and stamped in `supabase_migrations.schema_migrations`, so `supabase db push` and the GitHub integration both see the current schema as applied. The legacy `pnpm db:migrate` keeps a separate history and must not be mixed in; it now refuses any database that has CLI migration history.
+
+   Migration `0006_profile_privacy.sql` makes the `avatars` bucket private, protects photo delivery and sets public-by-default email for new profiles without changing existing choices. Migration `0007_device_signatures.sql` requires all existing device secrets to be rotated before use; `0008_admin_rls_mfa.sql` enforces MFA in database admin policies; `0009_controlled_erasure.sql` makes documented account closure possible without weakening the append-only guards. All four are applied in the hosted project.
+
 2. **Auth settings:**
    - Site URL: `https://member.gdgpsu.dev`
    - Additional redirect URLs: `https://member.gdgpsu.dev/auth/callback`, `http://localhost:3000/auth/callback` (local only). Add preview origins only if previews need sign-in.
@@ -106,13 +109,13 @@ The repository includes `vercel.json`, which sets the Next.js framework, the fro
 
 1. Sign in to Vercel (`npx vercel login`), create/import the project and set the production environment variables (the publishable key is supplied). Anonymous temporary deployments are not available.
 2. Approve DNS changes for `member.gdgpsu.dev` and add `https://member.gdgpsu.dev/auth/callback` to the Supabase redirect allowlist.
-3. Verify or bootstrap the intended first administrator and enroll TOTP before any member data is entered.
+3. Bootstrap the intended first administrator (`pnpm db:bootstrap-admin --email <real admin> --out .local/admin-link.txt`) and enroll TOTP before any member data is entered. No admin exists in the project yet, so nobody can issue invitations until this is done.
 4. Record PSU IT's approved ESP32 SSID/EAP method and hardware test window; do not use personal credentials or bypass TLS.
 5. Confirm whether preview deployments may use a staging Supabase project (recommended) or must stay offline.
 
-## 9. Database branching for pull requests (not configured)
+## 9. Database branching for pull requests
 
-The Supabase project is `potjjlmgnrqxseeendmx`. Preview database branching follows [Supabase: Branching with GitHub integration](https://supabase.com/docs/guides/deployment/branching/github-integration) and is **not enabled**: it needs a human to install the Supabase GitHub app and authorize the organization, which the database password/API keys alone cannot do.
+The Supabase project is `potjjlmgnrqxseeendmx`. Preview database branching follows [Supabase: Branching with GitHub integration](https://supabase.com/docs/guides/deployment/branching/github-integration). The repository side is ready: `supabase/migrations` holds the full ordered set and the project now records a CLI-compatible history for 0001–0009. Whether the GitHub app itself is installed cannot be confirmed with database credentials alone; if it is not, an organization administrator must install the Supabase GitHub app and authorize the repository.
 
 To enable it:
 

@@ -5,7 +5,7 @@
 ```bash
 pnpm install
 cp .env.example .env.local   # fill in values; never commit it
-pnpm db:migrate              # or: supabase db push
+pnpm dlx supabase@2.122.0 start  # local Supabase with migrations
 pnpm dev                     # http://localhost:3000
 ```
 

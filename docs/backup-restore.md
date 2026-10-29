@@ -32,7 +32,8 @@ Notes:
 1. Create a disposable Supabase project (never restore over production).
 2. Apply migrations from zero to validate the schema path:
    ```bash
-   DATABASE_URL="postgresql://...disposable..." pnpm db:migrate
+   supabase link --project-ref <disposable-project-ref>
+   supabase db push
    ```
 3. Restore the custom dump:
    ```bash
@@ -55,24 +56,24 @@ A completed restore drill is **not recorded** for this build. This document is a
 
 ## Storage (profile photos)
 
-- The `avatars` bucket is public with random object paths; it is not included in a database dump.
+- The `avatars` bucket must remain private; it is not included in a database dump. Object paths include an Auth user ID and must not be exposed publicly.
 - Back up objects with the Supabase Storage API/CLI or `rclone` configured for the S3-compatible endpoint. Preserve the `name` paths, because `member_profiles.photo_path` references them.
-- To restore: recreate the `avatars` bucket (public, 2 MB limit, `image/jpeg|png|webp`), re-upload objects to the same paths, then spot-check profile pages.
+- To restore: recreate the `avatars` bucket as **private** (2 MB limit, `image/jpeg|png|webp`), re-upload objects to the same paths, then verify the authorized photo endpoint and visibility controls.
 - Missing photos degrade to initials in the avatar component; they do not break attendance or points.
 
 If photos cannot be recovered, ask affected members to re-upload. Do not guess or invent images.
 
 ## Recovery scenarios
 
-| Scenario | Action |
-| --- | --- |
-| Bad ledger grant | `reverse_grant` with actor + reason; audit entry; never delete |
-| Missed checkout | Admin attendance correction with `set_checkout` then `qualify` (audited) |
-| Accidental card replacement | Issue a new card; old `/c/` stays revoked; `/m/` unchanged |
-| Wrong member status | Restore status in admin UI with reason; audit records it |
-| Failed migration | Stop deploys; restore the pre-migration dump into a disposable project; fix forward with a new migration; do not hand-edit production |
-| Deleted Auth user | Recreate only with an approved identity decision; membership/ledger history will not silently reappear |
-| Compromised service key | Rotate in Supabase and Vercel immediately; redeploy; review audit log and device secrets |
+| Scenario                    | Action                                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Bad ledger grant            | `reverse_grant` with actor + reason; audit entry; never delete                                                                        |
+| Missed checkout             | Admin attendance correction with `set_checkout` then `qualify` (audited)                                                              |
+| Accidental card replacement | Issue a new card; old `/c/` stays revoked; `/m/` unchanged                                                                            |
+| Wrong member status         | Restore status in admin UI with reason; audit records it                                                                              |
+| Failed migration            | Stop deploys; restore the pre-migration dump into a disposable project; fix forward with a new migration; do not hand-edit production |
+| Deleted Auth user           | Recreate only with an approved identity decision; membership/ledger history will not silently reappear                                |
+| Compromised service key     | Rotate in Supabase and Vercel immediately; redeploy; review audit log and device secrets                                              |
 
 ## What is explicitly not covered
 

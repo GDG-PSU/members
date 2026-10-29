@@ -1,15 +1,19 @@
 # Data model
 
-The schema source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new migration. Migrations are applied with `pnpm db:migrate` (records applied files in `public.applied_migrations`) or the Supabase CLI (`supabase db push`).
+The schema source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new migration. Use the Supabase CLI (`supabase db push`) or its GitHub integration as the single migration authority. The legacy `pnpm db:migrate` records a separate history and must never be mixed with the CLI.
 
 Current migration order:
 
-| File                   | Purpose                                                                                 |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `0001_schema.sql`      | Tables, constraints, indexes, updated-at triggers, append-only guards, helper functions |
-| `0002_functions.sql`   | Transactional domain functions and public projections                                   |
-| `0003_rls.sql`         | Row Level Security, grants, storage bucket and policies                                 |
-| `0004_rate_limits.sql` | Postgres-backed fixed-window rate limiting                                              |
+| File                             | Purpose                                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| `0001_schema.sql`                | Tables, constraints, indexes, updated-at triggers, append-only guards, helper functions |
+| `0002_functions.sql`             | Transactional domain functions and public projections                                   |
+| `0003_rls.sql`                   | Row Level Security, grants, storage bucket and policies                                 |
+| `0004_rate_limits.sql`           | Postgres-backed fixed-window rate limiting                                              |
+| `0005_audit_actor_retention.sql` | Preserve audit actor identifiers                                                        |
+| `0006_profile_privacy.sql`       | Private photos and activation privacy controls                                          |
+| `0007_device_signatures.sql`     | Signed device requests and replay protection                                            |
+| `0008_admin_rls_mfa.sql`         | MFA enforcement for admin database policies                                             |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -151,32 +155,33 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 - Attendance, ledger, audit and scan-confirmation history are append-only. Corrections use compensating entries with an actor and reason.
 - Archiving/suspending a member removes them from public views immediately; records remain for dispute resolution.
-- Deleting an Auth user cascades to member identity rows. Ledger entries cascade with the member, so account deletion must be treated as a deliberate, reviewed operation, not routine cleanup.
-- Profile photos are stored in the public `avatars` bucket with random object paths; replacing a photo deletes the previous object.
+- Account closure runs through `erase_member(auth_user_id)` (migration 0009), which sets a transaction-local flag, deletes the Auth user and lets identity, card, attendance and ledger rows cascade. The append-only triggers still reject every ordinary `UPDATE`/`DELETE`; the flag exists only inside that function's transaction. Treat erasure as a deliberate, reviewed operation, not routine cleanup.
+- Profile photos are stored in the private `avatars` bucket and served through an authorization-aware endpoint; replacing a photo deletes the previous object.
 - The schema has no automatic data-retention job. Retention periods must be decided by the organization (see `PRIVACY.md` and `docs/backup-restore.md`).
 
 ## Functions
 
-| Function                     | Access                     | Notes                                    |
-| ---------------------------- | -------------------------- | ---------------------------------------- |
-| `set_updated_at()`           | trigger                    | Sets `updated_at`                        |
-| `prevent_mutation()`         | trigger                    | Raises `append_only_relation`            |
-| `is_admin(uid)`              | anon/authenticated/service | Role check                               |
-| `current_member_id()`        | authenticated/service      | Resolves active member                   |
-| `log_audit(...)`             | service_role               | Inserts audit row                        |
-| `grant_points(...)`          | service_role               | Idempotent points + stars                |
-| `reverse_grant(...)`         | service_role               | Compensating reversal                    |
-| `redeem_reward(...)`         | service_role               | Atomic balance/inventory debit           |
-| `decide_redemption(...)`     | service_role               | Status transitions + refund              |
-| `prepare_card(...)`          | service_role               | Revokes previous, creates pending card   |
-| `activate_card(...)`         | service_role               | Activates one card, supersedes others    |
-| `revoke_card(...)`           | service_role               | Revokes pending/active card              |
-| `queue_write_job(...)`       | service_role               | One-use encrypted URL payload            |
-| `claim_write_job(...)`       | service_role               | Device-scoped claim with locking         |
-| `complete_write_job(...)`    | service_role               | Read-back gate, payload destruction      |
-| `complete_member_setup(...)` | service_role               | Idempotent invite acceptance             |
-| `confirm_scan(...)`          | service_role               | Admin-confirmed attendance state machine |
-| `correct_attendance(...)`    | service_role               | Audited corrections/reversals            |
-| `consume_rate_limit(...)`    | service_role               | Atomic fixed-window limiter              |
+| Function                     | Access                     | Notes                                                              |
+| ---------------------------- | -------------------------- | ------------------------------------------------------------------ |
+| `set_updated_at()`           | trigger                    | Sets `updated_at`                                                  |
+| `prevent_mutation()`         | trigger                    | Raises `append_only_relation`                                      |
+| `is_admin(uid)`              | anon/authenticated/service | Role check                                                         |
+| `current_member_id()`        | authenticated/service      | Resolves active member                                             |
+| `log_audit(...)`             | service_role               | Inserts audit row                                                  |
+| `grant_points(...)`          | service_role               | Idempotent points + stars                                          |
+| `reverse_grant(...)`         | service_role               | Compensating reversal                                              |
+| `redeem_reward(...)`         | service_role               | Atomic balance/inventory debit                                     |
+| `decide_redemption(...)`     | service_role               | Status transitions + refund                                        |
+| `prepare_card(...)`          | service_role               | Revokes previous, creates pending card                             |
+| `activate_card(...)`         | service_role               | Activates one card, supersedes others                              |
+| `revoke_card(...)`           | service_role               | Revokes pending/active card                                        |
+| `queue_write_job(...)`       | service_role               | One-use encrypted URL payload                                      |
+| `claim_write_job(...)`       | service_role               | Device-scoped claim with locking                                   |
+| `complete_write_job(...)`    | service_role               | Read-back gate, payload destruction                                |
+| `complete_member_setup(...)` | service_role               | Idempotent invite acceptance                                       |
+| `confirm_scan(...)`          | service_role               | Admin-confirmed attendance state machine                           |
+| `correct_attendance(...)`    | service_role               | Audited corrections/reversals                                      |
+| `consume_rate_limit(...)`    | service_role               | Atomic fixed-window limiter                                        |
+| `erase_member(uid)`          | service_role               | Reviewed erasure; lifts append-only guard for its transaction only |
 
 All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions are revoked from `public` and granted only to `service_role`; the web server authorizes the actor before calling them.
