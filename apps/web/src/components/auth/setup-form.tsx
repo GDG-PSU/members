@@ -15,13 +15,12 @@ export function SetupForm({ email }: { email: string }) {
   return (
     <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
       <Alert variant="info">
-        Status: {email} is invited. Your name and a clear face photo are required; you can hide them
-        later.{' '}
+        {email} is invited. Add your name and a face photo.{' '}
         <a
           href="#privacy-settings"
           className="font-semibold text-primary underline underline-offset-2"
         >
-          Review privacy settings before creating your profile
+          Review privacy settings
         </a>
         .
       </Alert>
@@ -48,8 +47,7 @@ export function SetupForm({ email }: { email: string }) {
       <div>
         <p className="text-sm font-semibold text-foreground">Face photo (required)</p>
         <p className="mt-1 text-[0.82rem] leading-relaxed text-muted-foreground">
-          A clear, front-facing photo of your face. No filters, masks, group shots or photos of
-          someone else — organizers match this photo to you at the door.
+          A clear, front-facing photo of your face. Organizers match it at the door.
         </p>
         <div className="mt-2 flex items-center gap-4">
           <span
@@ -131,9 +129,8 @@ export function SetupForm({ email }: { email: string }) {
       <div id="privacy-settings" className="rounded-2xl border border-border bg-subtle/70 p-4">
         <h2 className="text-base font-bold">Privacy before you join</h2>
         <p className="mt-1 text-[0.82rem] leading-relaxed text-muted-foreground">
-          Your profile and email are public by default. Choose what is visible now; you can change
-          these settings later. A private profile hides all fields, regardless of individual
-          choices.
+          Profile and email are public by default. Change this anytime; a private profile hides
+          every field.
         </p>
         <div className="mt-3 space-y-2.5">
           <label className="flex items-start gap-2.5 text-sm">
@@ -165,9 +162,8 @@ export function SetupForm({ email }: { email: string }) {
           className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
         />
         <span>
-          I understand my privacy choices above, that my card is an identifier rather than a
-          password, and that a photo change within 48 hours requires a PSU ID check at the next
-          event. See the{' '}
+          I understand my privacy choices above, and that a photo change within 48 hours requires a
+          PSU ID check at my next event. See the{' '}
           <Link
             href="/privacy"
             target="_blank"
@@ -186,8 +182,7 @@ export function SetupForm({ email }: { email: string }) {
       </Button>
 
       <Card className="border-dashed bg-subtle/50 px-4 py-3 text-[0.78rem] leading-relaxed text-muted-foreground">
-        Your invitation is single-use. If something looks wrong, stop and contact the organizers
-        before creating a profile.
+        Single-use invitation. Contact organizers if anything looks wrong.
       </Card>
     </form>
   );

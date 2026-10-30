@@ -51,12 +51,8 @@ export default async function PrivacySettingsPage() {
           <p className="type-overline text-primary">Your call</p>
           <h1 className="type-h2 mt-2">Privacy settings</h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Everything here can be changed at any time. Email is public by default, but you can hide
-            it. Turning off the public profile hides every field at once.
-          </p>
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            The leaderboard only includes public profiles with both points and leaderboard
-            visibility enabled.
+            Change anything, anytime. A private profile hides every field. The leaderboard only
+            shows opted-in public profiles.
           </p>
         </div>
         <div className="min-w-0">

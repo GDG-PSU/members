@@ -133,8 +133,7 @@ export default async function AdminOverviewPage() {
               ))}
             </dl>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Card writes and kiosk confirmations require a human in the loop. Points are never
-              granted by a tap alone.
+              Points are granted only after a human confirmation.
             </p>
             <Link
               href="/admin/devices"

@@ -220,8 +220,7 @@ export function EventForm({ event, returnTo }: { event?: EventValues; returnTo: 
       <SessionFields prefix="bonus" label="Bonus session (optional)" session={bonus} optional />
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Times are interpreted as America/New_York wall-clock. Rewards are snapshotted onto each
-        attendance record when checkout is confirmed, so later edits never rewrite history.
+        Times are America/New_York. Rewards are snapshotted at check-out.
       </p>
       <SubmitButton pendingLabel="Saving event…">
         {event?.id ? 'Save changes' : 'Create event'}

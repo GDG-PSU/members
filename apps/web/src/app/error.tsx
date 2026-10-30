@@ -24,7 +24,7 @@ export default function GlobalError({
       <p className="type-overline text-primary">Error</p>
       <h1 className="type-h2 mt-2">That did not load</h1>
       <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-        The action was not completed. Nothing was awarded or changed unless you saw a confirmation.
+        Nothing changed unless you saw a confirmation.
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <button type="button" onClick={reset} className={buttonVariants({})}>

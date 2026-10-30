@@ -42,8 +42,8 @@ export function MfaPanel({
     return (
       <form action={verifyAction} className="space-y-4">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Signed in as <span className="font-semibold text-foreground">{email}</span>. Enter the
-          current code from your authenticator app.
+          Signed in as <span className="font-semibold text-foreground">{email}</span>. Enter your
+          current code.
         </p>
         <input type="hidden" name="factorId" value={factorId} />
         <CodeField autoFocus />
@@ -58,9 +58,7 @@ export function MfaPanel({
   if (enrollState.qrCode) {
     return (
       <form action={verifyAction} className="space-y-4">
-        <Alert variant="info">
-          Scan the QR code with your authenticator app, then enter the six-digit code below.
-        </Alert>
+        <Alert variant="info">Scan this with your authenticator app.</Alert>
         {/* eslint-disable-next-line @next/next/no-img-element -- data-URL QR from Supabase, not an optimizable remote image */}
         <img
           src={enrollState.qrCode}
@@ -90,9 +88,8 @@ export function MfaPanel({
   return (
     <form action={enrollAction} className="space-y-4">
       <p className="text-sm leading-relaxed text-muted-foreground">
-        No authenticator is enrolled for{' '}
-        <span className="font-semibold text-foreground">{email}</span>. Enroll one now — you will
-        need it for every admin session.
+        No authenticator for <span className="font-semibold text-foreground">{email}</span>. Enroll
+        one to continue.
       </p>
       {enrollState.error ? <Alert variant="danger">{enrollState.error}</Alert> : null}
       <SubmitButton pendingLabel="Starting…" fullWidth className="h-11">

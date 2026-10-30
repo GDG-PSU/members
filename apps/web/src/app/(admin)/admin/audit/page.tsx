@@ -60,10 +60,7 @@ export default async function AuditPage({
       </div>
 
       {!data || data.length === 0 ? (
-        <EmptyState
-          title="No matching audit entries"
-          description="Actions appear here as organizers work."
-        />
+        <EmptyState title="No matching audit entries" description="Actions appear here." />
       ) : (
         <DataTable
           caption="Audit log entries"
@@ -116,8 +113,7 @@ export default async function AuditPage({
         />
       )}
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-        Audit rows cannot be updated or deleted (enforced by database triggers). Secrets, tokens and
-        invitation links are never written here.
+        Append-only. Secrets and links are never logged.
       </p>
     </PageShell>
   );

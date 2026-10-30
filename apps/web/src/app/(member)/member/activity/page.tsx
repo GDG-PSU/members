@@ -45,7 +45,7 @@ export default async function ActivityPage() {
         headingLevel={1}
         eyebrow={`${balances.points} points · ${balances.stars} stars`}
         title="Your activity"
-        description="Every point comes from a ledger entry. Corrections add a compensating entry rather than erasing history."
+        description="Every point is a ledger entry. Corrections add one; nothing is erased."
       />
 
       <div className="grid gap-5 md:grid-cols-[1.45fr_1fr]">
@@ -99,8 +99,7 @@ export default async function ActivityPage() {
               </ul>
             )}
             <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-              Missing checkout or a threshold error? Email gdg@psu.edu from your registered address
-              — organizers can correct attendance with an audited reason.
+              Missing check-out? Email gdg@psu.edu and an organizer can review it.
             </p>
           </CardContent>
         </Card>

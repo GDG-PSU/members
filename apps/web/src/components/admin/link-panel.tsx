@@ -58,8 +58,7 @@ export function LinkPanel({
           {copied ? 'Copied' : 'Copy link'}
         </Button>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Links expire per your Supabase Auth OTP setting (default 1 hour). Generate a new one if it
-          expires.
+          Links expire with the Supabase OTP window (default 1 hour).
         </p>
       </div>
       {copyError ? (

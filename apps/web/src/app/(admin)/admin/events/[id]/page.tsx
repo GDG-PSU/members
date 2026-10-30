@@ -173,8 +173,7 @@ export default async function EditEventPage({
               ]}
             />
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Corrections are made from the member detail page so each change carries a reason and
-              actor.
+              Correct attendance from the member detail page.
             </p>
           </CardContent>
         </Card>

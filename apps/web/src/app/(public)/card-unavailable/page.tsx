@@ -18,8 +18,7 @@ export default function CardUnavailablePage() {
         <p className="type-overline text-primary">Card link</p>
         <h1 className="type-h2 mt-2">This card link is not active</h1>
         <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          It may have been replaced or reported lost. Ask an organizer at the next event and they
-          can issue a fresh card without changing your profile.
+          It may be replaced or reported lost. Ask an organizer for a fresh card.
         </p>
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <Link href="/" className={buttonVariants({})}>

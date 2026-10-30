@@ -75,8 +75,7 @@ export function ProfileForm({
                   }}
                 />
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  Square crop · max 2 MB. Use a clear, front-facing photo of your face. A new photo
-                  triggers a PSU ID check at your next event.
+                  Clear, front-facing photo · max 2 MB. A new photo triggers a PSU ID check.
                 </p>
               </div>
             </div>
@@ -197,8 +196,7 @@ export function ProfileForm({
               </div>
             </div>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Saved changes appear on your public profile immediately. Hidden fields stay hidden
-              even if you fill them in here.
+              Changes appear immediately. Hidden fields stay hidden.
             </p>
           </CardContent>
         </Card>

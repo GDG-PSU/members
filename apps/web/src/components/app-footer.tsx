@@ -9,9 +9,7 @@ export function AppFooter() {
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <Wordmark compact />
-            <p className="mt-2 max-w-xs text-xs leading-relaxed text-muted-foreground">
-              The member pass for Google Developer Group at Penn State.
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">GDG @ Penn State</p>
           </div>
           <nav
             aria-label="Footer"
@@ -39,9 +37,8 @@ export function AppFooter() {
           </nav>
         </div>
         <div className="mt-6 border-t border-border pt-5">
-          <p className="text-[0.72rem] leading-relaxed text-muted-foreground">
-            Card links are identifiers, not credentials. Attendance always requires a human check-in
-            and check-out.
+          <p className="text-[0.72rem] text-muted-foreground">
+            Card links are not credentials. Staff confirm attendance.
           </p>
         </div>
       </div>

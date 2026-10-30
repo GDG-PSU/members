@@ -67,7 +67,7 @@ export default async function KioskPage() {
       <SectionHeading
         eyebrow="Human confirmation required"
         title="Kiosk"
-        description="Scans queue here. A tap never awards points; confirm check-in and check-out in person."
+        description="Confirm every scan in person. A tap never awards points."
         headingLevel={1}
         action={
           <StatusChip
@@ -110,7 +110,7 @@ export default async function KioskPage() {
                 ))}
                 {(devices.data ?? []).length === 0 ? (
                   <p className="text-sm leading-relaxed text-muted-foreground">
-                    No devices registered. Register one under Devices before event day.
+                    No devices registered.
                   </p>
                 ) : null}
               </div>

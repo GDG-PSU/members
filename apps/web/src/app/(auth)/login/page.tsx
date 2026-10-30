@@ -33,7 +33,7 @@ export default async function LoginPage({
           <p className="type-overline text-primary">Member access</p>
           <h1 className="type-h2 mt-2">Welcome back</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Use the email your invitation was sent to.
+            Use your invited email.
           </p>
 
           <div className="mt-5 space-y-3">
@@ -42,8 +42,7 @@ export default async function LoginPage({
             ) : null}
             {notice === 'invalid-link' ? (
               <Alert variant="danger">
-                That sign-in link is invalid or has already been used. Ask GDG@PSU for a fresh link,
-                or sign in with your password.
+                This link is invalid or already used. Request a new one.
               </Alert>
             ) : null}
           </div>
@@ -63,9 +62,9 @@ export default async function LoginPage({
               >
                 {SUPPORT_EMAIL}
               </a>{' '}
-              from your registered address. An admin will send a recovery link.
+              and an organizer will send a recovery link.
             </p>
-            <p>Not a member yet? Membership opens after dues are recorded — no public signup.</p>
+            <p>Membership is by invitation only.</p>
             <Link
               href="/forgot-password"
               className="inline-flex font-semibold text-primary underline-offset-2 hover:underline"

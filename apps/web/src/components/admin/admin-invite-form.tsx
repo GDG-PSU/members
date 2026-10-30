@@ -14,11 +14,7 @@ export function AdminInviteForm() {
   return (
     <div className="space-y-3">
       <form action={action} className="space-y-3.5" noValidate>
-        <Field
-          label="Email"
-          htmlFor="admin-invite-email"
-          hint="The invitee must enroll an authenticator before /admin opens."
-        >
+        <Field label="Email" htmlFor="admin-invite-email" hint="TOTP required before /admin opens.">
           <Input
             id="admin-invite-email"
             name="email"
@@ -39,8 +35,7 @@ export function AdminInviteForm() {
       ) : null}
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        No email is sent. The invitee sets their password from this one-time link, then enrolls TOTP
-        at /admin-mfa. Granting the role is audited.
+        No email is sent. The invitee sets a password, then enrolls TOTP.
       </p>
     </div>
   );

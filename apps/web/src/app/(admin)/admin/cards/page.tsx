@@ -83,8 +83,7 @@ export default async function CardsPage({
             <p className="type-overline text-primary">One card at a time</p>
             <h1 className="type-h3 mt-1.5">Prepare a card</h1>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-              Generates a new opaque URL, revokes the previous card, and queues a single-use write
-              job on the selected writer lane. The token is never displayed.
+              Queues a write job and revokes the previous card.
             </p>
 
             <form action={prepareCardAction} className="mt-4 space-y-3.5">
@@ -126,8 +125,7 @@ export default async function CardsPage({
             </form>
 
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              To enable writer mode, set the lane to Writer under Devices. That lane pauses
-              attendance scanning while it writes.
+              Set a lane to Writer under Devices to enable writing.
             </p>
           </CardContent>
         </Card>
@@ -135,10 +133,7 @@ export default async function CardsPage({
         <div className="min-w-0">
           <h2 className="type-h3 mb-3">Card credentials</h2>
           {!cards.data || cards.data.length === 0 ? (
-            <EmptyState
-              title="No cards prepared"
-              description="Prepare a card for an active member."
-            />
+            <EmptyState title="No cards prepared" description="Prepare one for an active member." />
           ) : (
             <DataTable
               caption="Card credentials"

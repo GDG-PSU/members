@@ -36,8 +36,8 @@ export default async function InviteAcceptPage() {
           <p className="type-overline text-primary">One-time setup</p>
           <h1 className="type-h2 mt-2">Make it yours</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Set a password, add the name and clear face photo organizers will see at the door, and
-            your permanent profile is created. Membership since {formatDate(invitation.paid_since)}.
+            Set a password, add your name and a face photo. Membership since{' '}
+            {formatDate(invitation.paid_since)}.
           </p>
         </div>
         <SetupForm email={viewer.user.email ?? ''} />
@@ -67,8 +67,8 @@ export default async function InviteAcceptPage() {
           Invitations are single-use and expire after 14 days.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Email <span className="font-semibold text-foreground">{SUPPORT_EMAIL}</span> from this
-          address and an organizer will check your membership record or issue a fresh invitation.
+          Email <span className="font-semibold text-foreground">{SUPPORT_EMAIL}</span> for a fresh
+          invitation.
         </p>
         <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
           <a

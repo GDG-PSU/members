@@ -28,17 +28,17 @@ const features = [
   {
     icon: Nfc,
     title: 'Your card is a doorway',
-    body: 'A tap opens your permanent profile. It never authorizes a check-in, a purchase or an account action.',
+    body: 'A tap opens your profile. Nothing more.',
   },
   {
     icon: Star,
     title: 'Stars are forever',
-    body: 'Every point you earn also becomes a star. Spend points on merch; stars stay as a record of showing up.',
+    body: 'Spend points on merch. Stars only ever grow.',
   },
   {
     icon: ShieldCheck,
     title: 'No silent awards',
-    body: 'An organizer confirms check-in and check-out. Miss a checkout and no attendance points are granted.',
+    body: 'No check-out, no points.',
   },
 ];
 
@@ -85,8 +85,7 @@ export default async function HomePage() {
               </h1>
 
               <p className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
-                One card. One profile. Every event, workshop and late-night build counted — for the
-                people who show up and make GDG@PSU what it is.
+                One card. One profile. Every build night counted.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -112,7 +111,7 @@ export default async function HomePage() {
               </div>
 
               <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                Membership is by invitation after dues are recorded. Questions? {SUPPORT_EMAIL}
+                By invitation after dues. Questions? {SUPPORT_EMAIL}
               </p>
             </div>
 
@@ -205,7 +204,7 @@ export default async function HomePage() {
         <SectionHeading
           eyebrow="Upcoming"
           title="Show up. Tap in. Check out."
-          description="Attendance is confirmed by an organizer at the door — a tap alone never awards points."
+          description="A tap opens your profile. An organizer confirms attendance."
           action={
             <Link href="/events" className={buttonVariants({ variant: 'secondary' })}>
               All events
@@ -217,7 +216,7 @@ export default async function HomePage() {
         {events.length === 0 ? (
           <EmptyState
             title="Nothing on the calendar yet"
-            description="The next workshop or build night will appear here as soon as it is published."
+            description="New events appear here."
             icon={<CalendarDays />}
             action={
               <Link href="/leaderboard" className={buttonVariants({ variant: 'secondary' })}>
@@ -308,8 +307,8 @@ export default async function HomePage() {
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-white/75">
                 {dashboard
-                  ? 'Pick up where you left off — your points, stars, event history and digital ID are waiting.'
-                  : 'Sign in to see your points, stars, event history and your digital ID — or to pick up something from the rewards shelf.'}
+                  ? 'Your points, stars, history and digital ID.'
+                  : 'Points, stars, history and your digital ID.'}
               </p>
             </div>
             <div className="flex flex-col gap-2.5 sm:flex-row md:flex-col">

@@ -156,7 +156,7 @@ export default async function MemberProfilePage({
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          This profile is managed by the member. Visibility is theirs to change.
+          Visibility is managed by the member.
         </p>
         <Link href="/leaderboard" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
           See the leaderboard
@@ -179,8 +179,7 @@ function PrivateProfile() {
           <p className="type-overline text-muted-foreground">Member profile</p>
           <h1 className="type-h3 mt-2">This profile is private</h1>
           <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            This member has chosen to keep their profile hidden. If you scanned their card, ask them
-            directly — a private profile never exposes contact details here.
+            This member keeps their profile private. Ask them directly if you need to reach them.
           </p>
           <Link href="/" className={buttonVariants({ variant: 'secondary', className: 'mt-6' })}>
             Back to the hub

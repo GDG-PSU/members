@@ -10,27 +10,27 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: 'What we store',
-    body: 'Your Penn State email (public by default), display name, profile photo, optional bio and links, membership-since date, membership number, event attendance, points and stars, card status and audit records of organizer actions.',
+    body: 'Penn State email, name, photo, optional bio and links, membership date and number, attendance, points, stars, card status and organizer audit records.',
   },
   {
     title: 'What is public',
-    body: 'Profiles are public by default. Name, photo, bio, links, member number, member-since date, points, stars and attended-event count can each be hidden independently. Email is public by default and can be hidden at any time. Your internal account identifier and card token never appear publicly.',
+    body: 'Profiles and email are public by default. Each field can be hidden; a private profile hides them all. Account IDs and card tokens are never public.',
   },
   {
     title: 'Your card',
-    body: 'The NFC card stores only an HTTPS link to an opaque card URL, which redirects to your profile. It contains no name, email, member number or points. A card is not a password and never authorizes a check-in, purchase or account change.',
+    body: 'The card stores only an opaque profile link — no name, email, points or credentials.',
   },
   {
     title: 'What organizers can see',
-    body: 'Organizers can see member records, attendance, ledger entries, card status and audit history in order to run events and resolve issues. Access is role-gated on the server and actions are audited.',
+    body: 'Organizers see member, attendance, ledger, card and audit records. Access is role-gated and audited.',
   },
   {
     title: 'Changing or removing data',
-    body: `You can hide fields or make your entire profile private at any time in Member → Privacy. To close your account or correct your data, email ${SUPPORT_EMAIL} from your registered address. Attendance corrections never delete ledger history; they add an audited compensating entry.`,
+    body: `Hide fields or go private in Member → Privacy. To close your account, email ${SUPPORT_EMAIL}. Corrections add an audited entry; history is never erased.`,
   },
   {
     title: 'Retention',
-    body: 'Attendance and ledger records are retained while your membership is active and for the period needed to resolve disputes. Archived accounts are removed from public views immediately.',
+    body: 'Attendance and ledger records stay while you are a member and for dispute resolution. Archived accounts leave public views immediately.',
   },
 ];
 
@@ -40,8 +40,7 @@ export default function PrivacyPage() {
       <p className="type-overline text-primary">Plain language</p>
       <h1 className="type-h1 mt-2">Privacy at MemberPass</h1>
       <p className="mt-3 max-w-2xl text-[0.95rem] leading-relaxed text-muted-foreground">
-        MemberPass is the member portal for GDG@PSU. This is a student community, not an advertising
-        product. We collect what is needed to run membership, events and rewards.
+        A student community, not an advertising product. We collect what membership needs.
       </p>
 
       <Card className="mt-8 divide-y divide-border overflow-hidden">

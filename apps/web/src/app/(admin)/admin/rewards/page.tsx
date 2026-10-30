@@ -71,10 +71,7 @@ export default async function AdminRewardsPage({
           </div>
 
           {!rewards.data || rewards.data.length === 0 ? (
-            <EmptyState
-              title="No rewards yet"
-              description="Add merchandise or perks for members to redeem."
-            />
+            <EmptyState title="No rewards yet" description="Add something members can redeem." />
           ) : (
             <ul className="space-y-2.5">
               {rewards.data.map((reward) => (
@@ -122,10 +119,7 @@ export default async function AdminRewardsPage({
           </div>
 
           {!redemptions.data || redemptions.data.length === 0 ? (
-            <EmptyState
-              title="Nothing waiting"
-              description="Member requests appear here for approval."
-            />
+            <EmptyState title="Nothing waiting" description="Requests appear here for approval." />
           ) : (
             <ul className="space-y-2.5">
               {redemptions.data.map((row) => {
@@ -199,9 +193,7 @@ export default async function AdminRewardsPage({
         <Card className="lg:sticky lg:top-24">
           <CardContent className="pt-5">
             <h2 className="type-h3">New reward</h2>
-            <p className="mb-4 mt-1 text-xs text-muted-foreground">
-              New items are active immediately unless you uncheck Active.
-            </p>
+            <p className="mb-4 mt-1 text-xs text-muted-foreground">Active by default.</p>
             <RewardForm returnTo={returnTo} />
           </CardContent>
         </Card>

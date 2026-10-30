@@ -49,7 +49,7 @@ export default async function AdminEventsPage({
           <h1 className="type-h2 mb-4 mt-2">Events</h1>
 
           {!events || events.length === 0 ? (
-            <EmptyState title="No events yet" description="Create the first event with the form." />
+            <EmptyState title="No events yet" description="Create your first event." />
           ) : (
             <div className="space-y-3">
               {events.map((event) => {

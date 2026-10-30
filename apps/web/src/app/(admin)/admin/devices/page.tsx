@@ -52,14 +52,14 @@ export default async function DevicesPage() {
           <SectionHeading
             eyebrow="Hardware"
             title="Devices"
-            description="Each ESP32 lane authenticates with its own ID and secret. Writer mode temporarily stops attendance scans on that lane."
+            description="Each lane has its own secret. Writer mode pauses scans."
             headingLevel={1}
           />
 
           {!devices.data || devices.data.length === 0 ? (
             <EmptyState
               title="No devices registered"
-              description="Register lane A and lane B before event day."
+              description="Register a lane before event day."
             />
           ) : (
             <div className="space-y-3">
@@ -103,8 +103,7 @@ export default async function DevicesPage() {
                     </div>
 
                     <p className="mt-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-                      Rotating the secret takes effect on the device&apos;s next request. Update the
-                      firmware secrets file before restarting that lane.
+                      Rotating applies on the next request; update the firmware file first.
                     </p>
                   </CardContent>
                 </Card>
@@ -118,8 +117,7 @@ export default async function DevicesPage() {
             <CardContent className="p-5">
               <h2 className="type-h3">Register a lane</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                The secret is shown once. Only its SHA-256 hash is stored; firmware never receives a
-                Supabase key.
+                The secret is shown once. Only its hash is stored.
               </p>
               <div className="mt-4">
                 <DeviceCreateForm events={eventOptions} />

@@ -85,8 +85,8 @@ export function RewardCard({
             title={`Request ${name}?`}
             description={
               <span>
-                This reserves <strong>{costPoints} points</strong> immediately. An organizer will
-                approve and fulfil it. You can cancel before it is fulfilled.
+                Reserves <strong>{costPoints} points</strong> now. Cancel before an organizer
+                fulfils it.
               </span>
             }
             confirmLabel="Reserve points"

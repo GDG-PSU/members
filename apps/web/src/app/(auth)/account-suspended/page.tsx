@@ -18,8 +18,7 @@ export default function SuspendedPage() {
         <p className="type-overline mt-4 text-primary">Membership</p>
         <h1 className="type-h2 mt-2">This membership is inactive</h1>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
-          Your account still exists, but access to the member area is paused. Contact{' '}
-          {SUPPORT_EMAIL} from your registered address and an organizer can review the status.
+          Access is paused. Contact {SUPPORT_EMAIL} and an organizer can review it.
         </p>
         <div className="mt-6 flex flex-col items-center justify-center gap-2.5 sm:flex-row">
           <a href={`mailto:${SUPPORT_EMAIL}`} className={buttonVariants({})}>

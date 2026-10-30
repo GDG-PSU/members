@@ -51,13 +51,13 @@ export default async function RewardsPage() {
         headingLevel={1}
         eyebrow={`${balances.points} points available · ${balances.stars} stars untouched`}
         title="The rewards shelf"
-        description="Points are reserved when you request an item. Cancellations return them through an audited ledger entry; stars never change when you spend."
+        description="Points are reserved on request and refunded if cancelled. Stars never change."
       />
 
       {rewards.length === 0 ? (
         <EmptyState
           title="The shelf is empty"
-          description="Organizers will add merchandise and perks here. Your points keep accumulating."
+          description="Organizers will stock it soon."
           icon={<Gift />}
         />
       ) : (
@@ -88,10 +88,7 @@ export default async function RewardsPage() {
         </div>
 
         {redemptions.length === 0 ? (
-          <EmptyState
-            title="No requests yet"
-            description="Anything you redeem will be tracked here."
-          />
+          <EmptyState title="No requests yet" description="Your requests will show up here." />
         ) : (
           <Card>
             <CardContent className="p-0">
@@ -137,8 +134,7 @@ export default async function RewardsPage() {
       </section>
 
       <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-        Signed in as {user.email}. Redemption requests are reviewed by an organizer at the next
-        event.
+        Signed in as {user.email}. Requests are reviewed at the next event.
       </p>
     </PageShell>
   );

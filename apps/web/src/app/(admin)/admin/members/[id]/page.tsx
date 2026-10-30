@@ -341,8 +341,7 @@ export default async function AdminMemberDetailPage({
               </form>
               <div className="my-4 h-px bg-border" />
               <p className="text-[0.72rem] leading-relaxed text-muted-foreground">
-                Suspending blocks member API use immediately; already-issued JWTs are re-checked
-                against server-side role and member state.
+                Suspension applies immediately and is re-checked server-side.
               </p>
             </CardContent>
           </Card>
@@ -351,8 +350,7 @@ export default async function AdminMemberDetailPage({
             <CardContent className="pt-5">
               <h2 className="mb-1 text-sm font-bold">Cards</h2>
               <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-                Cards contain only an opaque URL. Issuing a new card revokes the previous one; the
-                profile URL never changes.
+                A new card revokes the previous one. The profile URL never changes.
               </p>
 
               <div className="mb-3 space-y-2">
@@ -441,8 +439,7 @@ export default async function AdminMemberDetailPage({
             <CardContent className="pt-5">
               <h2 className="mb-1 text-sm font-bold">Account recovery</h2>
               <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-                Generates a one-time Supabase link for the registered address. No email is sent;
-                copy the link and deliver it privately. It is never stored or logged.
+                Creates a one-time link. Copy it privately; it is never stored.
               </p>
               <RecoveryForm email={(priv?.email as string) ?? ''} />
             </CardContent>

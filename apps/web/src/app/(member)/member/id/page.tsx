@@ -29,7 +29,7 @@ export default async function DigitalIdPage() {
         headingLevel={1}
         eyebrow="Card-free fallback"
         title="Your digital ID"
-        description="Show this to an organizer if your card is unavailable. It opens your public profile — it is not a password and does not authorize attendance by itself."
+        description="Show this if your card is unavailable. It is not a password."
       />
 
       <Card className="mx-auto max-w-md overflow-hidden">
@@ -72,8 +72,7 @@ export default async function DigitalIdPage() {
           <div>
             <h2 className="type-h3">{member.displayName}</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              Scanning opens your permanent profile. Organizers still confirm every check-in and
-              check-out in person.
+              Opens your profile. Organizers still confirm attendance.
             </p>
           </div>
 
@@ -84,7 +83,7 @@ export default async function DigitalIdPage() {
             Open public profile
           </Link>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            This screen is only visible while signed in. Do not post it publicly.
+            Visible only while signed in. Don&apos;t post it.
           </p>
         </CardContent>
       </Card>

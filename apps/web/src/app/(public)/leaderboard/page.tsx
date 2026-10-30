@@ -72,13 +72,13 @@ export default async function LeaderboardPage() {
         headingLevel={1}
         eyebrow="Semester standings"
         title="The leaderboard"
-        description="Ranked by spendable points earned from confirmed attendance and organizer-recognized contributions. Stars are not part of the ranking."
+        description="Points from confirmed attendance. Stars don't count."
       />
 
       {entries.length === 0 ? (
         <EmptyState
           title="No public rankings yet"
-          description="Members choose whether to appear here. Once attendance is confirmed and a member opts in, the board fills up."
+          description="Members who opt in appear once attendance is confirmed."
           icon={<Trophy />}
           action={
             <Link href="/events" className={buttonVariants({ variant: 'secondary' })}>
@@ -168,9 +168,8 @@ export default async function LeaderboardPage() {
           ) : null}
 
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-            {rest.length === 0 ? 'Those are all the public rankings so far. ' : ''}
-            Only members who opted into the leaderboard and public points appear. Missing names are
-            not zero-point members.
+            {rest.length === 0 ? 'That is the whole board so far. ' : ''}
+            Only opted-in public profiles appear.
           </p>
         </>
       )}

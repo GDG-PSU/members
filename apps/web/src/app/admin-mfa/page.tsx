@@ -39,8 +39,7 @@ export default async function AdminMfaPage() {
             <p className="type-overline mt-4 text-primary">Organizer security</p>
             <h1 className="type-h2 mt-2">Two-factor required</h1>
             <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-              Admin routes require a verified authenticator (TOTP) session. This protects member
-              data, the points ledger and every event control.
+              Admin routes require a verified authenticator.
             </p>
 
             <div className="mt-6">
@@ -53,8 +52,7 @@ export default async function AdminMfaPage() {
 
             <div className="mt-6 border-t border-border pt-4">
               <p className="text-[0.78rem] leading-relaxed text-muted-foreground">
-                Lost your authenticator? Contact {SUPPORT_EMAIL} — an organizer with account access
-                must reset the factor from Supabase.
+                Lost your authenticator? Contact {SUPPORT_EMAIL} for a reset.
               </p>
               <form action="/api/auth/signout" method="post" className="mt-2">
                 <button

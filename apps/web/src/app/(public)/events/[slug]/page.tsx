@@ -44,7 +44,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
           <Badge variant="primary">{formatDate(event.startsAt)}</Badge>
           <h1 className="type-h1 mt-4 text-balance">{event.name}</h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
-            {event.summary || 'Details will be shared by the organizers.'}
+            {event.summary || 'Details coming soon.'}
           </p>
 
           <div className="mt-5 flex flex-wrap gap-2">
@@ -105,15 +105,15 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             <CardContent className="p-5 sm:p-6">
               <h2 className="text-base font-bold">How attendance works</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                Tap your member card at the organizer&apos;s kiosk, then confirm with the organizer:
+                Tap at the kiosk, then confirm with an organizer:
               </p>
 
               <ol className="my-5 space-y-3">
                 {[
-                  'Organizer confirms your check-in.',
+                  'Organizer confirms check-in.',
                   'Stay for the session.',
-                  'Organizer confirms your check-out.',
-                  'Points and a matching star are added only if you met the minimum duration.',
+                  'Organizer confirms check-out.',
+                  'Points land after a qualifying stay.',
                 ].map((step, index) => (
                   <li key={step} className="flex items-start gap-3">
                     <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-[0.7rem] font-extrabold text-primary-foreground">
@@ -127,8 +127,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               <div className="h-px bg-border" />
 
               <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                No checkout means no attendance points. If something goes wrong, email GDG@PSU from
-                your registered address and an organizer can review it.
+                No check-out, no points. Email GDG@PSU if something went wrong.
               </p>
 
               <Link href="/login" className={cn(buttonVariants({}), 'mt-4 w-full')}>

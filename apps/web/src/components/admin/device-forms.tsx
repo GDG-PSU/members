@@ -97,8 +97,7 @@ export function DeviceCreateForm({ events }: { events: EventOption[] }) {
             </Button>
           </div>
           <p className="mt-2 text-[0.78rem] leading-relaxed">
-            Put this in the ignored firmware secrets file for {state.deviceId}. It is not stored in
-            plaintext and cannot be recovered.
+            Paste it into the firmware secrets file; it cannot be recovered.
           </p>
         </Alert>
       ) : null}

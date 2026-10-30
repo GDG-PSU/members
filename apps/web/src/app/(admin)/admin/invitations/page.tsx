@@ -40,8 +40,7 @@ export default async function InvitationsPage({
               <p className="type-overline text-primary">Paid member</p>
               <h1 className="type-h3 mt-1.5">Invite a member</h1>
               <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                Record the date dues were paid, then generate a one-time invitation link and send it
-                yourself. No profile exists until the member completes setup.
+                Record the paid date, then send the link yourself.
               </p>
               <div className="mt-4">
                 <InviteForm />
@@ -53,8 +52,7 @@ export default async function InvitationsPage({
               <p className="type-overline text-secondary">Staff access</p>
               <h2 className="type-h3 mt-1.5">Invite an administrator</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                Grants the admin role and returns a one-time link. The invitee enrolls TOTP before
-                the portal opens.
+                Grants the admin role. TOTP is required before access.
               </p>
               <div className="mt-4">
                 <AdminInviteForm />
@@ -66,10 +64,7 @@ export default async function InvitationsPage({
         <div className="min-w-0">
           <h2 className="type-h3 mb-3">Invitation history</h2>
           {!invitations || invitations.length === 0 ? (
-            <EmptyState
-              title="No invitations yet"
-              description="Invite the first paid member using the form."
-            />
+            <EmptyState title="No invitations yet" description="Invite your first paid member." />
           ) : (
             <DataTable
               caption="Member invitations"

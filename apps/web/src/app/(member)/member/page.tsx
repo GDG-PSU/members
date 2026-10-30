@@ -92,8 +92,7 @@ export default async function MemberDashboard({
               You&apos;re in, {member.displayName.split(' ')[0]}.
             </p>
             <p className="mt-0.5 text-sm leading-relaxed text-white/80">
-              Your permanent profile is live at /m/{member.slug}. Your card will appear here once an
-              organizer writes it.
+              Your profile is live at /m/{member.slug}. Your card comes at the next event.
             </p>
           </div>
         </div>
@@ -164,7 +163,7 @@ export default async function MemberDashboard({
               {attendance.length === 0 && ledger.length === 0 ? (
                 <EmptyState
                   title="Your history starts at the next event"
-                  description="Tap in with an organizer, stay for the session, then check out. Points land after both confirmations."
+                  description="Check in and out at the next event to earn points."
                   icon={<CalendarDays />}
                 />
               ) : (
@@ -226,14 +225,14 @@ export default async function MemberDashboard({
               <StatusChip status={cardTone} label={cardLabel} />
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 {card.status === 'active'
-                  ? 'Tap your card at any organizer kiosk. The card only opens your profile — staff still confirm attendance.'
+                  ? 'Tap at any kiosk. Staff still confirm attendance.'
                   : card.status === 'pending'
-                    ? 'An organizer has queued your card. Bring it to the next event to be written.'
+                    ? 'Bring it to the next event to be written.'
                     : card.status === 'lost'
-                      ? 'This card is marked lost. Use your digital ID and ask an organizer for a replacement.'
+                      ? 'Marked lost. Ask an organizer for a replacement.'
                       : card.status === 'replaced' || card.status === 'revoked'
-                        ? 'This card is no longer active. Use your digital ID or ask an organizer for a new card.'
-                        : 'Your digital ID works now. Ask an organizer to write a physical card at the next event.'}
+                        ? 'Inactive. Use your digital ID or ask for a new card.'
+                        : 'Ask an organizer to write your card.'}
               </p>
               <Link href="/member/id" className={buttonVariants({ className: 'mt-4 w-full' })}>
                 Show digital ID
@@ -266,7 +265,7 @@ export default async function MemberDashboard({
                 </>
               ) : (
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  No published events right now. Check back soon.
+                  No events right now.
                 </p>
               )}
             </CardContent>
@@ -281,7 +280,7 @@ export default async function MemberDashboard({
                 <h2 className="text-base font-bold">Redeem points</h2>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Merch and perks from the GDG@PSU shelf. Stars stay untouched when you spend.
+                Merch and perks. Stars never get spent.
               </p>
               <Link
                 href="/member/rewards"

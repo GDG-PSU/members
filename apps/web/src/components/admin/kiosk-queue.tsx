@@ -99,8 +99,7 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
           role="status"
           icon={<WifiOff className="mt-0.5 size-4 shrink-0" aria-hidden />}
         >
-          Kiosk connection lost. Confirmations are disabled until the server responds. Nothing is
-          awarded offline.
+          Connection lost. Confirmations are disabled; nothing is awarded offline.
         </Alert>
       ) : null}
       {message ? (
@@ -119,7 +118,7 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
             </span>
             <h2 className="type-h3">Waiting for a tap</h2>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-              Card taps appear here for human confirmation. Keep this tab open at the door.
+              Keep this tab open at the door.
             </p>
           </CardContent>
         </Card>
@@ -188,8 +187,8 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
                     className="mt-4"
                   >
                     <p>
-                      Last changed {formatDateTime(scan.photoChangedAt)}. Ask for this member&apos;s
-                      PSU ID and match the face before confirming.
+                      Last changed {formatDateTime(scan.photoChangedAt)}. Check their PSU ID before
+                      confirming.
                     </p>
                     <label className="mt-2.5 flex items-start gap-2.5 text-sm font-semibold text-foreground">
                       <input
@@ -214,7 +213,7 @@ export function KioskQueue({ initialScans }: { initialScans: Scan[] }) {
       )}
 
       <p className="pt-1 text-[0.72rem] leading-relaxed text-muted-foreground">
-        Point and star awards happen only on confirmed check-out when the session threshold is met.
+        Points are awarded only after a confirmed check-out.
       </p>
     </div>
   );

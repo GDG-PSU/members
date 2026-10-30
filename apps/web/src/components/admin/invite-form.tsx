@@ -33,8 +33,7 @@ export function InviteForm() {
       ) : null}
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        No email is sent. Copy the link and send it yourself. Duplicate pending invitations are
-        blocked; invitations expire after 14 days and can be revoked or reissued.
+        No email is sent. Links expire after 14 days.
       </p>
     </div>
   );
