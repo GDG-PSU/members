@@ -3,25 +3,27 @@ import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../lib/cn';
 
 const buttonStyles = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold transition-[background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:translate-y-px [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap border border-transparent text-sm font-normal leading-4 transition-colors duration-150 focus-visible:shadow-[inset_0_0_0_1px_var(--background),inset_0_0_0_2px_var(--ring)] focus-visible:outline-none disabled:pointer-events-none disabled:bg-muted disabled:text-muted-foreground [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground shadow-[0_1px_2px_rgb(10_16_32/0.18)] hover:bg-primary/90',
-        secondary: 'border border-border bg-card text-foreground hover:bg-muted',
-        soft: 'bg-primary-soft text-primary hover:bg-primary-soft/70',
-        outline: 'border border-border bg-transparent text-foreground hover:bg-muted',
-        ghost: 'text-foreground hover:bg-muted',
-        destructive: 'bg-danger text-white shadow-sm hover:bg-danger/90',
-        inverse: 'bg-white text-[#0b1730] shadow-sm hover:bg-white/90',
-        link: 'rounded-none p-0 text-primary underline-offset-4 hover:underline',
+          'bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active',
+        secondary:
+          'border-primary bg-transparent text-primary hover:bg-primary hover:text-primary-foreground active:bg-primary-active',
+        soft: 'bg-primary-soft text-primary hover:bg-primary-soft-hover',
+        outline:
+          'border-primary bg-transparent text-primary hover:bg-primary hover:text-primary-foreground',
+        ghost: 'bg-transparent text-primary hover:bg-primary-soft',
+        destructive: 'bg-danger text-white hover:bg-danger-hover',
+        inverse: 'bg-white text-[#161616] hover:bg-[#e8e8e8]',
+        link: 'h-auto border-0 p-0 text-primary underline underline-offset-2 hover:text-primary-hover',
       },
       size: {
-        sm: 'h-9 px-4 text-[0.82rem]',
-        default: 'h-11 px-5 text-sm',
-        lg: 'h-12 px-6 text-[0.95rem]',
-        icon: 'size-10 rounded-xl p-0',
+        sm: 'h-8 px-3 text-[0.8125rem]',
+        default: 'h-10 px-4',
+        lg: 'h-12 px-4',
+        icon: 'size-10 p-0',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
@@ -31,9 +33,8 @@ const buttonStyles = cva(
 export type ButtonVariantProps = Parameters<typeof buttonStyles>[0];
 
 /**
- * cva concatenates className overrides instead of merging them, so custom token
- * utilities such as `text-[#0b1730]` could lose to the variant's text color.
- * Passing the result through cn() makes every caller's override deterministic.
+ * cva concatenates className overrides instead of merging them, so callers'
+ * token utilities must pass through cn() to win deterministically.
  */
 export function buttonVariants(props?: ButtonVariantProps) {
   return cn(buttonStyles(props));

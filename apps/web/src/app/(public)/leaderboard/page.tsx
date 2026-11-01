@@ -100,16 +100,10 @@ export default async function LeaderboardPage() {
                   key={entry.slug}
                   role="listitem"
                   className={[
-                    'relative flex h-full flex-col overflow-hidden p-5 transition-shadow',
-                    rank === 1 ? 'border-star/50 shadow-lift ring-1 ring-star/20' : '',
+                    'relative flex h-full flex-col overflow-hidden p-5 transition-colors',
+                    rank === 1 ? 'border-t-2 border-t-star' : '',
                   ].join(' ')}
                 >
-                  {rank === 1 ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(60%_100%_at_50%_0%,rgb(251_188_4/0.18),transparent_70%)]"
-                    />
-                  ) : null}
                   <div className="relative flex h-full flex-col justify-between gap-6">
                     <div className="flex items-center justify-between">
                       <span
@@ -146,9 +140,7 @@ export default async function LeaderboardPage() {
                         </div>
                       </div>
                       <div className="mt-4 flex items-baseline gap-1.5">
-                        <span className="text-2xl font-extrabold tabular-nums tracking-[-0.03em]">
-                          {entry.points}
-                        </span>
+                        <span className="text-[2rem] font-light tabular-nums">{entry.points}</span>
                         <span className="text-xs font-semibold text-muted-foreground">pts</span>
                       </div>
                     </div>

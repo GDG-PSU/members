@@ -116,7 +116,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                   'Points land after a qualifying stay.',
                 ].map((step, index) => (
                   <li key={step} className="flex items-start gap-3">
-                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-[0.7rem] font-extrabold text-primary-foreground">
+                    <span className="grid size-6 shrink-0 place-items-center bg-primary text-[0.7rem] font-semibold text-primary-foreground">
                       {index + 1}
                     </span>
                     <span className="text-sm leading-relaxed">{step}</span>

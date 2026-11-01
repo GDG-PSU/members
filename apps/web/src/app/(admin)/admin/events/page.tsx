@@ -61,7 +61,7 @@ export default async function AdminEventsPage({
                     href={`/admin/events/${event.id}`}
                     className="group block rounded-2xl focus-visible:outline-none"
                   >
-                    <Card className="transition-colors group-hover:border-primary/50 group-hover:shadow-lift">
+                    <Card className="transition-colors group-hover:bg-muted">
                       <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <h2 className="text-base font-bold leading-snug">

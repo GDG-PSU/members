@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { cn } from './lib/cn';
 
 const pageWidths = {
-  sm: 'max-w-xl',
-  md: 'max-w-3xl',
-  lg: 'max-w-5xl',
-  xl: 'max-w-6xl',
+  sm: 'max-w-[512px]',
+  md: 'max-w-[672px]',
+  lg: 'max-w-[1056px]',
+  xl: 'max-w-[1312px]',
 } as const;
 
 export function PageShell({
@@ -42,19 +42,15 @@ export function MetricCard({
   icon?: ReactNode;
 }) {
   return (
-    <div className="relative h-full overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-card">
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
-      />
+    <div className="h-full bg-card p-4">
       <div className="flex items-center gap-2 text-muted-foreground [&_svg]:size-4">
         {icon}
-        <span className="type-overline text-muted-foreground">{label}</span>
+        <span className="text-xs leading-4 tracking-[0.32px] uppercase">{label}</span>
       </div>
-      <p className="mt-2 text-[2rem] font-extrabold leading-none tracking-[-0.035em] tabular-nums md:text-[2.35rem]">
+      <p className="mt-2 text-[2.25rem] font-light leading-none tabular-nums text-foreground">
         {value}
       </p>
-      {hint ? <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="mt-2 text-xs leading-4 text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -87,11 +83,11 @@ const statusTone = {
 } as const;
 
 const toneStyles = {
-  success: 'border-success/25 bg-success/10 text-success',
-  primary: 'border-primary/20 bg-primary-soft text-primary',
-  warning: 'border-warning/25 bg-warning/10 text-warning',
-  danger: 'border-danger/25 bg-danger/10 text-danger',
-  neutral: 'border-border bg-muted text-muted-foreground',
+  success: 'bg-success/15 text-success',
+  primary: 'bg-primary-soft text-primary',
+  warning: 'bg-warning/15 text-warning',
+  danger: 'bg-danger/15 text-danger',
+  neutral: 'bg-layer-accent text-muted-foreground',
 } as const;
 
 export function StatusChip({ status, label }: { status: string; label?: string }) {
@@ -100,11 +96,11 @@ export function StatusChip({ status, label }: { status: string; label?: string }
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[0.72rem] font-semibold capitalize leading-5',
+        'inline-flex h-6 items-center gap-1.5 whitespace-nowrap px-2 text-xs capitalize leading-4',
         toneStyles[tone],
       )}
     >
-      <span aria-hidden className="size-1.5 rounded-full bg-current opacity-75" />
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
       {text}
     </span>
   );
@@ -122,15 +118,15 @@ export function EmptyState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-subtle px-6 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 border border-border bg-card px-6 py-12 text-center">
       {icon ? (
-        <span className="grid size-11 place-items-center rounded-full border border-border bg-card text-muted-foreground [&_svg]:size-5">
+        <span className="grid size-12 place-items-center border border-border bg-background text-muted-foreground [&_svg]:size-5">
           {icon}
         </span>
       ) : null}
       <h3 className="type-h3 text-foreground">{title}</h3>
       {description ? (
-        <p className="max-w-md text-sm leading-relaxed text-muted-foreground">{description}</p>
+        <p className="max-w-md text-sm leading-5 text-muted-foreground">{description}</p>
       ) : null}
       {action ? <div className="mt-1">{action}</div> : null}
     </div>
@@ -142,7 +138,7 @@ export function LoadingState({ label = 'Loading' }: { label?: string }) {
     <div role="status" className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
       <span
         aria-hidden
-        className="size-4 animate-spin rounded-full border-2 border-border border-t-primary"
+        className="size-4 animate-spin rounded-full border-2 border-muted border-t-primary"
       />
       {label}…
     </div>
@@ -152,9 +148,9 @@ export function LoadingState({ label = 'Loading' }: { label?: string }) {
 export function PageSkeleton() {
   return (
     <div aria-hidden className="space-y-3 py-4">
-      <div className="h-10 w-[45%] animate-pulse rounded-xl bg-muted" />
-      <div className="h-48 animate-pulse rounded-2xl bg-muted" />
-      <div className="h-28 animate-pulse rounded-2xl bg-muted" />
+      <div className="h-10 w-[45%] animate-pulse bg-muted" />
+      <div className="h-48 animate-pulse bg-muted" />
+      <div className="h-28 animate-pulse bg-muted" />
     </div>
   );
 }
@@ -169,13 +165,10 @@ export function ErrorState({
   action?: ReactNode;
 }) {
   return (
-    <div
-      role="alert"
-      className="rounded-2xl border border-danger/30 border-l-4 border-l-danger bg-card p-5 shadow-card"
-    >
-      <h2 className="text-base font-bold">{title}</h2>
+    <div role="alert" className="border border-border border-l-[3px] border-l-danger bg-card p-4">
+      <h2 className="text-sm font-semibold">{title}</h2>
       {description ? (
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>

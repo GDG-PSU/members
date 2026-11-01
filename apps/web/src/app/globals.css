@@ -5,58 +5,56 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-plex), 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-layer: var(--layer);
+  --color-layer-accent: var(--layer-accent);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-subtle: var(--subtle);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
   --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-hover: var(--primary-soft-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-star: var(--star);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
   --color-brand-blue: #4285f4;
   --color-brand-red: #ea4335;
   --color-brand-yellow: #fbbc04;
   --color-brand-green: #34a853;
 
-  --radius-xs: 0.375rem;
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --radius-2xl: 1.5rem;
-  --radius-3xl: 1.75rem;
+  /* Carbon is square: every radius utility collapses to 0. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
 
-  --shadow-card: 0 1px 2px rgb(10 16 32 / 0.04), 0 8px 24px -12px rgb(10 16 32 / 0.12);
-  --shadow-lift: 0 2px 6px rgb(10 16 32 / 0.06), 0 24px 48px -24px rgb(10 16 32 / 0.28);
-  --shadow-glow: 0 24px 64px -24px rgb(32 68 200 / 0.45);
+  /* Carbon layers with color instead of elevation. */
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-lift: 0 0 0 0 transparent;
+  --shadow-glow: 0 0 0 0 transparent;
 
-  --animate-rise: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-fade: fade 0.4s ease-out both;
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  --animate-fade: fade 0.11s cubic-bezier(0.2, 0, 0.38, 0.9) both;
 }
 
 @keyframes fade {
@@ -68,84 +66,104 @@
   }
 }
 
+/* Carbon White */
 :root {
-  --background: #f3f6fc;
-  --foreground: #0a1020;
-  --card: #ffffff;
-  --card-foreground: #0a1020;
-  --muted: #e9eef9;
-  --muted-foreground: #51607a;
-  --subtle: #f7f9fe;
-  --border: #dbe2f0;
-  --input: #cbd6e9;
-  --ring: #2a52d6;
-  --primary: #2044c8;
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #161616;
+  --card: #f4f4f4;
+  --card-foreground: #161616;
+  --layer: #f4f4f4;
+  --layer-accent: #e0e0e0;
+  --muted: #e8e8e8;
+  --muted-foreground: #525252;
+  --subtle: #f4f4f4;
+  --border: #e0e0e0;
+  --border-strong: #8d8d8d;
+  --input: #8d8d8d;
+  --ring: #0f62fe;
+  --primary: #0f62fe;
   --primary-foreground: #ffffff;
-  --primary-soft: #e6ecff;
-  --secondary: #0d7a72;
+  --primary-hover: #0050e6;
+  --primary-active: #002d9c;
+  --primary-soft: #edf5ff;
+  --primary-soft-hover: #d0e2ff;
+  --secondary: #0043ce;
   --secondary-foreground: #ffffff;
-  --star: #9a6206;
-  --success: #0d7a4a;
-  --warning: #94560a;
-  --danger: #b02a1f;
+  --star: #8e6a00;
+  --success: #198038;
+  --warning: #684e00;
+  --danger: #da1e28;
+  --danger-hover: #b81921;
+  --text-placeholder: #a8a8a8;
 }
 
+/* Carbon g100 */
 .dark {
-  --background: #070b13;
-  --foreground: #ebf1fc;
-  --card: #0e1624;
-  --card-foreground: #ebf1fc;
-  --muted: #16202f;
-  --muted-foreground: #9dabc2;
-  --subtle: #0b1320;
-  --border: #223048;
-  --input: #2b3b56;
-  --ring: #93b0ff;
-  --primary: #9db9ff;
-  --primary-foreground: #05122e;
-  --primary-soft: #14224a;
-  --secondary: #5fe3d0;
-  --secondary-foreground: #04211d;
-  --star: #f7c14b;
-  --success: #6ee7b0;
-  --warning: #f7c14b;
-  --danger: #fca5a5;
+  color-scheme: dark;
+  --background: #161616;
+  --foreground: #f4f4f4;
+  --card: #262626;
+  --card-foreground: #f4f4f4;
+  --layer: #262626;
+  --layer-accent: #393939;
+  --muted: #393939;
+  --muted-foreground: #c6c6c6;
+  --subtle: #262626;
+  --border: #393939;
+  --border-strong: #6f6f6f;
+  --input: #6f6f6f;
+  --ring: #ffffff;
+  --primary: #4589ff;
+  --primary-foreground: #161616;
+  --primary-hover: #78a9ff;
+  --primary-active: #a6c8ff;
+  --primary-soft: #002d9c;
+  --primary-soft-hover: #0043ce;
+  --secondary: #a6c8ff;
+  --secondary-foreground: #161616;
+  --star: #f1c21b;
+  --success: #42be65;
+  --warning: #f1c21b;
+  --danger: #ff8389;
+  --danger-hover: #ffb3b8;
+  --text-placeholder: #6f6f6f;
 }
 
 @utility type-display {
-  font-size: clamp(2.75rem, 6vw, 4.75rem);
-  line-height: 0.98;
-  letter-spacing: -0.045em;
-  font-weight: 800;
+  font-size: clamp(2.5rem, 6vw, 3.375rem);
+  line-height: 1.06;
+  letter-spacing: 0;
+  font-weight: 300;
 }
 
 @utility type-h1 {
-  font-size: clamp(2.25rem, 4.4vw, 3.5rem);
-  line-height: 1.02;
-  letter-spacing: -0.04em;
-  font-weight: 750;
+  font-size: clamp(2rem, 4vw, 2.625rem);
+  line-height: 1.12;
+  letter-spacing: 0;
+  font-weight: 300;
 }
 
 @utility type-h2 {
-  font-size: clamp(1.7rem, 2.8vw, 2.35rem);
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-  font-weight: 700;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 
 @utility type-h3 {
-  font-size: clamp(1.2rem, 1.8vw, 1.45rem);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  letter-spacing: 0;
+  font-weight: 400;
 }
 
 @utility type-overline {
-  font-size: 0.72rem;
-  line-height: 1.4;
-  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.32px;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 @layer base {
@@ -167,9 +185,10 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-feature-settings:
-      'ss01' 1,
-      'cv11' 1;
+    font-size: 1rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    font-feature-settings: normal;
   }
 
   main {
@@ -181,12 +200,18 @@
   }
 
   ::selection {
-    background: rgb(66 133 244 / 0.28);
+    background: #d0e2ff;
+    color: #161616;
+  }
+
+  .dark ::selection {
+    background: #0043ce;
+    color: #f4f4f4;
   }
 
   *:focus-visible {
     outline: 2px solid var(--ring);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -201,38 +226,18 @@
   }
 }
 
-@utility bg-grid {
-  background-image:
-    linear-gradient(
-      to right,
-      color-mix(in srgb, var(--border) 55%, transparent) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--border) 55%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: 56px 56px;
-}
-
-@utility bg-aurora {
-  background-image:
-    radial-gradient(60% 55% at 12% 8%, rgb(66 133 244 / 0.2), transparent 62%),
-    radial-gradient(50% 50% at 88% 0%, rgb(15 118 110 / 0.16), transparent 60%),
-    radial-gradient(45% 45% at 70% 90%, rgb(251 188 4 / 0.12), transparent 65%);
-}
-
 .skip-link {
   position: absolute;
   left: -9999px;
   top: 0;
   z-index: 200;
-  padding: 0.75rem 1.15rem;
+  padding: 0 1rem;
+  height: 3rem;
+  display: inline-flex;
+  align-items: center;
   background: var(--primary);
   color: var(--primary-foreground);
-  border-radius: 0 0 0.75rem 0;
-  font-weight: 600;
+  font-size: 0.875rem;
 }
 
 .skip-link:focus {

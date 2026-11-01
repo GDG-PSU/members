@@ -25,10 +25,10 @@ export function MemberAvatar({
   return (
     <span
       className={cn(
-        'relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-primary-soft font-bold text-primary ring-1 ring-border',
+        'relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-layer-accent font-medium text-foreground',
         className,
       )}
-      style={{ width: size, height: size, fontSize: Math.max(11, size / 2.8) }}
+      style={{ width: size, height: size, fontSize: Math.max(11, size / 3.2) }}
     >
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- remote Supabase storage URLs are not configured for next/image

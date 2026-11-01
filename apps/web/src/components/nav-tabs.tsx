@@ -21,9 +21,9 @@ export function NavTabs({
   return (
     <nav
       aria-label={ariaLabel}
-      className={cn('scrollbar-none -mx-1 overflow-x-auto border-b border-border', className)}
+      className={cn('scrollbar-none overflow-x-auto border-b border-border', className)}
     >
-      <ul className="flex min-w-max items-stretch gap-1 px-1">
+      <ul className="flex min-w-max items-stretch">
         {items.map((item) => {
           const isActive = item.href === active;
           return (
@@ -32,15 +32,17 @@ export function NavTabs({
                 href={item.href}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'relative inline-flex h-12 items-center px-3.5 text-sm font-semibold transition-colors hover:text-foreground',
-                  isActive ? 'text-foreground' : 'text-muted-foreground',
+                  'relative inline-flex h-12 items-center px-4 text-sm transition-colors',
+                  isActive
+                    ? 'font-semibold text-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
                 {item.label}
                 <span
                   aria-hidden
                   className={cn(
-                    'absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary transition-opacity',
+                    'absolute inset-x-0 -bottom-px h-0.5 bg-foreground transition-opacity',
                     isActive ? 'opacity-100' : 'opacity-0',
                   )}
                 />

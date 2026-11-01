@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
+import { IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
 import { AppHeader } from '@/components/app-header';
 import { AppFooter } from '@/components/app-footer';
 import { getViewer } from '@/lib/auth/viewer';
@@ -20,22 +20,22 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f3f6fc' },
-    { media: '(prefers-color-scheme: dark)', color: '#070b13' },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#161616' },
   ],
 };
 
-const jakarta = Plus_Jakarta_Sans({
+const plexSans = IBM_Plex_Sans({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  variable: '--font-jakarta',
+  weight: ['300', '400', '500', '600'],
+  variable: '--font-plex',
   display: 'swap',
 });
 
-const jetbrains = JetBrains_Mono({
+const plexMono = IBM_Plex_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
-  variable: '--font-jetbrains',
+  variable: '--font-plex-mono',
   display: 'swap',
 });
 
@@ -48,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${jakarta.variable} ${jetbrains.variable}`}
+      className={`${plexSans.variable} ${plexMono.variable}`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

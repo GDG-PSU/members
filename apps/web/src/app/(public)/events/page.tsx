@@ -42,7 +42,7 @@ export default async function EventsPage() {
               >
                 <Card
                   className={cn(
-                    'border-l-4 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/50 group-hover:shadow-lift',
+                    'border-l-4 transition-colors group-hover:bg-muted',
                     upcoming ? 'border-l-primary' : 'border-l-border',
                   )}
                 >

@@ -47,10 +47,6 @@ export default async function InviteAcceptPage() {
 
   return (
     <Card className="overflow-hidden">
-      <div
-        aria-hidden
-        className="h-1.5 w-full bg-[linear-gradient(90deg,#4285f4_0%,#ea4335_25%,#fbbc04_50%,#34a853_75%,#4285f4_100%)]"
-      />
       <CardContent className="p-6 sm:p-8">
         <p className="type-overline text-primary">Membership</p>
         <h1 className="type-h2 mt-2">

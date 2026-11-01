@@ -167,10 +167,6 @@ export function ProfileForm({
 
       <div className="md:sticky md:top-24 md:self-start">
         <Card className="overflow-hidden">
-          <div
-            aria-hidden
-            className="h-1.5 w-full bg-[linear-gradient(90deg,#4285f4_0%,#0d7a72_55%,#9a6206_100%)]"
-          />
           <CardContent className="p-5">
             <p className="type-overline text-muted-foreground">Preview</p>
             <div className="mb-3 mt-2.5 flex items-center gap-3">

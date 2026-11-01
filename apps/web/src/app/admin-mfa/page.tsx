@@ -28,10 +28,6 @@ export default async function AdminMfaPage() {
     <main id="main" className="flex flex-1 items-center justify-center px-4 py-10 sm:py-14">
       <div className="w-full max-w-lg">
         <Card className="overflow-hidden">
-          <div
-            aria-hidden
-            className="h-1.5 w-full bg-[linear-gradient(90deg,var(--primary),#4285f4,#0d7a72)]"
-          />
           <CardContent className="p-6 sm:p-8">
             <span className="grid size-11 place-items-center rounded-xl bg-primary-soft text-primary">
               <ShieldCheck className="size-5" aria-hidden />

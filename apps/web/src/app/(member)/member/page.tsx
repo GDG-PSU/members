@@ -84,7 +84,7 @@ export default async function MemberDashboard({
       {welcome ? (
         <div
           role="status"
-          className="mb-6 flex items-start gap-3 overflow-hidden rounded-2xl bg-[linear-gradient(120deg,#132a6b_0%,#16357a_50%,#0b4a45_100%)] px-5 py-4 text-white shadow-glow"
+          className="mb-6 flex items-start gap-3 border border-border bg-[#161616] px-4 py-3 text-white"
         >
           <Sparkles className="mt-0.5 size-5 shrink-0 text-white/80" aria-hidden />
           <div>
@@ -178,7 +178,7 @@ export default async function MemberDashboard({
                         </p>
                       </div>
                       {row.qualified ? (
-                        <span className="shrink-0 rounded-full border border-star/25 bg-star/10 px-2.5 py-0.5 text-[0.72rem] font-bold tabular-nums text-star">
+                        <span className="shrink-0 bg-star/15 px-2 py-0.5 text-xs tabular-nums text-star">
                           +{row.rewardPoints} pts
                         </span>
                       ) : (
@@ -217,7 +217,7 @@ export default async function MemberDashboard({
           <Card>
             <CardContent className="p-5">
               <div className="mb-3 flex items-center gap-2">
-                <span className="grid size-8 place-items-center rounded-lg bg-primary-soft text-primary">
+                <span className="grid size-8 place-items-center bg-primary-soft text-primary">
                   <Nfc className="size-4" aria-hidden />
                 </span>
                 <h2 className="text-base font-bold">Your card</h2>
@@ -274,7 +274,7 @@ export default async function MemberDashboard({
           <Card>
             <CardContent className="p-5">
               <div className="mb-3 flex items-center gap-2">
-                <span className="grid size-8 place-items-center rounded-lg bg-secondary/10 text-secondary">
+                <span className="grid size-8 place-items-center bg-layer-accent text-foreground">
                   <Gift className="size-4" aria-hidden />
                 </span>
                 <h2 className="text-base font-bold">Redeem points</h2>

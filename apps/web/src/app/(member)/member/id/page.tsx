@@ -33,23 +33,15 @@ export default async function DigitalIdPage() {
       />
 
       <Card className="mx-auto max-w-md overflow-hidden">
-        <div className="relative overflow-hidden bg-[linear-gradient(135deg,#101d45_0%,#0d1a3c_45%,#0a3b39_100%)] px-5 py-4 text-white">
-          <div
-            aria-hidden
-            className="absolute -right-10 -top-16 size-40 rounded-full bg-white/10 blur-2xl"
-          />
+        <div className="bg-[#161616] px-4 py-4 text-white">
           <div className="flex items-center justify-between">
-            <span className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/80">
-              MemberPass
-            </span>
+            <span className="text-xs tracking-[0.32px] text-white/80">MemberPass</span>
             <Nfc className="size-4 text-white/60" aria-hidden />
           </div>
           <p className="mt-5 font-mono text-[0.7rem] tracking-[0.18em] text-white/50">
             GDG @ PENN STATE
           </p>
-          <p className="mt-0.5 truncate text-[0.82rem] font-semibold text-white/90">
-            {member.displayName}
-          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-white/90">{member.displayName}</p>
         </div>
 
         <CardContent className="flex flex-col items-center gap-4 p-5 pt-6 text-center sm:p-6">
@@ -58,7 +50,7 @@ export default async function DigitalIdPage() {
             {member.publicNumber}
           </Badge>
 
-          <div className="rounded-2xl border border-border bg-white p-3 shadow-card">
+          <div className="border border-border bg-white p-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- QR data URLs cannot use next/image */}
             <img
               src={qr}

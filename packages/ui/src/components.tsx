@@ -5,11 +5,11 @@ export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <span
       className={cn(
-        'inline-flex items-baseline font-extrabold leading-none tracking-[-0.045em]',
-        compact ? 'text-[1.02rem]' : 'text-[1.12rem]',
+        'inline-flex items-baseline font-semibold leading-none tracking-[-0.01em]',
+        compact ? 'text-sm' : 'text-base',
       )}
     >
-      Member<span className="text-primary">Pass</span>
+      MemberPass
     </span>
   );
 }
@@ -29,14 +29,12 @@ export function SectionHeading({
 }) {
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-6 flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-2xl">
-        {eyebrow ? <p className="type-overline mb-2 text-primary">{eyebrow}</p> : null}
+        {eyebrow ? <p className="type-overline mb-2 text-muted-foreground">{eyebrow}</p> : null}
         <Heading className={headingLevel === 1 ? 'type-h1' : 'type-h2'}>{title}</Heading>
         {description ? (
-          <p className="mt-2.5 max-w-xl text-[0.95rem] leading-relaxed text-muted-foreground">
-            {description}
-          </p>
+          <p className="mt-2 max-w-xl text-sm leading-5 text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}

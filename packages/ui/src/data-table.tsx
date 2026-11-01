@@ -38,22 +38,22 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+    <div className="border border-border bg-background">
       {caption ? (
-        <div className="border-b border-border bg-subtle px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+        <div className="border-b border-border bg-card px-4 py-2 text-xs leading-4 text-muted-foreground">
           {caption}
         </div>
       ) : null}
       <table aria-label={caption} className="w-full text-sm max-sm:block">
-        <thead className="bg-subtle max-sm:hidden">
-          <tr className="border-b border-border">
+        <thead className="bg-layer-accent max-sm:hidden">
+          <tr>
             {columns.map((column) => (
               <th
                 key={column.key}
                 scope="col"
                 style={{ width: column.width }}
                 className={cn(
-                  'type-overline px-4 py-3 text-muted-foreground',
+                  'px-4 py-3 text-sm font-semibold text-foreground',
                   alignClass[column.align ?? 'left'],
                 )}
               >
@@ -66,7 +66,7 @@ export function DataTable<T>({
           {rows.map((row) => (
             <tr
               key={getRowKey(row)}
-              className="border-b border-border transition-colors last:border-0 hover:bg-muted/40 max-sm:block max-sm:border-b max-sm:px-4 max-sm:py-2"
+              className="border-b border-border transition-colors last:border-0 hover:bg-muted max-sm:block max-sm:border-b max-sm:px-4 max-sm:py-2"
             >
               {columns.map((column, index) => (
                 <td
@@ -76,7 +76,7 @@ export function DataTable<T>({
                     'px-4 py-3 align-middle',
                     alignClass[column.align ?? 'left'],
                     'max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-4 max-sm:px-0 max-sm:py-1 max-sm:text-right',
-                    'max-sm:before:shrink-0 max-sm:before:text-left max-sm:before:content-[attr(data-label)] max-sm:before:text-[0.7rem] max-sm:before:font-semibold max-sm:before:uppercase max-sm:before:tracking-wide max-sm:before:text-muted-foreground',
+                    'max-sm:before:shrink-0 max-sm:before:text-left max-sm:before:content-[attr(data-label)] max-sm:before:text-xs max-sm:before:text-muted-foreground',
                     index === 0
                       ? 'max-sm:block max-sm:pt-3 max-sm:text-left max-sm:font-semibold max-sm:before:hidden'
                       : null,

@@ -21,7 +21,14 @@ function applyMode(mode: Mode) {
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
 }
 
-export function ThemeModeToggle({ className }: { className?: string }) {
+export function ThemeModeToggle({
+  className,
+  inverse = false,
+}: {
+  className?: string;
+  /** For the dark UI shell header. */
+  inverse?: boolean;
+}) {
   const [mode, setMode] = useState<Mode>('system');
   const [mounted, setMounted] = useState(false);
 
@@ -58,7 +65,8 @@ export function ThemeModeToggle({ className }: { className?: string }) {
       role="group"
       aria-label="Color theme"
       className={cn(
-        'inline-flex items-center gap-0.5 rounded-full border border-border bg-card p-1 shadow-card',
+        'inline-flex items-center border',
+        inverse ? 'border-white/25' : 'border-border',
         className,
       )}
     >
@@ -74,10 +82,14 @@ export function ThemeModeToggle({ className }: { className?: string }) {
             aria-pressed={active}
             onClick={() => choose(option.value)}
             className={cn(
-              'grid size-8 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'grid size-8 place-items-center transition-colors',
               active
-                ? 'bg-primary-soft text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                ? inverse
+                  ? 'bg-white text-[#161616]'
+                  : 'bg-foreground text-background'
+                : inverse
+                  ? 'text-white/70 hover:bg-white/10 hover:text-white'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
             <Icon className="size-4" aria-hidden />
