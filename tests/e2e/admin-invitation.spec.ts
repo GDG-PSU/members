@@ -617,6 +617,7 @@ test.describe('admin invitation and member setup', () => {
         const pendingRow = page.getByRole('row').filter({ hasText: invitedEmail });
         await expect(pendingRow).toBeVisible();
         await expect(pendingRow.getByText('Invited', { exact: true })).toBeVisible();
+        await expect(pendingRow.getByText('Invite pending', { exact: true })).toHaveCount(0);
 
         const inviteeContext = await browser.newContext({ baseURL: origin });
         try {

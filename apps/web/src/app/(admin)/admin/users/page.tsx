@@ -366,8 +366,6 @@ export default async function UsersPage({
               render: (row) =>
                 row.kind === 'invite' ? (
                   <Badge variant="outline">Invite stage</Badge>
-                ) : row.staffInvited ? (
-                  <Badge variant="warning">Invite pending</Badge>
                 ) : row.memberStatus ? (
                   <StatusChip status={row.memberStatus} />
                 ) : (
