@@ -1,11 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { clientAddress, hashForBucket, isSameOriginRequest, safeAuthNextPath } from './request';
+import {
+  clientAddress,
+  hashForBucket,
+  isEmailLinkType,
+  isSameOriginRequest,
+  safeAuthNextPath,
+} from './request';
 
 const SITE = 'https://members.example.edu';
 
 function post(headers: Record<string, string>) {
   return new Request('http://internal/api/auth/session', { method: 'POST', headers });
 }
+
+describe('isEmailLinkType', () => {
+  it('accepts only the link types Supabase issues', () => {
+    expect(isEmailLinkType('invite')).toBe(true);
+    expect(isEmailLinkType('recovery')).toBe(true);
+    for (const type of ['nope', '', null, undefined, ['invite']]) {
+      expect(isEmailLinkType(type)).toBe(false);
+    }
+  });
+});
 
 describe('safeAuthNextPath', () => {
   it('keeps allowlisted destinations', () => {

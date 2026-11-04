@@ -10,7 +10,7 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | ------------------- | ----------------------------- | ---------------------------------------------- |
 | Formatting          | `pnpm format:check`           | Pass                                           |
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 49/49 pass                                     |
+| Unit tests          | `pnpm test`                   | 54/54 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
 | Browser E2E         | `pnpm e2e`                    | 51 pass, 31 skipped; 41/41 on desktop Chromium |
 | Database/RLS/ledger | `pnpm db:verify`              | 76/76 pass on the local Supabase stack         |
@@ -31,7 +31,8 @@ disposable accounts it creates and removes:
 - **Access:** public sign-up refused, API keys refused on privileged functions,
   staff sign-in with TOTP, returning TOTP, HttpOnly cookies, cross-site session
   posts refused, normal-admin limits, and the login rate limit.
-- **Invitations and accounts:** revoke, re-issue, expired, and replayed links;
+- **Invitations and accounts:** revoke, re-issue, expired, and replayed links; links
+  surviving simulated chat previews and repeat opens until Continue is pressed;
   setup validation; routing after sign-in and sign-out; session survival across a
   token refresh; signing out one device; recovery; suspension; user type changes.
 - **Members:** profile, photo and links, privacy settings, and forms keeping their

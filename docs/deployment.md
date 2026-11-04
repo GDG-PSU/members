@@ -63,7 +63,8 @@ the sign-up state as `disable_signup`.
 - No SMTP is configured. Admin → Invitations generates a one-time link; the
   admin copies it into their own mailbox. The same applies to recovery links.
 - Generated links confirm at `/auth/confirm` on the app origin, so no Supabase
-  redirect allowlist entry is needed for them.
+  redirect allowlist entry is needed for them. Opening one only shows a Continue
+  button, so chat previews and mail scanners cannot use it up.
 
 ## 4. Production reset and first superadmin
 
@@ -94,8 +95,8 @@ pnpm db:bootstrap-admin --email <you>@psu.edu --role superadmin --site-url https
 ```
 
 The link works once and expires with the project's OTP window, so generate it when
-it will be used. Open it, set a password, enroll TOTP at `/admin-mfa`, and confirm
-the hosted admin dashboard opens. Delete the file afterward, and do not send the
+it will be used. Open it, press Continue, set a password, enroll TOTP at
+`/admin-mfa`, and confirm the hosted admin dashboard opens. Delete the file afterward, and do not send the
 link through this repository or chat.
 
 ## 5. USB reader deployment

@@ -1,7 +1,20 @@
 import { createHash } from 'node:crypto';
+import type { EmailOtpType } from '@supabase/supabase-js';
 
 const AUTH_NEXT_PATHS = new Set(['/invite/accept', '/admin-mfa', '/account/password', '/member']);
 const DEFAULT_AUTH_NEXT = '/invite/accept';
+const EMAIL_LINK_TYPES = new Set<unknown>([
+  'invite',
+  'recovery',
+  'magiclink',
+  'email',
+  'email_change',
+  'signup',
+]);
+
+export function isEmailLinkType(type: unknown): type is EmailOtpType {
+  return EMAIL_LINK_TYPES.has(type);
+}
 
 /**
  * Where an auth link may land. An exact allowlist, because prefix checks miss

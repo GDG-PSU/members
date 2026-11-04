@@ -437,9 +437,15 @@ permission.
 - A local Docker volume can sit at an older migration, which makes `pnpm db:verify` fail falsely.
   Run `pnpm dlx supabase@2.122.0 migration up --local` before trusting a failure.
 - A password change ends the user's other sessions, so tests and flows must sign in again afterward.
+- A page load must never spend a one-time token. Chat previews and mail scanners fetch a link as soon
+  as it is shared, which used to burn invitations within seconds. `/auth/confirm` only shows a button;
+  its server action calls `verifyOtp`.
 - `mfa.enroll` without `issuer` names the authenticator entry after the hosted Auth Site URL, so the
   app passes the `SITE_URL` hostname. Entries already scanned keep their old name until renamed in the
   authenticator app.
+- `apps/web/tsconfig.json` includes the generated `.next/dev/types`, so after removing a route a stale
+  folder fails `pnpm typecheck` and a local `next build` with a missing `route.js`. Regenerate it with
+  `next dev` or clear it; Vercel builds from a clean tree.
 - A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
   "Access is denied" until the tab disconnects.
 
@@ -504,7 +510,7 @@ them, and do not record a weak setting here, because this repository is public:
 
 On a local Supabase stack with every migration applied, on 2026-11-04:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 49
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 54
   unit tests.
 - `pnpm db:verify` passes 76/76.
 - `pnpm e2e` passes 51 with 31 skipped: 41/41 on desktop Chromium, and on the mobile project the 10
@@ -537,6 +543,8 @@ On production, read-only, the same day, after a person ran the reset and the boo
 - Member flows on the deployed app: invitations, setup, profiles, events, the kiosk, and rewards. Only
   the first superadmin's sign-in has run there.
 - A new authenticator enrollment on the deployed app showing the production host as its name.
+- An invite link surviving a real chat or mail preview on the deployed app. Previews were simulated
+  locally with bot user agents.
 - The Chrome or Edge port picker, a Web Serial session on the hosted app, a hosted `/admin/kiosk` read
   and confirmation, and a production card written for a live member.
 - On real hardware: an empty antenna (the fake port covers `no_card`), a locked or too-small card, a
@@ -548,8 +556,6 @@ On production, read-only, the same day, after a person ran the reset and the boo
   email default is deliberate (`PRIVACY.md`). Consider hiding it by default and adding `noindex`.
 - **Decision:** the legacy device API is still reachable, though no devices are registered. Consider
   removing it.
-- `/auth/confirm` consumes its one-time token on GET, so link scanners in email or chat can burn
-  invitation links.
 - Inviting a staff email as a member is refused, but only after a recovery link was generated, which
   can invalidate that person's outstanding link.
 - The public read APIs have no rate limit.

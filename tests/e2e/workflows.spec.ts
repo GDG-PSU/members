@@ -138,6 +138,11 @@ test.describe('every member and organizer workflow', () => {
     return page.getByLabel('One-time sign-in link').inputValue();
   }
 
+  async function useLink(page: Page, link: string) {
+    await page.goto(link);
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  }
+
   async function fillSetup(page: Page, name: string, password?: string) {
     await page.getByLabel('Display name').fill(name);
     if (password) {
@@ -362,7 +367,9 @@ test.describe('every member and organizer workflow', () => {
     await expect(adminPage.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
   });
 
-  test('an invitation can be revoked and re-issued, and only its creator sees it', async () => {
+  test('an invitation can be revoked and re-issued, and only its creator sees it', async ({
+    request,
+  }) => {
     const firstLink = await invite(adminPage, people.member.email);
     expect(new URL(firstLink).origin).toBe(origin);
 
@@ -383,7 +390,23 @@ test.describe('every member and organizer workflow', () => {
     await expect(adminPage.getByText('Invitation revoked.')).toBeVisible({ timeout: 15_000 });
 
     const secondLink = await invite(adminPage, people.member.email);
+
+    // Chat previews and mail scanners fetch a link as soon as it is shared, and a
+    // person may open it more than once before continuing. None of that may spend it.
+    for (const userAgent of ['Slackbot-LinkExpanding 1.0', 'Discordbot/2.0', 'Mozilla/5.0']) {
+      const preview = await request.get(secondLink, { headers: { 'user-agent': userAgent } });
+      expect(preview.status()).toBe(200);
+      expect(preview.headers()['set-cookie'] ?? '').not.toContain('sb-');
+    }
+    expect((await request.head(secondLink)).status()).toBe(200);
     await memberPage.goto(secondLink);
+    await memberPage.reload();
+
+    // Someone already signed in, such as the admin testing a link, is warned first.
+    await adminPage.goto(secondLink);
+    await expect(adminPage.getByText(`You are signed in as ${people.admin.email}`)).toBeVisible();
+
+    await memberPage.getByRole('button', { name: 'Continue', exact: true }).click();
     await expect(memberPage).toHaveURL(/\/invite\/accept$/, { timeout: 30_000 });
     // Two invitation rows exist for this email now; the live one must still win.
     await expect(memberPage.getByRole('heading', { name: 'Make it yours' })).toBeVisible();
@@ -469,11 +492,15 @@ test.describe('every member and organizer workflow', () => {
     await expect(adminPage.getByText('That email already belongs to a member.')).toBeVisible();
 
     const stranger = await newPage(browser, 'replay');
-    await stranger.goto(
+    await useLink(
+      stranger,
       '/auth/confirm?token_hash=not-a-real-token&type=invite&next=//evil.example',
     );
     await expect(stranger).toHaveURL(/\/login\?notice=invalid-link/);
     await expect(stranger.getByText('This link is invalid or already used.')).toBeVisible();
+
+    await stranger.goto('/auth/confirm?token_hash=not-a-real-token&type=not-a-type');
+    await expect(stranger).toHaveURL(/\/login\?notice=invalid-link/);
   });
 
   test('an expired invitation is explained and can be replaced', async ({ browser }) => {
@@ -499,7 +526,7 @@ test.describe('every member and organizer workflow', () => {
     expect(rows?.map((row) => row.status)).toEqual(['expired', 'pending']);
 
     const secondPage = await newPage(browser, 'second member');
-    await secondPage.goto(freshLink);
+    await useLink(secondPage, freshLink);
     await expect(secondPage).toHaveURL(/\/invite\/accept$/, { timeout: 30_000 });
     await secondPage.locator('input[type="file"]').setInputFiles({
       name: 'avatar.png',
@@ -1175,7 +1202,7 @@ test.describe('every member and organizer workflow', () => {
     await superPage.getByRole('button', { name: 'Done' }).click();
 
     const recovery = await newPage(browser, 'recovery');
-    await recovery.goto(link);
+    await useLink(recovery, link);
     await expect(recovery).toHaveURL(/\/account\/password$/, { timeout: 30_000 });
     await recovery.getByLabel('New password', { exact: true }).fill('onlylettersnodigits');
     await recovery.getByLabel('Confirm new password', { exact: true }).fill('onlylettersnodigits');
@@ -1189,7 +1216,7 @@ test.describe('every member and organizer workflow', () => {
     await expect(recovery).toHaveURL(/\/member$/, { timeout: 20_000 });
 
     const replay = await newPage(browser, 'replayed recovery');
-    await replay.goto(link);
+    await useLink(replay, link);
     await expect(replay).toHaveURL(/\/login\?notice=invalid-link/, { timeout: 20_000 });
 
     const oldLogin = await newPage(browser, 'old password');

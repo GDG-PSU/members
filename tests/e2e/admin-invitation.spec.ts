@@ -145,6 +145,7 @@ test.describe('admin invitation and member setup', () => {
       try {
         await test.step('member opens the link and completes setup', async () => {
           await memberPage.goto(invitationLink);
+          await memberPage.getByRole('button', { name: 'Continue', exact: true }).click();
           await expect(memberPage).toHaveURL(/\/invite\/accept$/, { timeout: 30_000 });
           await expect(memberPage.getByRole('heading', { name: 'Make it yours' })).toBeVisible();
           await expect(memberPage.getByText(memberEmail)).toBeVisible();
@@ -605,7 +606,16 @@ test.describe('admin invitation and member setup', () => {
         const ready = page.getByRole('status').filter({ hasText: 'Admin invite link ready' });
         await expect(ready).toBeVisible({ timeout: 20_000 });
         await expect(ready).toContainText(invitedEmail);
-        const inviteLink = await page.getByLabel('One-time sign-in link').inputValue();
+        const linkField = page.getByLabel('One-time sign-in link');
+        const lostLink = await linkField.inputValue();
+
+        // A lost or burned link can be replaced for the same person.
+        await inviteForm.getByLabel('Email').fill(invitedEmail);
+        await inviteForm.getByLabel('Role').selectOption('admin');
+        await inviteForm.getByRole('button', { name: 'Generate staff invite link' }).click();
+        await expect(linkField).not.toHaveValue(lostLink, { timeout: 20_000 });
+
+        const inviteLink = await linkField.inputValue();
         expect(new URL(inviteLink).origin).toBe(origin);
         expect(new URL(inviteLink).pathname).toBe('/auth/confirm');
         expect(new URL(inviteLink).searchParams.get('next')).toBe('/account/password');
@@ -623,9 +633,10 @@ test.describe('admin invitation and member setup', () => {
         try {
           const inviteePage = await inviteeContext.newPage();
           await inviteePage.goto(inviteLink);
+          await inviteePage.getByRole('button', { name: 'Continue', exact: true }).click();
           await expect(inviteePage).toHaveURL(/\/account\/password$/, { timeout: 30_000 });
 
-          // Opening the link creates a session before the password is set. The
+          // Using the link creates a session before the password is set. The
           // badge must remain until the password step is actually completed.
           await page.goto('/admin/users');
           const stillPendingRow = page.getByRole('row').filter({ hasText: invitedEmail });
