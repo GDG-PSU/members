@@ -437,6 +437,9 @@ permission.
 - A local Docker volume can sit at an older migration, which makes `pnpm db:verify` fail falsely.
   Run `pnpm dlx supabase@2.122.0 migration up --local` before trusting a failure.
 - A password change ends the user's other sessions, so tests and flows must sign in again afterward.
+- `mfa.enroll` without `issuer` names the authenticator entry after the hosted Auth Site URL, so the
+  app passes the `SITE_URL` hostname. Entries already scanned keep their old name until renamed in the
+  authenticator app.
 - A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
   "Access is denied" until the tab disconnects.
 
@@ -479,30 +482,32 @@ Last updated 2026-11-04.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
 - **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0014 applied.
-- **Data:** at the last read-only check on 2026-11-04, production held staff accounts and audit rows,
-  and no members, events, or cards. The reset and superadmin invite below have not been run yet.
+- **Data:** production was reset on 2026-11-04. A read-only check afterward found one Auth user, the
+  first superadmin with TOTP verified, and no members, invitations, events, cards, or photos.
 - **Latest stage:** every workflow was tested on a local Supabase stack and a real reader, and the bugs
-  that found were fixed. Firmware 2.0.2 is flashed to the one reader. See `docs/test-plan.md`.
+  that found were fixed and deployed in `0e2a97f`. Firmware 2.0.2 is flashed to the one reader. See
+  `docs/test-plan.md`.
 
 ### Waiting on a person
 
-These change production, or are hosted settings that an agent should not change. Check current values
-rather than assuming them, and do not record a weak setting here, because this repository is public:
+These are hosted settings that an agent should not change. Check current values rather than assuming
+them, and do not record a weak setting here, because this repository is public:
 
-- Run `pnpm db:reset`, then bootstrap the first superadmin, as `docs/deployment.md` describes. Replace
-  the Data line above once that is done.
-- Confirm leaked-password protection is on, where the plan offers it.
+- Set the Site URL in Supabase Auth to the production host, as `docs/deployment.md` says. Agents have
+  no way to read it from here.
+- Confirm leaked-password protection is on, where the plan offers it. `get_advisors` reports it.
 - Confirm `NEXT_PUBLIC_SITE_URL` in Vercel matches the production host before writing physical cards,
-  because card URLs are built from it.
+  because card URLs are built from it. An agent could not read it; the origin of the first generated
+  member invite shows it.
 
 ### Verification record
 
 On a local Supabase stack with every migration applied, on 2026-11-04:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 48
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 49
   unit tests.
 - `pnpm db:verify` passes 76/76.
-- `pnpm e2e` passes 49 with 31 skipped: 40/40 on desktop Chromium, and on the mobile project the 9
+- `pnpm e2e` passes 51 with 31 skipped: 41/41 on desktop Chromium, and on the mobile project the 10
   public specs pass while the signed-in specs skip by design.
 - `pnpm db:reset` emptied the stack, kept the schema and privileges, and a bootstrapped superadmin then
   set a password, enrolled TOTP, and reached `/admin`.
@@ -515,15 +520,23 @@ On the physical ESP32 + PN532 with firmware 2.0.2:
 - 17/17 serial robustness checks pass, and a read with the PN532 off reports `nfc_not_ready` in about
   1.5 s.
 
-On production, read-only, the same day:
+On production, read-only, the same day, after a person ran the reset and the bootstrap:
 
+- Only the first superadmin remains: one Auth user, one active role, a verified TOTP factor, an AAL2
+  session, and audit rows for the role grant and the password being set. That shows the invite,
+  password, and TOTP steps completed against production.
+- All 14 migrations are applied, RLS is on for all 20 `public` tables, and the append-only and
+  last-superadmin triggers are in place.
 - `anon` can execute no public function, and `authenticated` can execute only the three RLS helpers.
 - `/auth/v1/settings` reports `disable_signup: true`.
-- `pnpm db:reset` was dry-run only.
+- `0e2a97f` deployed with a Vercel success status. Public pages load, gated pages redirect to
+  `/login`, an unknown card reaches the neutral page, and the new form code is in the `/login` scripts.
 
 ### Not verified yet
 
-- These fixes on the deployed app, and sign-in and TOTP on the hosted origin after the reset.
+- Member flows on the deployed app: invitations, setup, profiles, events, the kiosk, and rewards. Only
+  the first superadmin's sign-in has run there.
+- A new authenticator enrollment on the deployed app showing the production host as its name.
 - The Chrome or Edge port picker, a Web Serial session on the hosted app, a hosted `/admin/kiosk` read
   and confirmation, and a production card written for a live member.
 - On real hardware: an empty antenna (the fake port covers `no_card`), a locked or too-small card, a

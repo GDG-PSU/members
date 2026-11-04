@@ -15,6 +15,15 @@ test.describe('public experience', () => {
     await expect(page.getByText(/semester leaderboard/i).first()).toBeVisible();
   });
 
+  test('every page declares the site icon, and it loads', async ({ page, request }) => {
+    await page.goto('/');
+    const href = await page.locator('link[rel="icon"]').getAttribute('href');
+    expect(href).toMatch(/^\/icon\.png/);
+    const icon = await request.get(href ?? '');
+    expect(icon.status()).toBe(200);
+    expect(icon.headers()['content-type']).toBe('image/png');
+  });
+
   test('leaderboard is reachable and lists rankings or an empty state', async ({ page }) => {
     const response = await page.goto('/leaderboard');
     expect(response?.status()).toBe(200);

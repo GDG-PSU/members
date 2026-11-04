@@ -121,7 +121,8 @@ the serial bus.
 
 1. `/`, `/leaderboard`, `/events`, `/privacy` and `/login` return 200.
 2. `/admin` and `/admin/cards` redirect anonymous visitors to `/login`.
-3. The invited admin can set a password and complete TOTP at `/admin-mfa`.
+3. The invited admin can set a password and complete TOTP at `/admin-mfa`. The
+   authenticator entry is named after the production host.
 4. Admin → Invitations generates a link whose origin is
    `https://mempass.vercel.app` and whose path is `/auth/confirm`.
 5. `/admin/cards` lists active members; preparing a card returns a `/c/<43-char>`

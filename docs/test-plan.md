@@ -10,9 +10,9 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | ------------------- | ----------------------------- | ---------------------------------------------- |
 | Formatting          | `pnpm format:check`           | Pass                                           |
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 48/48 pass                                     |
+| Unit tests          | `pnpm test`                   | 49/49 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
-| Browser E2E         | `pnpm e2e`                    | 49 pass, 31 skipped; 40/40 on desktop Chromium |
+| Browser E2E         | `pnpm e2e`                    | 51 pass, 31 skipped; 41/41 on desktop Chromium |
 | Database/RLS/ledger | `pnpm db:verify`              | 76/76 pass on the local Supabase stack         |
 | Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
 | Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
@@ -20,7 +20,7 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
 
 The 31 skips are the signed-in specs on the mobile project, which run on desktop
-only. On mobile, the 9 public specs pass, and one desktop test checks that member
+only. On mobile, the 10 public specs pass, and one desktop test checks that member
 and admin pages fit a phone-width viewport.
 
 ## What the browser suite covers
@@ -79,7 +79,12 @@ Not verified:
 `pnpm db:reset` was run on the local stack: every count reached zero, all 14
 migrations and the guard triggers stayed in place, no function became callable by
 `anon`, and a superadmin from `pnpm db:bootstrap-admin` then set a password, enrolled
-TOTP, and reached `/admin`. On production it has only been dry-run, read-only.
+TOTP, and reached `/admin`.
+
+A person then ran the reset and the bootstrap on production. A read-only check
+afterward found only the first superadmin, with TOTP verified and an AAL2 session,
+and no members, invitations, events, cards, or photos. All 14 migrations and the
+guard triggers remain, and API role privileges are unchanged.
 
 ## Known gaps
 

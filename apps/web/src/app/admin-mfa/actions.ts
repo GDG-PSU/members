@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getViewer } from '@/lib/auth/viewer';
+import { SITE_URL } from '@/lib/env';
 import { withinRateLimit } from '@/lib/security/rate-limit';
 
 export interface MfaState {
@@ -32,6 +33,9 @@ export async function enrollMfaAction(_prev: MfaState, _formData: FormData): Pro
   const { data, error } = await viewer.supabase.auth.mfa.enroll({
     factorType: 'totp',
     friendlyName: 'GDG@PSU organizer',
+    // Authenticator apps show this name. Left out, it follows the hosted Auth
+    // Site URL setting rather than where this app actually runs.
+    issuer: new URL(SITE_URL).hostname,
   });
   if (error || !data) {
     return { error: error?.message ?? 'Could not start authenticator enrollment.' };
