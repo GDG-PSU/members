@@ -78,10 +78,14 @@ If esptool loses the port while resetting the board, unplug the PN532 during the
 flash and reconnect it afterward. The board's CP210x is the browser transport;
 do not expect raw WebUSB.
 
+After flashing, fully remove power from the reader for a few seconds and
+reconnect it before testing. A serial-port reset can leave the PN532 RF stage
+unresponsive; a full power-cycle restores it.
+
 After boot, the serial monitor should show:
 
 ```text
-[boot] GDG@PSU USB lane firmware 2.0.0
+[boot] GDG@PSU USB lane firmware 2.0.1
 [nfc] PN532 SPI firmware 0x... ready
 [usb] JSON control API ready
 [usb] device id esp32-...

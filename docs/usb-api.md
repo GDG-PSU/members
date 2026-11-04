@@ -32,8 +32,10 @@ WebUSB interface. The current DevKit cannot provide that through the CP210x.
 
 `info` returns the firmware version, chip-derived device ID, chip ID, transport,
 NFC readiness and firmware version, and uptime. `nfc.read` returns the NDEF URI
-or a stable error code. `nfc.write` writes one URI and verifies it by read-back;
-it does not validate that the URI is a member card URL.
+or a stable error code; it reads only the NDEF TLV rather than the full tag
+capacity, and retries transient page-read failures a few times. `nfc.write`
+writes one URI and verifies it by read-back; it does not validate that the URI
+is a member card URL.
 
 A typical response:
 

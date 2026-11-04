@@ -40,6 +40,7 @@ class NfcLane {
   bool SelectTag(String& errorCode);
   bool ReadCapability(String& errorCode);
   bool ReadNtagBytes(uint8_t* buffer, size_t requested, size_t& read, String& errorCode);
+  bool ReadNdefUri(String& uri, String& errorCode);
   bool ParseNdefUri(const uint8_t* buffer, size_t length, String& uri, String& errorCode);
   bool WriteNtagPayload(const uint8_t* data, size_t length, String& errorCode);
   bool EnsureReady(String& errorCode);

@@ -10,6 +10,11 @@ SPI and a writable NTAG215. See
 [docs/hardware-bringup.md](../../docs/hardware-bringup.md) for wiring and
 [docs/usb-api.md](../../docs/usb-api.md) for the protocol.
 
+Firmware 2.0.1 reads only the NDEF TLV instead of the full tag capacity and
+retries transient page-read failures. It has been read-tested on the physical
+PN532/NTAG hardware after a full power-cycle; re-run a write/read-back check
+before an event.
+
 ## Layout
 
 ```text

@@ -1,4 +1,4 @@
-export const CARD_POLL_INTERVAL_MS = 250;
+export const CARD_POLL_INTERVAL_MS = 50;
 
 export function isNoCardError(error: unknown): boolean {
   return error instanceof Error && error.message === 'no_card';

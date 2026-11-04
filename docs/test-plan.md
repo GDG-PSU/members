@@ -6,17 +6,17 @@ Environment: production build (`next start`) on `http://localhost:3000`, hosted
 Supabase project, real PN532 on COM3 with a writable NTAG215. No test fixture is
 left behind; the production reset removes any residue.
 
-| Check               | Command                         | Result                                                           |
-| ------------------- | ------------------------------- | ---------------------------------------------------------------- |
-| Formatting          | `pnpm format:check`             | Pass after formatting the changed files                          |
-| Lint / types        | `pnpm lint`, `pnpm typecheck`   | Pass                                                             |
-| Unit tests          | `pnpm test`                     | 33/33 pass                                                       |
-| Production build    | `pnpm build`                    | Pass; all routes including `/admin/usb` compile                  |
-| Browser E2E         | `pnpm e2e`                      | 19 pass, 1 intentionally skipped mobile admin spec               |
-| Database/RLS/ledger | `pnpm db:verify`                | 46/46 pass against hosted Supabase                               |
-| Firmware compile    | `pio run`                       | Pass; 304,129 bytes flash (23.2%), 23,552 bytes RAM (7.2%)       |
-| Physical NFC        | USB JSON API on COM3            | Read/write/read-back pass; firmware 2.0.0, protocol 2            |
-| Route smoke         | `curl` against production build | Public pages 200; `/admin` and `/admin/usb` redirect to `/login` |
+| Check               | Command                         | Result                                                              |
+| ------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| Formatting          | `pnpm format:check`             | Pass after formatting the changed files                             |
+| Lint / types        | `pnpm lint`, `pnpm typecheck`   | Pass                                                                |
+| Unit tests          | `pnpm test`                     | 33/33 pass                                                          |
+| Production build    | `pnpm build`                    | Pass; all routes including `/admin/usb` compile                     |
+| Browser E2E         | `pnpm e2e`                      | 19 pass, 1 intentionally skipped mobile admin spec                  |
+| Database/RLS/ledger | `pnpm db:verify`                | 46/46 pass against hosted Supabase                                  |
+| Firmware compile    | `pio run`                       | Pass; 304,521 bytes flash (23.2%), 23,552 bytes RAM (7.2%)          |
+| Physical NFC        | USB JSON API on COM3            | Read pass on 2.0.1 after full power-cycle; write/read-back on 2.0.0 |
+| Route smoke         | `curl` against production build | Public pages 200; `/admin` and `/admin/usb` redirect to `/login`    |
 
 The authenticated E2E suite now includes: disposable admin sign-in and TOTP,
 invitation creation, member setup, privacy/photo checks, USB card preparation,
@@ -47,6 +47,8 @@ Not verified by the agent:
 
 - A real Chrome/Edge Web Serial session against the hosted admin page. The
   page requires an admin/MFA session and a human serial-port selection.
+- A complete firmware 2.0.1 write/read-back run. The read path is confirmed on
+  hardware after a full power-cycle; write behavior is unchanged from 2.0.0.
 - The final hosted-URI rewrite attempt returned `no_card` because no NTAG was on
   the antenna at the time; the earlier read/write/read-back test passed.
 - A card written for a live member with a real active `/c/` token.

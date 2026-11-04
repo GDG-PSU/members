@@ -12,6 +12,55 @@ constexpr uint8_t kNtagMagic = 0xE1;
 constexpr uint8_t kNtagVersion = 0x10;
 constexpr uint8_t kNdefMessageTlv = 0x03;
 constexpr uint8_t kNdefTerminatorTlv = 0xFE;
+constexpr size_t kNdefPrefixBytes = 16;
+constexpr uint8_t kReadAttempts = 4;
+constexpr uint16_t kReadRetryDelayMs = 30;
+
+bool FindNdefMessageEnd(const uint8_t* buffer, size_t length, size_t& messageEnd,
+                        String& errorCode) {
+  size_t cursor = 0;
+  while (cursor < length) {
+    const uint8_t tlv = buffer[cursor++];
+    if (tlv == 0x00) continue;
+    if (tlv == kNdefTerminatorTlv) {
+      errorCode = "ndef_record_missing";
+      return false;
+    }
+    if (cursor >= length) {
+      errorCode = "truncated_tlv";
+      return false;
+    }
+
+    size_t tlvLength = buffer[cursor++];
+    if (tlvLength == 0xFF) {
+      if (cursor + 2 > length) {
+        errorCode = "truncated_tlv";
+        return false;
+      }
+      tlvLength = (static_cast<size_t>(buffer[cursor]) << 8) |
+                  static_cast<size_t>(buffer[cursor + 1]);
+      cursor += 2;
+    }
+
+    if (tlv == kNdefMessageTlv) {
+      messageEnd = cursor + tlvLength;
+      return true;
+    }
+
+    if (cursor + tlvLength > length) {
+      errorCode = "truncated_tlv";
+      return false;
+    }
+    cursor += tlvLength;
+  }
+
+  errorCode = "ndef_record_missing";
+  return false;
+}
+
+bool IsTransientReadError(const String& errorCode) {
+  return errorCode == "page_read_failed" || errorCode == "capability_read_failed";
+}
 
 }  // namespace
 
@@ -263,13 +312,40 @@ bool NfcLane::ParseNdefUri(const uint8_t* buffer, size_t length, String& uri,
 }
 
 bool NfcLane::ReadCardUri(String& uri, String& errorCode) {
-  uri = "";
-  errorCode = "";
+  for (uint8_t attempt = 0; attempt < kReadAttempts; ++attempt) {
+    uri = "";
+    errorCode = "";
+    if (ReadNdefUri(uri, errorCode)) return true;
+    if (!IsTransientReadError(errorCode)) return false;
+
+    if (attempt + 1 < kReadAttempts) {
+      Serial.printf("[nfc] read retry %u/%u after %s\n", static_cast<unsigned>(attempt + 1),
+                    static_cast<unsigned>(kReadAttempts), errorCode.c_str());
+      delay(kReadRetryDelayMs);
+    }
+  }
+  return false;
+}
+
+bool NfcLane::ReadNdefUri(String& uri, String& errorCode) {
   if (!SelectTag(errorCode)) return false;
   if (!ReadCapability(errorCode)) return false;
 
+  // Read only enough of the TLV header to learn the NDEF message length. The
+  // old path read the entire user-memory capacity, which is about 126 page
+  // transactions on an NTAG215 even for a short card URL.
+  size_t prefixRead = 0;
+  if (!ReadNtagBytes(buffer_, kNdefPrefixBytes, prefixRead, errorCode)) return false;
+
+  size_t messageEnd = 0;
+  if (!FindNdefMessageEnd(buffer_, prefixRead, messageEnd, errorCode)) return false;
+  if (messageEnd == 0 || messageEnd > capacity_) {
+    errorCode = "truncated_tlv";
+    return false;
+  }
+
   size_t read = 0;
-  if (!ReadNtagBytes(buffer_, capacity_, read, errorCode)) return false;
+  if (!ReadNtagBytes(buffer_, messageEnd, read, errorCode)) return false;
   return ParseNdefUri(buffer_, read, uri, errorCode);
 }
 
