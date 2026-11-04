@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, CardContent, Field, Input } from '@gdg/ui';
 import { useUsbLane } from '@/components/admin/use-usb-lane';
+import { isAbortError, waitForCard } from '@/components/admin/wait-for-card';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -11,6 +12,8 @@ function errorMessage(error: unknown): string {
 export function UsbDevicePanel() {
   const [cardUri, setCardUri] = useState<string | null>(null);
   const [writeUri, setWriteUri] = useState('');
+  const [busy, setBusy] = useState<'read' | 'write' | null>(null);
+  const waitAbortRef = useRef<AbortController | null>(null);
   const {
     connected,
     connecting,
@@ -26,9 +29,19 @@ export function UsbDevicePanel() {
     setStatus,
   } = useUsbLane();
 
+  useEffect(() => {
+    return () => waitAbortRef.current?.abort();
+  }, []);
+
   async function disconnectLane() {
+    waitAbortRef.current?.abort();
     await disconnect();
     setCardUri(null);
+  }
+
+  function cancelWait() {
+    waitAbortRef.current?.abort();
+    setStatus('Waiting cancelled.');
   }
 
   async function refreshLane() {
@@ -40,20 +53,33 @@ export function UsbDevicePanel() {
   }
 
   async function readCard() {
+    if (busy || waitAbortRef.current) return;
+
     setError('');
-    setStatus('Reading card…');
+    setCardUri(null);
+    const controller = new AbortController();
+    waitAbortRef.current = controller;
+    setBusy('read');
+    setStatus('Waiting for card…');
+
     try {
-      const response = await sendCommand('nfc.read');
+      const response = await waitForCard(() => sendCommand('nfc.read'), controller.signal);
       setCardUri(response.result?.uri ?? '');
       setStatus('Card read.');
     } catch (readError) {
+      if (controller.signal.aborted || isAbortError(readError)) return;
       setCardUri(null);
       setStatus('');
       setError(errorMessage(readError));
+    } finally {
+      if (waitAbortRef.current === controller) waitAbortRef.current = null;
+      setBusy(null);
     }
   }
 
   async function writeCard() {
+    if (busy || waitAbortRef.current) return;
+
     const uri = writeUri.trim();
     if (!uri) {
       setError('Enter a URI to write.');
@@ -61,14 +87,22 @@ export function UsbDevicePanel() {
     }
 
     setError('');
-    setStatus('Writing card…');
+    const controller = new AbortController();
+    waitAbortRef.current = controller;
+    setBusy('write');
+    setStatus('Waiting for card…');
+
     try {
-      await sendCommand('nfc.write', { uri });
+      await waitForCard(() => sendCommand('nfc.write', { uri }), controller.signal);
       setStatus('Write completed and read back.');
       await refresh().catch(() => {});
     } catch (writeError) {
+      if (controller.signal.aborted || isAbortError(writeError)) return;
       setStatus('');
       setError(errorMessage(writeError));
+    } finally {
+      if (waitAbortRef.current === controller) waitAbortRef.current = null;
+      setBusy(null);
     }
   }
 
@@ -101,7 +135,7 @@ export function UsbDevicePanel() {
             <Button
               variant="ghost"
               onClick={() => void refreshLane()}
-              disabled={!connected || connecting}
+              disabled={!connected || connecting || busy !== null}
             >
               Refresh
             </Button>
@@ -155,15 +189,22 @@ export function UsbDevicePanel() {
           <CardContent className="p-5">
             <h2 className="type-h3">Read a card</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-              Reads the NTAG URI. A blank or non-NDEF card returns the device error code.
+              Reads the NTAG URI. When the reader is empty, it keeps waiting until a card is placed;
+              select Cancel to stop.
             </p>
-            <Button
-              className="mt-4"
-              onClick={() => void readCard()}
-              disabled={!connected || connecting}
-            >
-              Read card
-            </Button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={() => void readCard()}
+                disabled={!connected || connecting || busy !== null}
+              >
+                {busy === 'read' ? 'Waiting…' : 'Read card'}
+              </Button>
+              {busy === 'read' ? (
+                <Button variant="secondary" onClick={cancelWait}>
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
             {cardUri ? (
               <p className="mt-4 break-all rounded-md border border-border bg-muted/40 p-3 font-mono text-xs">
                 {cardUri}
@@ -176,7 +217,9 @@ export function UsbDevicePanel() {
           <CardContent className="p-5">
             <h2 className="type-h3">Write a card</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-              Writes and verifies one NDEF URI. Use a valid member card URL for a production tag.
+              Writes and verifies one NDEF URI. If the reader is empty, it waits for a card before
+              writing; select Cancel to stop waiting. Use a valid member card URL for a production
+              tag.
             </p>
             <Field label="NDEF URI" htmlFor="usb-write-uri" className="mt-4">
               <Input
@@ -184,16 +227,22 @@ export function UsbDevicePanel() {
                 value={writeUri}
                 onChange={(event) => setWriteUri(event.target.value)}
                 placeholder="https://members-bay-eight.vercel.app/c/…"
-                disabled={!connected || connecting}
+                disabled={!connected || connecting || busy !== null}
               />
             </Field>
-            <Button
-              className="mt-3"
-              onClick={() => void writeCard()}
-              disabled={!connected || connecting}
-            >
-              Write and verify
-            </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                onClick={() => void writeCard()}
+                disabled={!connected || connecting || busy !== null}
+              >
+                {busy === 'write' ? 'Waiting…' : 'Write and verify'}
+              </Button>
+              {busy === 'write' ? (
+                <Button variant="secondary" onClick={cancelWait}>
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       </div>

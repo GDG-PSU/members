@@ -273,7 +273,7 @@ test.describe('admin invitation and member setup', () => {
           expect(card?.issued_at).toBeTruthy();
         });
 
-        await test.step('USB kiosk reads an active card and confirms attendance', async () => {
+        await test.step('USB writer and kiosk read cards and confirm attendance', async () => {
           expect(memberId).toBeTruthy();
           expect(cardUrl).toBeTruthy();
 
@@ -323,6 +323,7 @@ test.describe('admin invitation and member setup', () => {
               const encoder = new TextEncoder();
               const decoder = new TextDecoder();
               let readAttempts = 0;
+              let writeAttempts = 0;
               class FakeSerialPort {
                 readable: ReadableStream<Uint8Array>;
                 writable: WritableStream<Uint8Array>;
@@ -341,6 +342,7 @@ test.describe('admin invitation and member setup', () => {
                         if (!line.trim()) continue;
                         const command = JSON.parse(line) as { id: number; cmd: string };
                         if (command.cmd === 'nfc.read') readAttempts += 1;
+                        if (command.cmd === 'nfc.write') writeAttempts += 1;
                         const payload =
                           command.cmd === 'info'
                             ? {
@@ -360,7 +362,9 @@ test.describe('admin invitation and member setup', () => {
                               ? { id: command.id, ok: false, error: 'no_card' }
                               : command.cmd === 'nfc.read'
                                 ? { id: command.id, ok: true, result: { uri: fixtureCardUrl } }
-                                : { id: command.id, ok: true, result: {} };
+                                : command.cmd === 'nfc.write' && writeAttempts === 1
+                                  ? { id: command.id, ok: false, error: 'no_card' }
+                                  : { id: command.id, ok: true, result: {} };
                         this.controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
                       }
                     },
@@ -383,6 +387,21 @@ test.describe('admin invitation and member setup', () => {
             { cardUrl },
           );
 
+          await page.goto('/admin/usb');
+          await expect(page.getByRole('heading', { name: 'USB devices' })).toBeVisible();
+          await page.getByRole('button', { name: 'Connect lane' }).click();
+          await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
+
+          await page.getByRole('button', { name: 'Read card' }).click();
+          await expect(page.getByText('Card read.')).toBeVisible({ timeout: 10_000 });
+          await expect(page.locator('p.break-all')).toHaveText(cardUrl);
+
+          await page.getByLabel('NDEF URI').fill(cardUrl);
+          await page.getByRole('button', { name: 'Write and verify' }).click();
+          await expect(page.getByText('Write completed and read back.')).toBeVisible({
+            timeout: 10_000,
+          });
+
           await page.goto('/admin/kiosk');
           await expect(page.getByRole('heading', { name: 'Kiosk' })).toBeVisible();
           await page.getByRole('button', { name: 'Connect lane' }).click();
@@ -391,6 +410,13 @@ test.describe('admin invitation and member setup', () => {
           await expect(page.getByRole('heading', { name: displayName })).toBeVisible({
             timeout: 20_000,
           });
+
+          const { data: beforeConfirm } = await supabase
+            .from('attendance_records')
+            .select('id')
+            .eq('member_id', memberId)
+            .eq('session_id', kioskSessionId);
+          expect(beforeConfirm).toHaveLength(0);
 
           const identityCheck = page.getByLabel("I checked this member's PSU ID");
           if (await identityCheck.isVisible().catch(() => false)) {

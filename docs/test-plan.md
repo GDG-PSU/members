@@ -10,7 +10,7 @@ left behind; the production reset removes any residue.
 | ------------------- | ------------------------------- | ---------------------------------------------------------------- |
 | Formatting          | `pnpm format:check`             | Pass after formatting the changed files                          |
 | Lint / types        | `pnpm lint`, `pnpm typecheck`   | Pass                                                             |
-| Unit tests          | `pnpm test`                     | 29/29 pass                                                       |
+| Unit tests          | `pnpm test`                     | 33/33 pass                                                       |
 | Production build    | `pnpm build`                    | Pass; all routes including `/admin/usb` compile                  |
 | Browser E2E         | `pnpm e2e`                      | 19 pass, 1 intentionally skipped mobile admin spec               |
 | Database/RLS/ledger | `pnpm db:verify`                | 46/46 pass against hosted Supabase                               |
@@ -23,10 +23,13 @@ invitation creation, member setup, privacy/photo checks, USB card preparation,
 URL shape/origin checks, activation, and database status `active` with an
 issuance timestamp. It also uses a fake Web Serial port to read that active card
 at `/admin/kiosk`, confirm check-in and check-out, and assert the attendance
-state and reward in the database. The fake port returns `no_card` once, proving
-that the kiosk's 10-second wait/retry loop recovers when a card arrives. The
-fixture event, member, and admin are
-removed afterward through the audited erasure path.
+state and reward in the database. The fake port returns `no_card` on the first
+read of each flow and on the writer's first write, proving the open-ended wait
+loops recover when a card appears. It also asserts that no
+attendance exists before the organizer confirms the kiosk preview. The shared
+wait helper is unit-tested to keep retrying past ten seconds, surface other
+reader errors immediately, and stop when cancelled. The fixture event, member,
+and admin are removed afterward through the audited erasure path.
 
 ## Hardware coverage
 

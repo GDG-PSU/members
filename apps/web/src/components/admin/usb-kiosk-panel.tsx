@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, Card, CardContent, Field, MemberAvatar, Select } from '@gdg/ui';
 import { previewUsbKioskAction, type UsbKioskPreview } from '@/app/(admin)/admin/actions';
 import { formatDateTime } from '@/lib/format';
 import { useUsbLane } from '@/components/admin/use-usb-lane';
+import { isAbortError, waitForCard } from '@/components/admin/wait-for-card';
 
 export type KioskSessionOption = {
   id: string;
@@ -14,15 +15,8 @@ export type KioskSessionOption = {
 
 type Message = { kind: 'success' | 'danger'; text: string };
 
-const CARD_WAIT_TIMEOUT_MS = 10_000;
-const CARD_POLL_INTERVAL_MS = 250;
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) {
@@ -44,14 +38,27 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
     setError,
     setStatus,
   } = useUsbLane();
+  const readAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => readAbortRef.current?.abort();
+  }, []);
 
   async function disconnectLane() {
+    readAbortRef.current?.abort();
     await disconnect();
     setScan(null);
     setIdentityChecked(false);
   }
 
+  function cancelRead() {
+    readAbortRef.current?.abort();
+    setStatus('Card read cancelled.');
+  }
+
   async function readCard() {
+    if (busy || readAbortRef.current) return;
+
     setMessage(null);
     setScan(null);
     setIdentityChecked(false);
@@ -66,31 +73,18 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
       return;
     }
 
+    const controller = new AbortController();
+    readAbortRef.current = controller;
     setBusy('read');
     setStatus('Waiting for card…');
-    const deadline = Date.now() + CARD_WAIT_TIMEOUT_MS;
+
     try {
-      let uri: string | undefined;
-      while (Date.now() < deadline) {
-        try {
-          const response = await sendCommand('nfc.read');
-          uri = response.result?.uri;
-          if (uri) break;
-          throw new Error('The card does not contain a readable URL.');
-        } catch (readError) {
-          // An empty reader is expected while waiting. Keep polling until the
-          // deadline; any other device/card error should be shown immediately.
-          if (errorMessage(readError) !== 'no_card') throw readError;
-        }
-        await wait(CARD_POLL_INTERVAL_MS);
-      }
-      if (!uri) {
-        throw new Error(
-          'No card detected within 10 seconds. Place a card on the reader and try again.',
-        );
-      }
+      const response = await waitForCard(() => sendCommand('nfc.read'), controller.signal);
+      const uri = response.result?.uri;
+      if (!uri) throw new Error('The card does not contain a readable URL.');
 
       const preview = await previewUsbKioskAction({ uri, sessionId });
+      if (controller.signal.aborted) return;
       if (!preview.ok || !preview.scanId) {
         throw new Error(preview.error ?? 'Could not resolve this card.');
       }
@@ -98,9 +92,11 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
       setScan(preview);
       setStatus('Card read. Confirm identity and attendance.');
     } catch (readError) {
+      if (controller.signal.aborted || isAbortError(readError)) return;
       setStatus('');
       setError(errorMessage(readError));
     } finally {
+      if (readAbortRef.current === controller) readAbortRef.current = null;
       setBusy(null);
     }
   }
@@ -142,6 +138,7 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
       });
       setScan(null);
       setIdentityChecked(false);
+      setStatus('Ready for the next card.');
     } catch (confirmError) {
       setMessage({ kind: 'danger', text: errorMessage(confirmError) });
     } finally {
@@ -155,8 +152,8 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
   return (
     <div className="space-y-4">
       <Alert variant="info">
-        The card is read locally over USB. The URL is only a locator; an organizer still confirms
-        the person and the attendance action.
+        The card is read locally over USB and the kiosk keeps waiting until one is placed. The URL
+        is only a locator; an organizer still confirms the person and the attendance action.
       </Alert>
 
       <Card>
@@ -225,12 +222,19 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
                 )}
               </Select>
             </Field>
-            <Button
-              onClick={() => void readCard()}
-              disabled={!connected || !sessionId || busy !== null || sessions.length === 0}
-            >
-              {busy === 'read' ? 'Waiting…' : 'Read card'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => void readCard()}
+                disabled={!connected || !sessionId || busy !== null || sessions.length === 0}
+              >
+                {busy === 'read' ? 'Waiting…' : 'Read card'}
+              </Button>
+              {busy === 'read' ? (
+                <Button variant="secondary" onClick={cancelRead}>
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           {sessions.length === 0 ? (
@@ -323,7 +327,8 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
             <h2 className="type-h3">Ready for the next card</h2>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
               Connect the lane, choose the open session, then select <strong>Read card</strong> and
-              place a member card on the reader. The kiosk waits up to 10 seconds for a card.
+              place a member card on the reader. The kiosk keeps waiting until a card is read;
+              select Cancel to stop waiting.
             </p>
           </CardContent>
         </Card>

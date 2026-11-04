@@ -8,12 +8,13 @@ Google Developer Group at Penn State.
   registration, heartbeat, HMAC secret, kiosk polling, or writer-job polling.
 - **Card writing:** sign in as an admin, open `/admin/usb`, prepare a pending
   card URL, connect the lane with Chrome/Edge Web Serial, write and read back the
-  URL, then activate the card.
+  URL, then activate the card. If the reader is empty, the writer waits for a
+  card before writing.
 - **Attendance kiosk:** sign in as an admin, open `/admin/kiosk`, connect the
   same local lane, select an event session, choose **Read card**, and confirm
   check-in or check-out after checking the member's photo and identity. The
-  kiosk waits up to 10 seconds for a card before reporting that none was found.
-  The retired device registry is gone; `/admin/devices` redirects to `/admin/usb`.
+  kiosk keeps waiting until a card is placed; select **Cancel** to stop. The
+  retired device registry is gone; `/admin/devices` redirects to `/admin/usb`.
 - **No SMTP:** invitation and recovery links are generated in the admin UI and
   delivered manually.
 
