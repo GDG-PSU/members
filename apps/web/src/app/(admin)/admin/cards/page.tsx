@@ -1,6 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Card, CardContent, DataTable, EmptyState, PageShell, StatusChip } from '@gdg/ui';
+import {
+  buttonVariants,
+  Card,
+  CardContent,
+  DataTable,
+  EmptyState,
+  PageShell,
+  StatusChip,
+} from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
@@ -45,10 +53,7 @@ export default async function CardsPage({
               it after a matching read-back.
             </p>
           </div>
-          <Link
-            href="/admin/usb"
-            className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition-opacity hover:opacity-90"
-          >
+          <Link href="/admin/usb" className={buttonVariants()}>
             Open USB writer
           </Link>
         </CardContent>

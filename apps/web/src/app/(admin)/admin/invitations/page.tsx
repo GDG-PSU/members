@@ -24,11 +24,19 @@ export default async function InvitationsPage({
   await requireAdmin();
   const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
-  const { data: invitations } = await admin
-    .from('member_invitations')
-    .select('id, email, status, paid_since, note, created_at, expires_at, accepted_at')
-    .order('created_at', { ascending: false })
-    .limit(100);
+  const [{ data: invitations }, { data: adminInvitations }] = await Promise.all([
+    admin
+      .from('member_invitations')
+      .select('id, email, status, paid_since, note, created_at, expires_at, accepted_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    admin
+      .from('audit_log')
+      .select('id, after, created_at')
+      .eq('action', 'admin.invited')
+      .order('created_at', { ascending: false })
+      .limit(100),
+  ]);
 
   return (
     <PageShell className="pb-10">
@@ -130,6 +138,45 @@ export default async function InvitationsPage({
               ]}
             />
           )}
+
+          <div className="mt-8">
+            <h3 className="type-h3 mb-3">Administrator invitations</h3>
+            {!adminInvitations || adminInvitations.length === 0 ? (
+              <p className="border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+                No administrator invitations yet.
+              </p>
+            ) : (
+              <DataTable
+                caption="Administrator invitations"
+                rows={adminInvitations}
+                getRowKey={(row) => String(row.id)}
+                columns={[
+                  {
+                    key: 'email',
+                    header: 'Email',
+                    render: (row) => {
+                      const details = row.after as { email?: string } | null;
+                      return (
+                        <p className="text-sm font-semibold">{details?.email ?? 'Unknown email'}</p>
+                      );
+                    },
+                  },
+                  {
+                    key: 'access',
+                    header: 'Access',
+                    render: () => <span className="text-sm">Administrator</span>,
+                  },
+                  {
+                    key: 'created',
+                    header: 'Link generated',
+                    render: (row) => (
+                      <span className="text-xs">{formatDateTime(row.created_at as string)}</span>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </div>
         </div>
       </div>
     </PageShell>
