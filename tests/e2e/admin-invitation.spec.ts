@@ -510,8 +510,9 @@ test.describe('admin invitation and member setup', () => {
     }
   });
 
-  test('superadmin sees the staff controls and full audit log', async ({
+  test('superadmin controls staff access and invite acceptance', async ({
     page,
+    browser,
     baseURL,
   }, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop-chromium', 'Authenticated flow runs once.');
@@ -528,6 +529,21 @@ test.describe('admin invitation and member setup', () => {
     const superEmail = `e2e-super-${stamp}@example.com`;
     const superPassword = `E2e-Super-${stamp}-4k`;
     let superUserId: string | null = null;
+    let invitedEmail = '';
+    let invitedUserId: string | null = null;
+
+    async function findInvitedUserId(email: string): Promise<string | null> {
+      const { data, error } = await supabase
+        .from('audit_log')
+        .select('target_id')
+        .eq('action', 'admin.invited')
+        .eq('after->>email', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(`Could not find the invited user: ${error.message}`);
+      return (data?.target_id as string | null) ?? null;
+    }
 
     try {
       await test.step('create a disposable superadmin account', async () => {
@@ -575,7 +591,80 @@ test.describe('admin invitation and member setup', () => {
         await page.goto('/admin/audit');
         await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
       });
+
+      await test.step('staff invite stays pending until the password step', async () => {
+        invitedEmail = `e2e-invited-${stamp}@example.com`;
+        const invitedPassword = `E2e-Invited-${stamp}-8z`;
+
+        await page.goto('/admin/invitations');
+        const inviteForm = page.locator('form').filter({ has: page.getByLabel('Role') });
+        await inviteForm.getByLabel('Email').fill(invitedEmail);
+        await inviteForm.getByLabel('Role').selectOption('admin');
+        await inviteForm.getByRole('button', { name: 'Generate staff invite link' }).click();
+
+        const ready = page.getByRole('status').filter({ hasText: 'Admin invite link ready' });
+        await expect(ready).toBeVisible({ timeout: 20_000 });
+        await expect(ready).toContainText(invitedEmail);
+        const inviteLink = await page.getByLabel('One-time sign-in link').inputValue();
+        expect(new URL(inviteLink).origin).toBe(origin);
+        expect(new URL(inviteLink).pathname).toBe('/auth/confirm');
+        expect(new URL(inviteLink).searchParams.get('next')).toBe('/account/password');
+
+        invitedUserId = await findInvitedUserId(invitedEmail);
+        if (!invitedUserId) throw new Error('The staff invite audit entry was not found.');
+
+        await page.goto('/admin/users');
+        const pendingRow = page.getByRole('row').filter({ hasText: invitedEmail });
+        await expect(pendingRow).toBeVisible();
+        await expect(pendingRow.getByText('Invited', { exact: true })).toBeVisible();
+
+        const inviteeContext = await browser.newContext({ baseURL: origin });
+        try {
+          const inviteePage = await inviteeContext.newPage();
+          await inviteePage.goto(inviteLink);
+          await expect(inviteePage).toHaveURL(/\/account\/password$/, { timeout: 30_000 });
+
+          // Opening the link creates a session before the password is set. The
+          // badge must remain until the password step is actually completed.
+          await page.goto('/admin/users');
+          const stillPendingRow = page.getByRole('row').filter({ hasText: invitedEmail });
+          await expect(stillPendingRow).toBeVisible();
+          await expect(stillPendingRow.getByText('Invited', { exact: true })).toBeVisible();
+
+          await inviteePage.getByLabel('New password', { exact: true }).fill(invitedPassword);
+          await inviteePage
+            .getByLabel('Confirm new password', { exact: true })
+            .fill(invitedPassword);
+          await inviteePage.getByRole('button', { name: 'Set new password' }).click();
+          await expect(inviteePage).toHaveURL(/\/admin-mfa$/, { timeout: 30_000 });
+        } finally {
+          await inviteeContext.close();
+        }
+
+        const { data: passwordAudit, error: passwordAuditError } = await supabase
+          .from('audit_log')
+          .select('id')
+          .eq('action', 'auth.password_updated')
+          .eq('target_id', invitedUserId)
+          .limit(1)
+          .maybeSingle();
+        expect(passwordAuditError).toBeNull();
+        expect(passwordAudit).not.toBeNull();
+
+        await page.goto('/admin/users');
+        const acceptedRow = page.getByRole('row').filter({ hasText: invitedEmail });
+        await expect(acceptedRow).toBeVisible();
+        await expect(acceptedRow.getByText('Invited', { exact: true })).toHaveCount(0);
+      });
     } finally {
+      if (invitedEmail && !invitedUserId) {
+        invitedUserId = await findInvitedUserId(invitedEmail).catch(() => null);
+      }
+      if (invitedUserId) {
+        await deleteAdminFixture(supabase, invitedUserId).catch((error) => {
+          console.warn('Could not delete the invited admin fixture:', error);
+        });
+      }
       if (superUserId) {
         await deleteAdminFixture(supabase, superUserId).catch((error) => {
           console.warn('Could not delete the superadmin fixture:', error);

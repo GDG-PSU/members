@@ -120,6 +120,28 @@ export default async function UsersPage({
   const memberAuthIds = new Set((memberRows ?? []).map((row) => row.auth_user_id as string));
   const staffOnlyAuthIds = [...staffByAuth.keys()].filter((id) => !memberAuthIds.has(id));
 
+  // Supabase sets a random password hash for admin-created users, and clicking
+  // an invite link records a sign-in before the password step. The audit log is
+  // therefore the reliable signal for whether staff have completed setup.
+  const { data: staffAudit } =
+    staffOnlyAuthIds.length > 0
+      ? await admin
+          .from('audit_log')
+          .select('action, target_id')
+          .in('action', ['admin.invited', 'auth.password_updated'])
+          .in('target_id', staffOnlyAuthIds)
+      : { data: [] };
+  const invitedStaffAuthIds = new Set(
+    (staffAudit ?? [])
+      .filter((row) => row.action === 'admin.invited' && row.target_id)
+      .map((row) => row.target_id as string),
+  );
+  const passwordSetStaffAuthIds = new Set(
+    (staffAudit ?? [])
+      .filter((row) => row.action === 'auth.password_updated' && row.target_id)
+      .map((row) => row.target_id as string),
+  );
+
   const staffOnlyUsers: UserRow[] = await Promise.all(
     staffOnlyAuthIds.map(async (authUserId) => {
       const { data } = await admin.auth.admin.getUserById(authUserId);
@@ -141,7 +163,10 @@ export default async function UsersPage({
         memberStatus: null,
         staffRole: staff?.role ?? null,
         staffSince: staff?.grantedAt ?? null,
-        staffInvited: Boolean(authUser && !authUser.last_sign_in_at),
+        staffInvited:
+          Boolean(authUser) &&
+          invitedStaffAuthIds.has(authUserId) &&
+          !passwordSetStaffAuthIds.has(authUserId),
         invitedAt: null,
         inviteExpiresAt: null,
       };
@@ -454,7 +479,7 @@ export default async function UsersPage({
 
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
         {isSuperadmin
-          ? 'Invited staff have a role but have not signed in yet. Superadmins can change any user type. Promoting a member deletes their member profile, cards, attendance, points and rewards. Demoting staff to member keeps their password and creates an invitation for member setup. Normal admins can invite and revoke members only.'
+          ? 'Invited staff have a role but have not finished setting a password. Superadmins can change any user type. Promoting a member deletes their member profile, cards, attendance, points and rewards. Demoting staff to member keeps their password and creates an invitation for member setup. Normal admins can invite and revoke members only.'
           : 'You can invite members and revoke member access. Staff accounts, user-type changes and the audit log are superadmin-only.'}
       </p>
     </PageShell>
