@@ -8,6 +8,42 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+const NOT_READY = 'The NFC module is not responding. Check its connection to the reader.';
+const UNSUPPORTED = 'This card type is not supported. Use an NTAG213 or NTAG215 card.';
+const UNREADABLE = 'The card could not be read. Hold it flat on the reader and try again.';
+const NOT_SAVED = 'The card did not save correctly. Hold it flat on the reader and write it again.';
+const NO_URL = 'This card has no readable URL on it. Write it from the Cards page first.';
+const TOO_LONG = 'That URL is too long for this card.';
+
+const LANE_ERRORS: Record<string, string> = {
+  nfc_not_ready: NOT_READY,
+  nfc_unavailable: NOT_READY,
+  unsupported_tag: UNSUPPORTED,
+  tag_capacity_unexpected: UNSUPPORTED,
+  capacity_unknown: UNSUPPORTED,
+  capability_read_failed: UNREADABLE,
+  page_read_failed: UNREADABLE,
+  page_write_failed: NOT_SAVED,
+  read_back_mismatch: NOT_SAVED,
+  ndef_empty: NO_URL,
+  ndef_record_missing: NO_URL,
+  ndef_not_first_record: NO_URL,
+  not_uri_record: NO_URL,
+  truncated_tlv: NO_URL,
+  truncated_record: NO_URL,
+  truncated_payload: NO_URL,
+  unsupported_uri_prefix: NO_URL,
+  uri_not_printable: NO_URL,
+  uri_too_long: TOO_LONG,
+  tag_too_small: TOO_LONG,
+};
+
+/** Firmware reports short codes; anything else is already written for people. */
+export function laneErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return LANE_ERRORS[message] ?? message;
+}
+
 function cancelledError(): Error {
   const error = new Error('Waiting for a card was cancelled.');
   error.name = 'AbortError';

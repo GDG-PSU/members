@@ -30,9 +30,19 @@ export function RewardCard({
   fulfillmentNote: string;
   balance: number;
 }) {
-  const [state, action, pending] = useActionState(requestRedemptionAction, initial);
+  const [idempotencyKey, setIdempotencyKey] = useState(newKey);
+  const [state, action, pending] = useActionState(
+    async (previous: ActionState, formData: FormData) => {
+      const result = await requestRedemptionAction(previous, formData);
+      // A key identifies one request. Keeping it after an accepted request would
+      // turn the next one into a retry that silently returns the old redemption;
+      // keeping it after a failure is what makes a resubmit safe.
+      if (result.ok) setIdempotencyKey(newKey());
+      return result;
+    },
+    initial,
+  );
   const [confirm, setConfirm] = useState(false);
-  const [idempotencyKey] = useState(newKey);
   const formRef = useRef<HTMLFormElement>(null);
 
   const soldOut = inventory !== null && inventory <= 0;

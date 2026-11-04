@@ -12,9 +12,35 @@ const initialState: UsbCardState = {};
 
 type MemberOption = { id: string; label: string };
 
+function ActivateCardForm({ cardId }: { cardId: string }) {
+  const [activation, activate, activating] = useActionState(activateUsbCardAction, initialState);
+  return (
+    <>
+      <form action={activate} className="mt-3">
+        <input type="hidden" name="cardId" value={cardId} />
+        <label className="mb-3 flex items-start gap-2 text-sm leading-relaxed">
+          <input type="checkbox" name="readBackVerified" required className="mt-1" />
+          <span>I verified the URL was written and the read-back matches.</span>
+        </label>
+        <Button type="submit" disabled={activating || activation.activated}>
+          {activation.activated
+            ? 'Card activated'
+            : activating
+              ? 'Activating…'
+              : 'Activate written card'}
+        </Button>
+      </form>
+      {activation.error ? (
+        <Alert variant="danger" className="mt-3">
+          {activation.error}
+        </Alert>
+      ) : null}
+    </>
+  );
+}
+
 export function UsbCardPreparation({ members }: { members: MemberOption[] }) {
   const [prepared, prepare, preparing] = useActionState(prepareUsbCardAction, initialState);
-  const [activation, activate, activating] = useActionState(activateUsbCardAction, initialState);
   const [copied, setCopied] = useState(false);
 
   async function copyUrl() {
@@ -86,25 +112,8 @@ export function UsbCardPreparation({ members }: { members: MemberOption[] }) {
               Write this exact URL to the tag with the USB panel. Activate only after the writer
               reports a matching read-back.
             </p>
-            <form action={activate} className="mt-3">
-              <input type="hidden" name="cardId" value={prepared.cardId ?? ''} />
-              <label className="mb-3 flex items-start gap-2 text-sm leading-relaxed">
-                <input type="checkbox" name="readBackVerified" required className="mt-1" />
-                <span>I verified the URL was written and the read-back matches.</span>
-              </label>
-              <Button type="submit" disabled={activating || activation.activated}>
-                {activation.activated
-                  ? 'Card activated'
-                  : activating
-                    ? 'Activating…'
-                    : 'Activate written card'}
-              </Button>
-            </form>
-            {activation.error ? (
-              <Alert variant="danger" className="mt-3">
-                {activation.error}
-              </Alert>
-            ) : null}
+            {/* Keyed so each prepared card starts unactivated: organizers write in batches. */}
+            <ActivateCardForm key={prepared.cardId} cardId={prepared.cardId ?? ''} />
           </div>
         ) : null}
       </CardContent>

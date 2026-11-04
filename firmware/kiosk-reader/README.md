@@ -5,15 +5,16 @@ local serial device: an admin browser connects to it over Web Serial and uses a
 small JSON API to read and write NDEF card URLs. The firmware has no WiFi,
 server, registration, heartbeat, kiosk, or writer-job path.
 
-**Hardware status: read/write/read-back tested on 2026-11-04** with a PN532 over
-SPI and a writable NTAG215. See
-[docs/hardware-bringup.md](../../docs/hardware-bringup.md) for wiring and
-[docs/usb-api.md](../../docs/usb-api.md) for the protocol.
+**Hardware status: firmware 2.0.2 tested on one reader on 2026-11-04,** with a
+PN532 over SPI and a writable NTAG215. See
+[docs/hardware-bringup.md](../../docs/hardware-bringup.md) for wiring, results,
+and what is still unverified, and [docs/usb-api.md](../../docs/usb-api.md) for
+the protocol.
 
 Firmware 2.0.1 reads only the NDEF TLV instead of the full tag capacity and
-retries transient page-read failures. It has been read-tested on the physical
-PN532/NTAG hardware after a full power-cycle; re-run a write/read-back check
-before an event.
+retries transient page-read failures. Firmware 2.0.2 reports an overlong command
+line once instead of once per chunk. Re-run a write/read-back check before an
+event.
 
 ## Layout
 

@@ -1,6 +1,12 @@
-import { Field, Input, Textarea } from '@gdg/ui';
-import { saveRewardAction } from '@/app/(admin)/admin/actions';
+'use client';
+
+import { useActionState } from 'react';
+import { Alert, Field, Input, Textarea } from '@gdg/ui';
+import { saveRewardAction, type AdminFormState } from '@/app/(admin)/admin/actions';
 import { SubmitButton } from '@/components/admin/ui';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
+
+const initial: AdminFormState = {};
 
 export interface RewardValues {
   id?: string;
@@ -13,8 +19,9 @@ export interface RewardValues {
 }
 
 export function RewardForm({ reward, returnTo }: { reward?: RewardValues; returnTo: string }) {
+  const [state, action] = useActionState(saveRewardAction, initial);
   return (
-    <form action={saveRewardAction} className="space-y-4" noValidate>
+    <form action={action} onReset={keepValuesOnError(state)} className="space-y-4" noValidate>
       <input type="hidden" name="returnTo" value={returnTo} />
       {reward?.id ? <input type="hidden" name="rewardId" value={reward.id} /> : null}
 
@@ -85,6 +92,8 @@ export function RewardForm({ reward, returnTo }: { reward?: RewardValues; return
         />
         Active
       </label>
+
+      {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
 
       <SubmitButton pendingLabel="Saving…">
         {reward?.id ? 'Save reward' : 'Create reward'}

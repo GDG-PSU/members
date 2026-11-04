@@ -30,4 +30,5 @@ class UsbApi {
   char deviceId_[32] = {0};
   char line_[1024];
   size_t lineLength_ = 0;
+  bool discardingLine_ = false;
 };

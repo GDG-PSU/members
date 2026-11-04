@@ -1,8 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CARD_POLL_INTERVAL_MS, isAbortError, waitForCard } from './wait-for-card';
+import {
+  CARD_POLL_INTERVAL_MS,
+  isAbortError,
+  laneErrorMessage,
+  waitForCard,
+} from './wait-for-card';
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('laneErrorMessage', () => {
+  it('explains firmware codes in words', () => {
+    expect(laneErrorMessage(new Error('nfc_not_ready'))).toContain('not responding');
+    expect(laneErrorMessage(new Error('ndef_record_missing'))).toContain('no readable URL');
+    expect(laneErrorMessage(new Error('read_back_mismatch'))).toContain('did not save');
+    expect(laneErrorMessage(new Error('tag_too_small'))).toContain('too long');
+  });
+
+  it('leaves messages already written for people alone', () => {
+    expect(laneErrorMessage(new Error('That member is not active.'))).toBe(
+      'That member is not active.',
+    );
+    expect(laneErrorMessage('Disconnected.')).toBe('Disconnected.');
+  });
 });
 
 describe('waitForCard', () => {

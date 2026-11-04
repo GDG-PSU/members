@@ -1,8 +1,16 @@
 # Hardware bring-up — USB-only ESP32 + PN532 lane
 
-> **Status: NOT TESTED END-TO-END.** No physical board, PN532 breakout, NTAG
-> card, or two-lane setup has been validated. Everything below is the procedure
-> to complete the hardware gate.
+> **Status: one reader tested end to end on 2026-11-04, firmware 2.0.2.** One
+> ESP32 + 8-pin SPI PN532 on COM3, with one writable NTAG215, on a local stack:
+> invite, setup, prepare, write, read back, activate, the card URL resolving to
+> the profile, check-in, check-out, and the points grant. A second run on the same
+> reader covered malformed commands, oversized lines, and the PN532 being off.
+>
+> **Not covered:** the browser's own Web Serial picker (the test bridged
+> `navigator.serial` to COM3, because the picker cannot be automated), a hosted
+> run on the production origin, an empty antenna, a locked or too-small card,
+> removing a card mid-write, a card batch, and two lanes. The checklists below
+> still apply to those.
 
 The firmware lives in [`firmware/kiosk-reader/`](../firmware/kiosk-reader). It is
 USB-only: it exposes a local JSON API over the CP210x serial bridge and has no
@@ -85,7 +93,7 @@ unresponsive; a full power-cycle restores it.
 After boot, the serial monitor should show:
 
 ```text
-[boot] GDG@PSU USB lane firmware 2.0.1
+[boot] GDG@PSU USB lane firmware 2.0.2
 [nfc] PN532 SPI firmware 0x... ready
 [usb] JSON control API ready
 [usb] device id esp32-...
@@ -170,14 +178,13 @@ Do not infer capacity from the product listing. Measure it.
 NFC reads have a 300 ms timeout; the main loop yields with `delay()`. There are
 no WiFi or HTTP waits.
 
-## 11. Remaining hardware blockers
+## 11. Remaining hardware checks
 
-1. Confirm the exact ESP32 board and the 8-pin SPI PN532 module; DIP switches must be `SEL0=OFF, SEL1=ON`.
-2. Supply the purchased NTAG card batch for capacity/write-state verification.
-3. Provide USB/debug access and two complete units for two-lane testing.
-4. Verify the admin page's Web Serial connection in Chrome/Edge on the event
-   machine, including reconnect behavior.
-5. Provide a non-production card for an end-to-end write/read test.
+1. Run the card batch verification in section 8 on the purchased NTAG batch.
+2. Connect two complete units to test two lanes.
+3. Verify the admin page's Web Serial connection in Chrome/Edge on the event
+   machine, including the port picker and reconnecting.
+4. Write one production card for a live member on the hosted origin.
 
-Until these are done, the firmware is **compile/review-ready only** and must not
-be described as hardware-validated.
+Until these are done, describe the firmware as tested on one reader, not as
+validated for an event.

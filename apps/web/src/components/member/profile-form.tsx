@@ -5,6 +5,7 @@ import { Plus, Trash2, UserRound } from 'lucide-react';
 import { Alert, Button, buttonVariants, Card, CardContent, Field, Input, Textarea } from '@gdg/ui';
 import { updateProfileAction, type ActionState } from '@/app/(member)/member/actions';
 import { MAX_PROFILE_PHOTO_BYTES, PROFILE_PHOTO_TOO_LARGE } from '@/lib/profile/limits';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: ActionState = {};
 
@@ -36,7 +37,13 @@ export function ProfileForm({
     <div className="grid gap-5 md:grid-cols-[1.4fr_1fr]">
       <Card className="min-w-0">
         <CardContent className="p-5 pt-5 sm:p-6">
-          <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
+          <form
+            action={action}
+            onReset={keepValuesOnError(state)}
+            className="space-y-5"
+            noValidate
+            encType="multipart/form-data"
+          >
             <div className="flex items-center gap-4">
               {preview ? (
                 // eslint-disable-next-line @next/next/no-img-element -- local object URLs cannot use next/image

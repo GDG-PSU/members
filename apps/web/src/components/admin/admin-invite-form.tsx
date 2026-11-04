@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { Alert, Button, Field, Input, Select } from '@gdg/ui';
 import { inviteAdministratorAction, type LinkState } from '@/app/(admin)/admin/actions';
 import { LinkPanel } from '@/components/admin/link-panel';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: LinkState = {};
 
@@ -13,7 +14,7 @@ export function AdminInviteForm() {
 
   return (
     <div className="space-y-3">
-      <form action={action} className="space-y-3.5" noValidate>
+      <form action={action} onReset={keepValuesOnError(state)} className="space-y-3.5" noValidate>
         <Field label="Email" htmlFor="admin-invite-email" hint="TOTP required before /admin opens.">
           <Input
             id="admin-invite-email"

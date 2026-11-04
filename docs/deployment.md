@@ -1,7 +1,7 @@
 # Deployment
 
 Target: Next.js on **Vercel** at
-**https://members-bay-eight.vercel.app**, Supabase Postgres/Auth/Storage, and a
+**https://mempass.vercel.app**, Supabase Postgres/Auth/Storage, and a
 USB-only ESP32 + PN532 reader. No custom domain, DNS change, campus WiFi, or
 firmware server endpoint is required.
 
@@ -20,7 +20,7 @@ Vercel deployment after a push before treating a checkout as the running release
 | Node             | 20.9+ (24 used locally)                        |
 | Framework preset | Next.js                                        |
 | Output           | `apps/web/.next` (configured in `vercel.json`) |
-| Production URL   | `https://members-bay-eight.vercel.app`         |
+| Production URL   | `https://mempass.vercel.app`                   |
 
 `NEXT_PUBLIC_SITE_URL` must equal the hosted origin for production. Preview
 deployments should use their own origin and must not point at the production
@@ -51,9 +51,9 @@ These are dashboard settings on the hosted project. `supabase/config.toml` only
 configures the local stack, so check them here; the Auth settings endpoint reports
 the sign-up state as `disable_signup`.
 
-- Site URL: `https://members-bay-eight.vercel.app`; keep it in sync with
+- Site URL: `https://mempass.vercel.app`; keep it in sync with
   `NEXT_PUBLIC_SITE_URL`.
-- Optional callback fallback: `https://members-bay-eight.vercel.app/auth/callback`.
+- Optional callback fallback: `https://mempass.vercel.app/auth/callback`.
 - **Allow new users to sign up: off.** Accounts are created by Admin API invitation
   or recovery links, which keep working with sign-ups off.
 - Minimum password length 12, requiring letters and digits, matching the app.
@@ -65,20 +65,38 @@ the sign-up state as `disable_signup`.
 - Generated links confirm at `/auth/confirm` on the app origin, so no Supabase
   redirect allowlist entry is needed for them.
 
-## 4. Production reset and admin invite
+## 4. Production reset and first superadmin
 
-The reset removes all application rows, Auth users, and profile photos, then
-creates only the `sainaman@psu.edu` Auth user with the admin role. The one-time
-link is written to a gitignored `.local/` file; it is never printed or committed.
+A person runs these, never an agent. `pnpm db:reset` permanently removes every
+Auth user, session and authenticator, all application rows including the audit log
+and invitation history, the rate limit counters, and every profile photo. The
+schema and migration history stay. It is not a backup: take one first if anything
+in the database matters.
+
+The scripts read the root `.env.local`, so check which project it points at. With
+no arguments, the reset only reports the target project and what it holds:
 
 ```bash
-NEXT_PUBLIC_SITE_URL=https://members-bay-eight.vercel.app \
-  pnpm db:bootstrap-admin --email sainaman@psu.edu \
-  --out .local/sainaman-admin-link.txt
+pnpm db:reset
 ```
 
-Set a password from the link, then enroll TOTP at `/admin-mfa` and confirm the
-hosted admin dashboard. Do not send the link through this repository or chat.
+To erase it, pass the project ref that the dry run printed:
+
+```bash
+pnpm db:reset --confirm <project-ref>
+```
+
+The reset removes your own account too, so create the first superadmin next. The
+one-time link goes to a gitignored `.local/` file and is never printed:
+
+```bash
+pnpm db:bootstrap-admin --email <you>@psu.edu --role superadmin --site-url https://mempass.vercel.app --out .local/superadmin-link.txt
+```
+
+The link works once and expires with the project's OTP window, so generate it when
+it will be used. Open it, set a password, enroll TOTP at `/admin-mfa`, and confirm
+the hosted admin dashboard opens. Delete the file afterward, and do not send the
+link through this repository or chat.
 
 ## 5. USB reader deployment
 
@@ -105,7 +123,7 @@ the serial bus.
 2. `/admin` and `/admin/cards` redirect anonymous visitors to `/login`.
 3. The invited admin can set a password and complete TOTP at `/admin-mfa`.
 4. Admin → Invitations generates a link whose origin is
-   `https://members-bay-eight.vercel.app` and whose path is `/auth/confirm`.
+   `https://mempass.vercel.app` and whose path is `/auth/confirm`.
 5. `/admin/cards` lists active members; preparing a card returns a `/c/<43-char>`
    URL and activation changes the card to active.
 6. A physical tag writes and reads back the same URL in Chrome/Edge.

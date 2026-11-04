@@ -2,68 +2,93 @@
 
 ## Verified on 2026-11-04
 
-Environment: production build (`next start`) on `http://localhost:3000`, hosted
-Supabase project, real PN532 on COM3 with a writable NTAG215. No test fixture is
-left behind; the production reset removes any residue.
+Environment: a production build (`next start`) on `http://localhost:3100` against
+a local Supabase stack with every migration applied, plus one physical ESP32 +
+PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 
-| Check               | Command                         | Result                                                              |
-| ------------------- | ------------------------------- | ------------------------------------------------------------------- |
-| Formatting          | `pnpm format:check`             | Pass after formatting the changed files                             |
-| Lint / types        | `pnpm lint`, `pnpm typecheck`   | Pass                                                                |
-| Unit tests          | `pnpm test`                     | 33/33 pass                                                          |
-| Production build    | `pnpm build`                    | Pass; all routes including `/admin/cards` compile                   |
-| Browser E2E         | `pnpm e2e`                      | 20 pass, 2 intentionally skipped mobile admin specs                 |
-| Database/RLS/ledger | `pnpm db:verify`                | 46/46 pass against hosted Supabase                                  |
-| Firmware compile    | `pio run`                       | Pass; 304,521 bytes flash (23.2%), 23,552 bytes RAM (7.2%)          |
-| Physical NFC        | USB JSON API on COM3            | Read pass on 2.0.1 after full power-cycle; write/read-back on 2.0.0 |
-| Route smoke         | `curl` against production build | Public pages 200; `/admin` and `/admin/cards` redirect to `/login`  |
+| Check               | Command                       | Result                                         |
+| ------------------- | ----------------------------- | ---------------------------------------------- |
+| Formatting          | `pnpm format:check`           | Pass                                           |
+| Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
+| Unit tests          | `pnpm test`                   | 48/48 pass                                     |
+| Production build    | `pnpm build`                  | Pass                                           |
+| Browser E2E         | `pnpm e2e`                    | 49 pass, 31 skipped; 40/40 on desktop Chromium |
+| Database/RLS/ledger | `pnpm db:verify`              | 76/76 pass on the local Supabase stack         |
+| Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
+| Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
+| Physical end to end | Browser app + real reader     | Pass on 2.0.2; see Hardware coverage           |
+| Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
 
-The authenticated E2E suite now includes: disposable admin sign-in and TOTP,
-invitation creation, member setup, privacy/photo checks, USB card preparation,
-URL shape/origin checks, activation, and database status `active` with an
-issuance timestamp. It verifies that a normal admin cannot see Users/Audit, cannot
-open their routes, and is not offered staff invitations. A separate disposable
-superadmin verifies the Users page, staff-role selector and full Audit access.
-The suite also uses a fake Web Serial port to read that active card at
-`/admin/kiosk`, confirm check-in and check-out, and assert the attendance state
-and reward in the database. The fake port returns `no_card` on the first read of
-each flow and on the writer's first write, proving the open-ended wait loops
-recover when a card appears. It also asserts that no attendance exists before the
-organizer confirms the kiosk preview. The shared wait helper is unit-tested to
-keep retrying past ten seconds, surface other reader errors immediately, and stop
-when cancelled. The fixture event, member, admin and superadmin are removed
-afterward through the audited erasure path.
+The 31 skips are the signed-in specs on the mobile project, which run on desktop
+only. On mobile, the 9 public specs pass, and one desktop test checks that member
+and admin pages fit a phone-width viewport.
+
+## What the browser suite covers
+
+`tests/e2e/workflows.spec.ts` drives every workflow through the real UI, using
+disposable accounts it creates and removes:
+
+- **Access:** public sign-up refused, API keys refused on privileged functions,
+  staff sign-in with TOTP, returning TOTP, HttpOnly cookies, cross-site session
+  posts refused, normal-admin limits, and the login rate limit.
+- **Invitations and accounts:** revoke, re-issue, expired, and replayed links;
+  setup validation; routing after sign-in and sign-out; session survival across a
+  token refresh; signing out one device; recovery; suspension; user type changes.
+- **Members:** profile, photo and links, privacy settings, and forms keeping their
+  values after a validation error.
+- **Events and attendance:** event validation, no time shift on save, publishing,
+  bonus sessions, the 48-hour PSU ID rule, dismissing a preview, reader errors,
+  duplicate scans, minimum duration, cancelled events, and corrections.
+- **Cards:** pending, active, replacement and revoked cards, and batches of cards.
+- **Rewards:** request, cancel, re-request, approve, fulfil, and reject, with the
+  point balance checked after each step.
+- **Audit and browser:** audit contents, phone-width layout, the CSP, and uncaught
+  page errors.
+
+These specs use a fake Web Serial port, which also returns `no_card` on first reads
+to prove that the wait loops recover when a card appears. `admin-invitation.spec.ts`
+and the public specs cover the rest. The suite skips a hosted Supabase project
+unless `E2E_ALLOW_HOSTED_SUPABASE=yes`, which must never be set for production.
 
 ## Hardware coverage
 
-Verified on the physical unit:
+Verified on the physical unit, firmware 2.0.2:
 
-- PN532 detected over SPI; firmware reports `nfcReady: true`.
-- NTAG215 read and write operations; exact read-back verification.
-- Card write of a valid NDEF URI and independent read-back.
-- Firmware `info` shows `deviceId: esp32-3c1c6cc92df4`, protocol 2 and
-  `transport: usb-serial`.
-- No WiFi or `mode` key is exposed; the old `mode` command returns
-  `unknown_cmd`.
+- The real app through the real reader and card: invitation, member setup, prepare,
+  write, exact read-back, activate, the card URL resolving to the member's profile,
+  check-in, check-out, and 7 points with 7 stars granted. The test replaced only
+  `navigator.serial`, because its picker cannot be automated; the app's own lane
+  code still sent and received every byte on COM3.
+- The serial API directly: `info`, status, read, write, and read-back; malformed
+  JSON, unknown commands, bad URIs, and URIs too long for the card; an overlong line
+  producing one `line_too_long`.
+- With the PN532 powered off, a read returning `nfc_not_ready` in about 1.5 s
+  without hanging.
 
-Not verified by the agent:
+Not verified:
 
-- A real Chrome/Edge Web Serial session against the hosted admin page. The
-  page requires an admin/MFA session and a human serial-port selection.
-- A complete firmware 2.0.1 write/read-back run. The read path is confirmed on
-  hardware after a full power-cycle; write behavior is unchanged from 2.0.0.
-- The final hosted-URI rewrite attempt returned `no_card` because no NTAG was on
-  the antenna at the time; the earlier read/write/read-back test passed.
-- A card written for a live member with a real active `/c/` token.
-- Full TOTP sign-in on the hosted origin after the reset.
-- Vercel deployment completion after the push.
+- The real Chrome/Edge port picker, and a Web Serial session on the hosted app.
+- An empty antenna on real hardware. The card stayed on the reader, so `no_card` is
+  covered only by the fake port.
+- A locked or too-small card, a card removed mid-write, a purchased card batch, and
+  two lanes running together.
+- A production card written for a live member.
+
+## Reset
+
+`pnpm db:reset` was run on the local stack: every count reached zero, all 14
+migrations and the guard triggers stayed in place, no function became callable by
+`anon`, and a superadmin from `pnpm db:bootstrap-admin` then set a password, enrolled
+TOTP, and reached `/admin`. On production it has only been dry-run, read-only.
 
 ## Known gaps
 
+- No authenticated E2E run on the hosted app, which would need test accounts on
+  production.
 - No axe-core/manual screen-reader audit.
 - No load test or backup/restore rehearsal.
-- Legacy server device/kiosk paths remain for historical data but are not part
-  of the supported USB flow.
-- pnpm verify still reports its intentionally unimplemented release gates as
-  blocked; CI runs format/lint/typecheck/unit/build, and the commands above were
-  run separately.
+- Legacy server device/kiosk paths remain for historical data but are not part of
+  the supported USB flow.
+- `pnpm verify` still reports its intentionally unimplemented release gates as
+  blocked. CI runs format, lint, typecheck, unit tests, and build, so the other
+  commands above were run separately.

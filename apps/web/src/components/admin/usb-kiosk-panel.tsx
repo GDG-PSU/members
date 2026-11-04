@@ -6,7 +6,7 @@ import { Alert, Button, Card, CardContent, Field, MemberAvatar, Select } from '@
 import { previewUsbKioskAction, type UsbKioskPreview } from '@/app/(admin)/admin/actions';
 import { formatDateTime } from '@/lib/format';
 import { useUsbLane } from '@/components/admin/use-usb-lane';
-import { isAbortError, waitForCard } from '@/components/admin/wait-for-card';
+import { isAbortError, laneErrorMessage, waitForCard } from '@/components/admin/wait-for-card';
 
 export type KioskSessionOption = {
   id: string;
@@ -14,10 +14,6 @@ export type KioskSessionOption = {
 };
 
 type Message = { kind: 'success' | 'danger'; text: string };
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) {
   const [sessionId, setSessionId] = useState(sessions[0]?.id ?? '');
@@ -94,7 +90,7 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
     } catch (readError) {
       if (controller.signal.aborted || isAbortError(readError)) return;
       setStatus('');
-      setError(errorMessage(readError));
+      setError(laneErrorMessage(readError));
     } finally {
       if (readAbortRef.current === controller) readAbortRef.current = null;
       setBusy(null);
@@ -140,7 +136,7 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
       setIdentityChecked(false);
       setStatus('Ready for the next card.');
     } catch (confirmError) {
-      setMessage({ kind: 'danger', text: errorMessage(confirmError) });
+      setMessage({ kind: 'danger', text: laneErrorMessage(confirmError) });
     } finally {
       setBusy(null);
     }

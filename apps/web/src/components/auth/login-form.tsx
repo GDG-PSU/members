@@ -3,13 +3,14 @@
 import { useActionState } from 'react';
 import { Alert, Button, Field, Input } from '@gdg/ui';
 import { signInAction, type LoginState } from '@/app/(auth)/login/actions';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: LoginState = {};
 
 export function LoginForm() {
   const [state, action, pending] = useActionState(signInAction, initial);
   return (
-    <form action={action} className="space-y-4" noValidate>
+    <form action={action} onReset={keepValuesOnError(state)} className="space-y-4" noValidate>
       <Field label="Email" htmlFor="login-email">
         <Input
           id="login-email"

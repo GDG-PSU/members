@@ -49,7 +49,7 @@ const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
 export const SITE_URL =
   configuredSiteUrl && !configuredSiteUrl.includes('member.gdgpsu.dev')
     ? configuredSiteUrl
-    : 'https://members-bay-eight.vercel.app';
+    : 'https://mempass.vercel.app';
 
 /**
  * Every Supabase call runs on the server, so page scripts never need the session

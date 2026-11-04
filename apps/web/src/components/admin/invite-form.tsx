@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { Alert, Button, Field, Input, Textarea } from '@gdg/ui';
 import { createInvitationAction, type LinkState } from '@/app/(admin)/admin/actions';
 import { LinkPanel } from '@/components/admin/link-panel';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: LinkState = {};
 
@@ -12,7 +13,7 @@ export function InviteForm() {
 
   return (
     <div className="space-y-3">
-      <form action={action} className="space-y-3.5" noValidate>
+      <form action={action} onReset={keepValuesOnError(state)} className="space-y-3.5" noValidate>
         <Field label="Email" htmlFor="invite-email">
           <Input id="invite-email" name="email" type="email" required autoComplete="off" />
         </Field>

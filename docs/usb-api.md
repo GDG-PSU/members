@@ -59,6 +59,9 @@ An error response:
 { "id": 3, "ok": false, "error": "ndef_record_missing" }
 ```
 
+A line longer than the firmware's buffer is discarded whole and answered with a
+single `line_too_long` error, with `id` 0 because the request was never parsed.
+
 ## Security boundary
 
 The USB API trusts physical USB access. It has no login, device secret, or

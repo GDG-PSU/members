@@ -29,7 +29,7 @@ WiFi device API is legacy and must not be revived as part of normal work. See
 | `packages/ui`               | Shared Tailwind v4 design tokens, primitives, and branded components. This is the only UI kit.                        |
 | `packages/contracts`        | Framework-neutral Zod schemas and shared public types. Validate request/data boundaries here when practical.          |
 | `supabase/migrations`       | Schema, RLS, grants, views, storage policy, and transactional domain functions. This is the database source of truth. |
-| `scripts`                   | Verification, legacy migration, seed, admin bootstrap, and TOTP enrollment entry points.                              |
+| `scripts`                   | Verification, legacy migration, seed, reset, admin bootstrap, and TOTP enrollment entry points.                       |
 | `tests/e2e`                 | Playwright public and authenticated browser tests, including disposable fixtures.                                     |
 | `firmware/kiosk-reader`     | PlatformIO ESP32/PN532 USB firmware. No network or secret handling.                                                   |
 | `docs`                      | Architecture, data model, API, USB protocol, operations, deployment, security, hardware, and test records.            |
@@ -261,8 +261,12 @@ migration runners.
   CLI.
 - `pnpm db:seed` — guarded demo/local seed. Check the script's guard before running; never seed
   production.
+- `pnpm db:reset` — permanently empties Auth, every `public` table including the audit log, and the
+  `avatars` bucket; the schema stays. It is a dry run unless given `--confirm <project-ref>`. On
+  production a person runs it, never an agent. See `docs/deployment.md`.
 - `pnpm db:bootstrap-admin` and `pnpm admin:enroll-totp` — operator-only. Do not paste generated
-  links, secrets, or TOTP material into chat or logs.
+  links, secrets, or TOTP material into chat or logs. Bootstrap takes `--role admin|superadmin`
+  (default `admin`) and `--site-url <origin>`, and writes the link only to `--out`.
 - Add new schema as a new numbered migration; never edit an already-applied migration. Use
   `SECURITY DEFINER`, `set search_path = ''`, schema-qualified names, and explicit grants. Since
   0014, new functions and tables in `public` start closed to `anon` and `authenticated`, so grant
@@ -280,6 +284,12 @@ Next. It loads `.env.local` and `apps/web/.env.local`, and the base URL is the f
   fixtures. Run it against a disposable/test database, not production, and verify no leftover E2E
   auth users or rows. It skips on a hosted `*.supabase.co` project unless
   `E2E_ALLOW_HOSTED_SUPABASE=yes`; never set that for production.
+- `workflows.spec.ts` drives every member and organizer workflow through the real UI with a fake
+  Web Serial port. To run it locally, start the stack with
+  `pnpm dlx supabase@2.122.0 start -x realtime,edge-runtime,imgproxy,studio,postgres-meta,logflare,vector,supavisor`,
+  export its URL and keys in the shell (process env wins over `.env.local`), then build and serve the
+  app on the `E2E_BASE_URL` port. `NEXT_PUBLIC_*` values are inlined at build time, so rebuild
+  whenever you switch databases.
 - The invitation regression test intentionally checks `admin.invited` plus absence of
   `auth.password_updated`; do not "simplify" it back to `last_sign_in_at`.
 - For a focused run, pass the spec path and one project:
@@ -294,9 +304,10 @@ pio run -d firmware/kiosk-reader --target upload --upload-port COM3
 pio device monitor -b 115200
 ```
 
-The firmware build is also part of `pnpm verify`. The firmware README currently records a
-read/write/read-back test on 2026-11-04 while `docs/hardware-bringup.md` still says **NOT TESTED
-END-TO-END**; do not claim a hardware pass until those records agree with current physical evidence.
+The firmware build is also part of `pnpm verify`. `docs/hardware-bringup.md` records what has passed
+on physical hardware and what has not; claim only what it lists. Unplug the PN532 before an upload on
+the current reader, or esptool loses the port. Bump `GDG_FIRMWARE_VERSION` in `platformio.ini` with
+any firmware change, since `info` reports it to the admin page.
 
 ### CI
 
@@ -324,6 +335,12 @@ not assume CI covers those.
   for explicit public projections or cross-member operations after authorization.
 - Render with `@gdg/ui` primitives and the existing token layer. Do not introduce a second design
   system or hard-code brand colors. Preserve light/dark behavior and accessible labels.
+- A `useActionState` form that users type into takes `onReset={keepValuesOnError(state)}`. React 19
+  clears a form after every action, including one that failed validation.
+- Server actions for such a form return `{ error }` rather than redirecting with the error, which
+  would drop what was typed.
+- Sign out with `signOut({ scope: 'local' })`. The default is global, which ends every device's
+  session.
 - Use the existing date helpers; do not hand-roll timezone conversion. Event inputs are
   `America/New_York`; storage is UTC.
 - Keep comments focused on non-obvious reasons and invariants, not restatements of the code.
@@ -415,6 +432,13 @@ permission.
   and then raising records nothing.
 - RLS on `member_profiles` hides a suspended member's profile from themselves, so viewer queries must
   not inner-join it to `members`.
+- In `supabase/config.toml`, `[auth.email] enable_signup = false` turns off the email provider rather
+  than just sign-up, and that breaks local sign-in. Local sign-up is closed at `[auth]` instead.
+- A local Docker volume can sit at an older migration, which makes `pnpm db:verify` fail falsely.
+  Run `pnpm dlx supabase@2.122.0 migration up --local` before trusting a failure.
+- A password change ends the user's other sessions, so tests and flows must sign in again afterward.
+- A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
+  "Access is denied" until the tab disconnects.
 
 ## 11. Definition of done
 
@@ -452,55 +476,58 @@ Last updated 2026-11-04.
 ### Where things stand
 
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
-  `https://members-bay-eight.vercel.app` redirects there. `docs/deployment.md`, `.env.production`,
-  and the `SITE_URL` fallback in `lib/env.ts` still name the old host.
+  `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
+  still names the old host.
 - **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0014 applied.
-- **Data:** production was reset on 2026-11-04 and the first superadmin was bootstrapped through a
-  gitignored `.local/` link. At the last check it held staff accounts and no member data.
-- **Latest stage:** the security audit and hardening in pull request #1 are merged and deployed, and
-  CI passed. See `0014_security_hardening.sql` and commit `680503a`.
+- **Data:** at the last read-only check on 2026-11-04, production held staff accounts and audit rows,
+  and no members, events, or cards. The reset and superadmin invite below have not been run yet.
+- **Latest stage:** every workflow was tested on a local Supabase stack and a real reader, and the bugs
+  that found were fixed. Firmware 2.0.2 is flashed to the one reader. See `docs/test-plan.md`.
 
 ### Waiting on a person
 
-These are hosted settings that an agent should not change. Check their current values rather than
-assuming them, and do not record a weak setting here, because this repository is public:
+These change production, or are hosted settings that an agent should not change. Check current values
+rather than assuming them, and do not record a weak setting here, because this repository is public:
 
-- Confirm public signup is off in Supabase Auth, since the app is invitation-only.
-  `/auth/v1/settings` reports it as `disable_signup`.
+- Run `pnpm db:reset`, then bootstrap the first superadmin, as `docs/deployment.md` describes. Replace
+  the Data line above once that is done.
 - Confirm leaked-password protection is on, where the plan offers it.
 - Confirm `NEXT_PUBLIC_SITE_URL` in Vercel matches the production host before writing physical cards,
   because card URLs are built from it.
 
 ### Verification record
 
-Results from the hardening work on 2026-11-04:
+On a local Supabase stack with every migration applied, on 2026-11-04:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes
-  46 unit tests.
-- `pnpm db:verify` passes 76/76 on a throwaway local Postgres set up with Supabase's default ACL. It
-  has not run on a real Supabase stack, and 24 of those checks fail without migration 0014.
-- Public E2E specs pass 8/8 on desktop Chromium.
-- The firmware builds. The NDEF length fix has not been flashed to a reader.
-- On production, `anon` can execute no public function, and `authenticated` can execute only the
-  three RLS helpers. Calls with the publishable key to `set_user_type`, `confirm_scan`, and the
-  public projections are refused.
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 48
+  unit tests.
+- `pnpm db:verify` passes 76/76.
+- `pnpm e2e` passes 49 with 31 skipped: 40/40 on desktop Chromium, and on the mobile project the 9
+  public specs pass while the signed-in specs skip by design.
+- `pnpm db:reset` emptied the stack, kept the schema and privileges, and a bootstrapped superadmin then
+  set a password, enrolled TOTP, and reached `/admin`.
 
-Earlier the same day, before the hardening:
+On the physical ESP32 + PN532 with firmware 2.0.2:
 
-- The full E2E suite passed 19 with 1 intentionally skipped, including invitation, member setup, USB
-  card preparation, and a fake-serial kiosk check-in and check-out. Request logs show it ran against
-  production, which section 7 forbids, so it now skips hosted projects by default.
-- A physical PN532 passed read, write, and read-back on COM3 with firmware 2.0.0. A later rewrite of
-  the hosted URL returned `no_card` because no tag was on the antenna. See the firmware note in
-  section 7 before claiming a hardware pass.
+- The app, through the real reader and card, passed invitation, setup, prepare, write, read back,
+  activate, the card URL resolving, check-in, check-out, and the points grant. Only
+  `navigator.serial` was bridged to COM3, because its picker cannot be automated.
+- 17/17 serial robustness checks pass, and a read with the PN532 off reports `nfc_not_ready` in about
+  1.5 s.
+
+On production, read-only, the same day:
+
+- `anon` can execute no public function, and `authenticated` can execute only the three RLS helpers.
+- `/auth/v1/settings` reports `disable_signup: true`.
+- `pnpm db:reset` was dry-run only.
 
 ### Not verified yet
 
-- The authenticated E2E specs since the hardening, which need a disposable database. That leaves
-  sign-in, TOTP, member setup, cards, the kiosk, HttpOnly cookies, token refresh, and the new rate
-  limits unconfirmed in a browser.
-- A real Chrome or Edge Web Serial session on the hosted app, a hosted `/admin/kiosk` read and
-  confirmation, and a production card written for a live member.
+- These fixes on the deployed app, and sign-in and TOTP on the hosted origin after the reset.
+- The Chrome or Edge port picker, a Web Serial session on the hosted app, a hosted `/admin/kiosk` read
+  and confirmation, and a production card written for a live member.
+- On real hardware: an empty antenna (the fake port covers `no_card`), a locked or too-small card, a
+  card removed mid-write, a purchased card batch, and two lanes.
 
 ### Known issues and open decisions
 

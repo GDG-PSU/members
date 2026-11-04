@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * Grants the `admin` role to an existing (or newly created) Supabase Auth user
- * and generates a one-time recovery link so they can set their own password.
- * No email is sent; the link is written to --out for the operator to deliver.
+ * Grants a staff role to an existing (or newly created) Supabase Auth user and
+ * generates a one-time recovery link so they can set their own password. No email
+ * is sent; the link is written to --out for the operator to deliver.
  *
  *   node scripts/bootstrap-admin.mjs --email you@psu.edu --out .local/admin-link.txt
+ *
+ * Options:
+ *   --role admin|superadmin   Staff role to grant (default: admin)
+ *   --site-url <origin>       Origin for the link (default: NEXT_PUBLIC_SITE_URL)
  *
  * Requires SUPABASE_SECRET_KEY (or legacy service role key) and DATABASE_URL.
  * No password is generated, printed or stored by this script.
@@ -17,11 +21,19 @@ import { Client } from 'pg';
 import { loadEnv } from './lib/env.mjs';
 
 const env = await loadEnv();
-const emailIndex = process.argv.indexOf('--email');
-const email = emailIndex >= 0 ? process.argv[emailIndex + 1]?.trim().toLowerCase() : '';
 
-if (!email || !email.includes('@')) {
-  console.error('Usage: node scripts/bootstrap-admin.mjs --email you@psu.edu');
+function option(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+const email = option('--email')?.trim().toLowerCase() ?? '';
+const role = option('--role') ?? 'admin';
+
+if (!email || !email.includes('@') || !['admin', 'superadmin'].includes(role)) {
+  console.error(
+    'Usage: node scripts/bootstrap-admin.mjs --email you@psu.edu [--role admin|superadmin] [--site-url <origin>] --out <file>',
+  );
   process.exit(1);
 }
 if (!env.DATABASE_URL || !env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -35,7 +47,7 @@ if (!apiKey) {
 }
 
 const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '');
-const siteUrl = env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const siteUrl = option('--site-url') ?? env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 const headers = {
   apikey: apiKey,
@@ -89,7 +101,9 @@ if (!user?.id) throw new Error('Could not determine Auth user id.');
 
 const client = new Client({
   connectionString: env.DATABASE_URL,
-  ssl: env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
+  ssl: /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(env.DATABASE_URL)
+    ? false
+    : { rejectUnauthorized: false },
 });
 await client.connect();
 const { rows: memberRows } = await client.query(
@@ -103,17 +117,25 @@ if (memberRows.length > 0) {
   await client.end();
   process.exit(1);
 }
+await client.query('begin');
 await client.query(
   `insert into public.user_roles (auth_user_id, role, note)
-   values ($1, 'admin', 'bootstrap script')
+   values ($1, $2, 'bootstrap script')
    on conflict (auth_user_id, role) do update set revoked_at = null, revoked_by = null, granted_at = now()`,
-  [user.id],
+  [user.id, role],
+);
+// A user has one staff role, so granting one retires the other.
+await client.query(
+  `update public.user_roles set revoked_at = now()
+   where auth_user_id = $1 and role <> $2 and revoked_at is null`,
+  [user.id, role],
 );
 await client.query(
-  `insert into public.audit_log (actor_auth_id, action, target_type, target_id)
-   values (null, 'admin.bootstrap_granted', 'user', $1)`,
-  [user.id],
+  `insert into public.audit_log (actor_auth_id, action, target_type, target_id, after)
+   values (null, 'admin.bootstrap_granted', 'user', $1, jsonb_build_object('role', $2::text))`,
+  [user.id, role],
 );
+await client.query('commit');
 await client.end();
 
 const recovery = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
@@ -125,7 +147,7 @@ const recovery = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
   }),
 });
 
-console.log(`Granted admin role to ${email}.`);
+console.log(`Granted ${role} role to ${email}.`);
 if (recovery.ok) {
   const body = await recovery.json();
   const properties = body.properties ?? body;
@@ -146,6 +168,7 @@ if (recovery.ok) {
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, `${link}\n`, { mode: 0o600 });
     console.log(`Recovery link written to ${outPath}. Send it privately, then delete the file.`);
+    console.log(`It opens ${new URL(link).origin} and works once, within the OTP window.`);
   } else if (link) {
     console.log('Recovery link generated but not printed. Re-run with --out <path> to save it.');
   } else {
@@ -155,7 +178,7 @@ if (recovery.ok) {
   }
 } else {
   console.log(
-    'Admin role granted, but the recovery link could not be generated. Set a password in Supabase.',
+    'Role granted, but the recovery link could not be generated. Re-run this command to try again.',
   );
 }
 console.log('The user must set a password, then enroll TOTP at /admin-mfa before /admin opens.');

@@ -59,7 +59,7 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   ]);
 
   if (member && member.status !== 'active') {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     return { error: 'This membership is not active. Contact GDG@PSU.' };
   }
   if (member) redirect('/member');

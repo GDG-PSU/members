@@ -39,13 +39,19 @@ void UsbApi::Tick() {
     const char ch = static_cast<char>(Serial.read());
     if (ch == '\r') continue;
     if (ch == '\n') {
-      if (lineLength_ == 0) continue;
-      line_[lineLength_] = '\0';
-      HandleLine(line_);
+      const bool complete = !discardingLine_ && lineLength_ > 0;
+      discardingLine_ = false;
+      if (complete) {
+        line_[lineLength_] = '\0';
+        HandleLine(line_);
+      }
       lineLength_ = 0;
       continue;
     }
+    if (discardingLine_) continue;
     if (lineLength_ >= sizeof(line_) - 1) {
+      // The rest of this line is not a command, so nothing may parse it as one.
+      discardingLine_ = true;
       lineLength_ = 0;
       SendError(0, "line_too_long");
       continue;

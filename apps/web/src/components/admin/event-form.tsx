@@ -1,7 +1,13 @@
-import { Input, Select, Textarea, Field } from '@gdg/ui';
-import { saveEventAction } from '@/app/(admin)/admin/actions';
+'use client';
+
+import { useActionState } from 'react';
+import { Alert, Input, Select, Textarea, Field } from '@gdg/ui';
+import { saveEventAction, type AdminFormState } from '@/app/(admin)/admin/actions';
 import { SubmitButton } from '@/components/admin/ui';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 import { formatDateTimeLocalInput } from '@/lib/format';
+
+const initial: AdminFormState = {};
 
 export interface EventSessionValues {
   id: string;
@@ -134,8 +140,9 @@ function SessionFields({
 export function EventForm({ event, returnTo }: { event?: EventValues; returnTo: string }) {
   const main = event?.sessions.find((session) => session.kind === 'main');
   const bonus = event?.sessions.find((session) => session.kind === 'bonus');
+  const [state, action] = useActionState(saveEventAction, initial);
   return (
-    <form action={saveEventAction} className="space-y-6" noValidate>
+    <form action={action} onReset={keepValuesOnError(state)} className="space-y-6" noValidate>
       <input type="hidden" name="returnTo" value={returnTo} />
       {event?.id ? <input type="hidden" name="eventId" value={event.id} /> : null}
 
@@ -222,6 +229,7 @@ export function EventForm({ event, returnTo }: { event?: EventValues; returnTo: 
       <p className="text-xs leading-relaxed text-muted-foreground">
         Times are America/New_York. Rewards are snapshotted at check-out.
       </p>
+      {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
       <SubmitButton pendingLabel="Saving event…">
         {event?.id ? 'Save changes' : 'Create event'}
       </SubmitButton>

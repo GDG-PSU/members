@@ -12,7 +12,7 @@ Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**
 
 ## Current availability (read first)
 
-This checkout contains the database, public site, auth/invite/setup, member portal, admin portal, USB writer and kiosk UI, and firmware project. The legacy device middleware API remains for historical data only. The software steps below are available today. Steps that depend on physical hardware remain marked **[pending]**. Email is manual: admins generate links in the portal and send them from their own mailbox.
+This checkout contains the database, public site, auth/invite/setup, member portal, admin portal, USB writer and kiosk UI, and firmware project. The legacy device middleware API remains for historical data only. The software steps below are available today. Email is manual: admins generate links in the portal and send them from their own mailbox.
 
 Never award attendance or points "to fix it later" without a reason and an audit record. Never edit ledger rows.
 
@@ -31,15 +31,15 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ## Preflight (day before / morning of)
 
 1. **Event and sessions:** publish the event with exactly one main session; add bonus sessions only if they need their own check-in/out. Confirm windows, minimum duration and reward points.
-2. **USB lane:** connect the reader at `/admin/cards` and confirm `info` reports NFC ready. There is no server registration or lane label. **[pending hardware]**
+2. **USB lane:** connect the reader at `/admin/cards` and confirm `info` reports NFC ready. There is no server registration or lane label.
 3. **Pages:** admin and kiosk pages load with AAL2, server time is sane, and the HTTPS certificate is valid. The reader itself does not use the network.
-4. **Test card:** perform a write test only on a non-production test card. **[pending writer + hardware]**
+4. **Test card:** perform a write test only on a non-production test card.
 5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, and photos load. **[target-project enrollment unverified]**
 6. **Offline plan:** know the support email flow and where the manual attendance log is kept if the API is down. Card reads are never buffered/replayed as verified attendance.
 
 ## USB kiosk operation during an event
 
-1. Connect the reader at `/admin/kiosk` and select the event/session. Confirm the connection status shows the expected firmware and NFC readiness. **[pending hardware]**
+1. Connect the reader at `/admin/kiosk` and select the event/session. Confirm the connection status shows the expected firmware and NFC readiness.
 2. Tap the member's card. The page shows the member name/photo and current attendance state. **Nothing is awarded yet.** If it says **Photo changed in the last 48 hours**, ask for the member's PSU ID.
 3. An organizer compares the person to the photo, and for a recent photo change matches the PSU ID and ticks **I checked this member's PSU ID**. Then press **Confirm check-in**; the server rejects the confirmation if the check is missing. Duplicate reads show a clear "already checked in" state.
 4. At the end, tap the card again; the organizer confirms **Check-out**. The server computes duration. Only at/over the session threshold are points and stars added.
@@ -50,7 +50,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ### Writing or replacing a card
 
 1. Open `/admin/cards`, select the member, and prepare one pending card URL.
-2. Connect the lane, insert a blank/eligible NFC tag, and write the URL. The firmware writes exactly one NDEF HTTPS URL and reads it back. Success requires an exact read-back match; failure yields a clear code. **[pending hardware]**
+2. Connect the lane, insert a blank/eligible NFC tag, and write the URL. The firmware writes exactly one NDEF HTTPS URL and reads it back. Success requires an exact read-back match; failure yields a clear code.
 3. Verify the browser read-back matches the prepared URL, then activate the card. The previous card (if any) is revoked and the member can use the digital ID.
 4. Never write a card for a member whose identity/photo you have not verified. Do not leave a prepared URL active overnight.
 

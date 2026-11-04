@@ -3,11 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, CardContent, Field, Input } from '@gdg/ui';
 import { useUsbLane } from '@/components/admin/use-usb-lane';
-import { isAbortError, waitForCard } from '@/components/admin/wait-for-card';
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { isAbortError, laneErrorMessage, waitForCard } from '@/components/admin/wait-for-card';
 
 export function UsbDevicePanel() {
   const [cardUri, setCardUri] = useState<string | null>(null);
@@ -48,7 +44,7 @@ export function UsbDevicePanel() {
     try {
       await refresh();
     } catch (refreshError) {
-      setError(errorMessage(refreshError));
+      setError(laneErrorMessage(refreshError));
     }
   }
 
@@ -70,7 +66,7 @@ export function UsbDevicePanel() {
       if (controller.signal.aborted || isAbortError(readError)) return;
       setCardUri(null);
       setStatus('');
-      setError(errorMessage(readError));
+      setError(laneErrorMessage(readError));
     } finally {
       if (waitAbortRef.current === controller) waitAbortRef.current = null;
       setBusy(null);
@@ -99,7 +95,7 @@ export function UsbDevicePanel() {
     } catch (writeError) {
       if (controller.signal.aborted || isAbortError(writeError)) return;
       setStatus('');
-      setError(errorMessage(writeError));
+      setError(laneErrorMessage(writeError));
     } finally {
       if (waitAbortRef.current === controller) waitAbortRef.current = null;
       setBusy(null);
@@ -207,7 +203,7 @@ export function UsbDevicePanel() {
                 id="usb-write-uri"
                 value={writeUri}
                 onChange={(event) => setWriteUri(event.target.value)}
-                placeholder="https://members-bay-eight.vercel.app/c/…"
+                placeholder="https://mempass.vercel.app/c/…"
                 disabled={!connected || connecting || busy !== null}
               />
             </Field>

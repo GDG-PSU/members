@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { Alert, Button, Field, Input } from '@gdg/ui';
 import { updatePasswordAction, type PasswordState } from '@/app/(auth)/account/password/actions';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: PasswordState = {};
 
@@ -10,7 +11,7 @@ export function PasswordForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(updatePasswordAction, initial);
 
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} onReset={keepValuesOnError(state)} className="space-y-4">
       <p className="text-sm leading-relaxed text-muted-foreground">
         Signed in as <span className="font-semibold text-foreground">{email}</span>. Choose a new
         password with at least 12 characters, including a letter and a number.

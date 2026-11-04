@@ -1,0 +1,1505 @@
+import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { baseUrl, hasSupabaseAdminCredentials, loadTestEnv, siteOrigin } from './support/env';
+import {
+  createDisposableAdmin,
+  deleteAdminFixture,
+  deleteMemberFixture,
+  serviceClient,
+} from './support/supabase';
+import { totp } from './support/totp';
+
+loadTestEnv();
+
+// sharp is a dependency of the web app, not of the repository root.
+const sharp = createRequire(path.resolve('apps/web/package.json'))('sharp');
+
+const PHOTO = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+const HOUR = 3_600_000;
+
+const stamp = `${Date.now()}-${randomBytes(3).toString('hex')}`;
+const people = {
+  superadmin: { email: `wf-super-${stamp}@example.com`, password: `Wf-Super-${stamp}-1a` },
+  admin: { email: `wf-admin-${stamp}@example.com`, password: `Wf-Admin-${stamp}-2b` },
+  member: { email: `wf-member-${stamp}@example.com`, password: `Wf-Member-${stamp}-3c` },
+  second: { email: `wf-second-${stamp}@example.com`, password: `Wf-Second-${stamp}-4d` },
+};
+
+/** Event times are typed as America/New_York wall-clock values. */
+function newYorkInput(at: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(at));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+}
+
+/** Decodes the Supabase session held in the (possibly chunked) auth cookies. */
+function readSession(cookies: { name: string; value: string }[]) {
+  const chunks = cookies
+    .filter((cookie) => /^sb-.*-auth-token(\.\d+)?$/.test(cookie.name))
+    .sort((a, b) => Number(a.name.split('.')[1] ?? 0) - Number(b.name.split('.')[1] ?? 0));
+  const joined = chunks.map((chunk) => chunk.value).join('');
+  return JSON.parse(Buffer.from(joined.replace(/^base64-/, ''), 'base64url').toString('utf8'));
+}
+
+test.describe('every member and organizer workflow', () => {
+  test.describe.configure({ mode: 'serial', timeout: 120_000 });
+
+  const supabase = () => serviceClient();
+  const browserProblems: string[] = [];
+  const contexts: BrowserContext[] = [];
+  const fixtureAuthIds = new Set<string>();
+
+  let superPage: Page;
+  let adminPage: Page;
+  let memberPage: Page;
+  let memberContext: BrowserContext;
+  let anonPage: Page;
+  let superSecret = '';
+  let memberId = '';
+  let memberAuthId = '';
+  let memberSlug = '';
+  const memberName = 'Workflow Member';
+  let eventId = '';
+  const eventSlug = `wf-event-${stamp}`;
+  let mainSessionId = '';
+  let bonusSessionId = '';
+  let firstCardUrl = '';
+  let activeCardUrl = '';
+  let origin = '';
+
+  function watch(page: Page, label: string): Page {
+    page.on('pageerror', (error) => browserProblems.push(`${label}: ${error.message}`));
+    page.on('console', (message) => {
+      if (/^CSP violation/.test(message.text())) {
+        browserProblems.push(`${label} at ${page.url()}: ${message.text()}`);
+      }
+    });
+    void page.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', (event) => {
+        // Chrome probes a preview of a fake image this way. The setup test uploads
+        // one on purpose, and the block is harmless because no script is involved.
+        if (event.violatedDirective === 'connect-src' && event.blockedURI === 'blob') return;
+        console.error(
+          `CSP violation: ${event.violatedDirective} blocked ${event.blockedURI} from ${event.sourceFile}:${event.lineNumber}:${event.columnNumber}`,
+        );
+      });
+    });
+    // Destructive buttons use window.confirm, which Playwright declines by default.
+    page.on('dialog', (dialog) => void dialog.accept());
+    return page;
+  }
+
+  async function newPage(browser: import('@playwright/test').Browser, label: string) {
+    const context = await browser.newContext({ baseURL: origin });
+    contexts.push(context);
+    return watch(await context.newPage(), label);
+  }
+
+  async function signIn(page: Page, email: string, password: string) {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password').fill(password);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+  }
+
+  async function enrollTotp(page: Page): Promise<string> {
+    await expect(page).toHaveURL(/\/admin-mfa/, { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Set up authenticator' }).click();
+    const code = page.locator('code');
+    await expect(code).toBeVisible();
+    const secret = (await code.textContent())?.trim().toUpperCase() ?? '';
+    await page.getByLabel('Six-digit code').fill(totp(secret));
+    await page.getByRole('button', { name: 'Verify and open admin' }).click();
+    await expect(page).toHaveURL(/\/admin$/, { timeout: 20_000 });
+    return secret;
+  }
+
+  async function invite(page: Page, email: string): Promise<string> {
+    await page.goto('/admin/invitations');
+    await page.locator('#invite-email').fill(email);
+    await page.locator('#invite-paid-since').fill('2026-01-15');
+    await page.getByRole('button', { name: 'Generate invitation link' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Invitation link ready' })).toBeVisible(
+      { timeout: 20_000 },
+    );
+    return page.getByLabel('One-time sign-in link').inputValue();
+  }
+
+  async function fillSetup(page: Page, name: string, password?: string) {
+    await page.getByLabel('Display name').fill(name);
+    if (password) {
+      await page.locator('input[name="password"]').fill(password);
+      await page.locator('input[name="confirmPassword"]').fill(password);
+    }
+    await page.locator('input[name="photoAttestation"]').check();
+    await page.locator('input[name="acceptTerms"]').check();
+  }
+
+  async function balance(id = memberId) {
+    const { data } = await supabase()
+      .from('member_balances')
+      .select('points, stars')
+      .eq('member_id', id)
+      .single();
+    return data as { points: number; stars: number };
+  }
+
+  // Polls because a success message from the previous action can still be on screen.
+  async function expectBalance(points: number, stars: number) {
+    await expect.poll(() => balance()).toEqual({ points, stars });
+  }
+
+  /** A stand-in for the USB lane whose card contents the test controls. */
+  async function installFakeReader(page: Page) {
+    await page.addInitScript(() => {
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      const state = window as unknown as { __cardUri: string | null };
+      state.__cardUri = null;
+      class FakeSerialPort {
+        readable: ReadableStream<Uint8Array>;
+        writable: WritableStream<Uint8Array>;
+        private controller!: ReadableStreamDefaultController<Uint8Array>;
+        constructor() {
+          this.readable = new ReadableStream<Uint8Array>({
+            start: (controller) => {
+              this.controller = controller;
+            },
+          });
+          this.writable = new WritableStream<Uint8Array>({
+            write: (chunk) => {
+              for (const line of decoder.decode(chunk).split('\n')) {
+                if (!line.trim()) continue;
+                const command = JSON.parse(line) as { id: number; cmd: string; uri?: string };
+                let payload: Record<string, unknown>;
+                if (command.cmd === 'info') {
+                  payload = {
+                    id: command.id,
+                    ok: true,
+                    result: {
+                      protocol: 2,
+                      firmware: 'test',
+                      deviceId: 'esp32-test',
+                      nfcReady: true,
+                    },
+                  };
+                } else if (command.cmd === 'nfc.write') {
+                  state.__cardUri = command.uri ?? null;
+                  payload = { id: command.id, ok: true, result: { readBack: true } };
+                } else if (command.cmd === 'nfc.read' && state.__cardUri?.startsWith('error:')) {
+                  payload = { id: command.id, ok: false, error: state.__cardUri.slice(6) };
+                } else if (command.cmd === 'nfc.read' && state.__cardUri) {
+                  payload = { id: command.id, ok: true, result: { uri: state.__cardUri } };
+                } else {
+                  payload = { id: command.id, ok: false, error: 'no_card' };
+                }
+                this.controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
+              }
+            },
+          });
+        }
+        async open() {}
+        async close() {}
+        getInfo() {
+          return { usbVendorId: 0x10c4, usbProductId: 0xea60 };
+        }
+      }
+      const port = new FakeSerialPort();
+      Object.defineProperty(navigator, 'serial', {
+        configurable: true,
+        value: { requestPort: async () => port },
+      });
+    });
+  }
+
+  async function connectLane(page: Page) {
+    await page.getByRole('button', { name: 'Connect lane' }).click();
+    await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
+  }
+
+  async function setCard(page: Page, uri: string) {
+    await page.evaluate((value) => {
+      (window as unknown as { __cardUri: string }).__cardUri = value;
+    }, uri);
+  }
+
+  test.beforeAll(async ({ browser, baseURL }, testInfo) => {
+    test.skip(!hasSupabaseAdminCredentials(), 'Needs a disposable Supabase stack.');
+    test.skip(testInfo.project.name !== 'desktop-chromium', 'The workflow suite runs once.');
+    origin = new URL(baseURL ?? baseUrl()).origin;
+    test.skip(origin !== siteOrigin(), `Links are issued for ${siteOrigin()}.`);
+
+    await supabase().from('rate_limit_counters').delete().neq('bucket', '');
+
+    superPage = await newPage(browser, 'superadmin');
+    adminPage = await newPage(browser, 'admin');
+    memberPage = await newPage(browser, 'member');
+    memberContext = memberPage.context();
+    anonPage = await newPage(browser, 'anonymous');
+    await installFakeReader(adminPage);
+  });
+
+  test.afterAll(async () => {
+    if (!hasSupabaseAdminCredentials() || !origin) return;
+    const client = supabase();
+    for (const context of contexts) await context.close().catch(() => {});
+    for (const email of [people.member.email, people.second.email]) {
+      const { data: rows } = await client
+        .from('member_invitations')
+        .select('auth_user_id')
+        .eq('email', email);
+      for (const row of rows ?? []) {
+        if (row.auth_user_id) fixtureAuthIds.add(row.auth_user_id as string);
+      }
+    }
+    for (const id of fixtureAuthIds) {
+      await deleteMemberFixture(client, id).catch((error) => {
+        console.warn('Could not delete a fixture:', error);
+      });
+    }
+    await client.from('rewards').delete().like('name', `WF ${stamp}%`);
+    await client.from('events').delete().like('slug', `%${stamp}%`);
+    await client
+      .from('member_invitations')
+      .delete()
+      .in('email', [people.member.email, people.second.email]);
+  });
+
+  test('public signup is refused by the auth API', async ({ request }) => {
+    const response = await request.post(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/signup`, {
+      headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '' },
+      data: { email: `wf-stranger-${stamp}@example.com`, password: 'Stranger-Password-1' },
+    });
+    expect(response.ok()).toBe(false);
+    expect(JSON.stringify(await response.json())).toMatch(/signup/i);
+  });
+
+  test('the public key cannot reach privileged functions or projections', async ({ request }) => {
+    const headers = { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '' };
+    const api = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const rpc = await request.post(`${api}/rest/v1/rpc/set_user_type`, {
+      headers,
+      data: {
+        p_auth_user_id: '00000000-0000-0000-0000-000000000000',
+        p_role: 'superadmin',
+        p_actor: '00000000-0000-0000-0000-000000000000',
+      },
+    });
+    expect([401, 403]).toContain(rpc.status());
+    const view = await request.get(`${api}/rest/v1/public_profiles?select=email`, { headers });
+    expect([401, 403]).toContain(view.status());
+  });
+
+  test('staff sign in, get a clear error on bad credentials, and enroll TOTP', async () => {
+    const client = supabase();
+    const superadmin = await createDisposableAdmin(client, {
+      ...people.superadmin,
+      role: 'superadmin',
+    });
+    const admin = await createDisposableAdmin(client, people.admin);
+    fixtureAuthIds.add(superadmin.user.id);
+    fixtureAuthIds.add(admin.user.id);
+
+    await signIn(superPage, people.superadmin.email, 'not-the-right-password-1');
+    await expect(superPage.getByText('Email or password is incorrect.')).toBeVisible();
+    await expect(superPage.getByLabel('Email')).toHaveValue(people.superadmin.email);
+
+    await signIn(superPage, people.superadmin.email, people.superadmin.password);
+    await expect(superPage).toHaveURL(/\/admin-mfa/, { timeout: 20_000 });
+    await superPage.goto('/admin');
+    await expect(superPage).toHaveURL(/\/admin-mfa/);
+
+    await superPage.getByRole('button', { name: 'Set up authenticator' }).click();
+    const code = superPage.locator('code');
+    await expect(code).toBeVisible();
+    superSecret = (await code.textContent())?.trim().toUpperCase() ?? '';
+    await superPage.getByLabel('Six-digit code').fill('000000');
+    await superPage.getByRole('button', { name: 'Verify and open admin' }).click();
+    await expect(superPage.getByText('That code did not work')).toBeVisible();
+    await superPage.getByLabel('Six-digit code').fill(totp(superSecret));
+    await superPage.getByRole('button', { name: 'Verify and open admin' }).click();
+    await expect(superPage).toHaveURL(/\/admin$/, { timeout: 20_000 });
+
+    await signIn(adminPage, people.admin.email, people.admin.password);
+    await enrollTotp(adminPage);
+  });
+
+  test('session cookies are HttpOnly and SameSite=Lax', async () => {
+    const cookies = await superPage.context().cookies();
+    const auth = cookies.filter((cookie) => cookie.name.startsWith('sb-'));
+    expect(auth.length).toBeGreaterThan(0);
+    for (const cookie of auth) {
+      expect(cookie.httpOnly, cookie.name).toBe(true);
+      expect(cookie.sameSite, cookie.name).toBe('Lax');
+    }
+  });
+
+  test('a cross-site post cannot set a session', async ({ request }) => {
+    const response = await request.post('/api/auth/session', {
+      headers: { origin: 'https://attacker.example' },
+      data: { accessToken: 'a'.repeat(30), refreshToken: 'b'.repeat(30), next: '//evil.example' },
+    });
+    expect(response.status()).toBe(403);
+  });
+
+  test('normal admins cannot open superadmin pages', async () => {
+    await adminPage.goto('/admin/audit');
+    await expect(adminPage).toHaveURL(/\/admin\?notice=superadmin-required/);
+    await adminPage.goto('/admin/users');
+    await expect(adminPage.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
+  });
+
+  test('an invitation can be revoked and re-issued, and only its creator sees it', async () => {
+    const firstLink = await invite(adminPage, people.member.email);
+    expect(new URL(firstLink).origin).toBe(origin);
+
+    await adminPage.goto('/admin/invitations');
+    await adminPage.locator('#invite-email').fill(people.member.email);
+    await adminPage.locator('#invite-paid-since').fill('2026-01-15');
+    await adminPage.getByRole('button', { name: 'Generate invitation link' }).click();
+    await expect(adminPage.getByText('A pending invitation already exists')).toBeVisible();
+
+    await superPage.goto('/admin/users');
+    await expect(superPage.getByRole('row').filter({ hasText: people.member.email })).toBeVisible();
+    await invite(superPage, people.second.email);
+    await adminPage.goto('/admin/invitations');
+    await expect(adminPage.getByText(people.second.email)).toHaveCount(0);
+
+    const row = adminPage.getByRole('row').filter({ hasText: people.member.email });
+    await row.getByRole('button', { name: 'Revoke' }).click();
+    await expect(adminPage.getByText('Invitation revoked.')).toBeVisible({ timeout: 15_000 });
+
+    const secondLink = await invite(adminPage, people.member.email);
+    await memberPage.goto(secondLink);
+    await expect(memberPage).toHaveURL(/\/invite\/accept$/, { timeout: 30_000 });
+    // Two invitation rows exist for this email now; the live one must still win.
+    await expect(memberPage.getByRole('heading', { name: 'Make it yours' })).toBeVisible();
+  });
+
+  test('member setup validates its input and keeps what was typed', async () => {
+    const file = memberPage.locator('input[type="file"]');
+
+    await file.setInputFiles({
+      name: 'huge.jpg',
+      mimeType: 'image/jpeg',
+      buffer: randomBytes(2_200_000),
+    });
+    await expect(memberPage.getByText('Images must be 2 MB or smaller.')).toBeVisible();
+
+    await file.setInputFiles({
+      name: 'avatar.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"/>'),
+    });
+    await fillSetup(memberPage, memberName, people.member.password);
+    await memberPage.getByRole('button', { name: 'Create my profile' }).click();
+    await expect(memberPage.getByText('Use a JPEG, PNG or WebP image.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(memberPage.getByLabel('Display name')).toHaveValue(memberName);
+
+    await file.setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: PHOTO });
+    await memberPage.locator('input[name="password"]').fill('onlylettersnodigits');
+    await memberPage.locator('input[name="confirmPassword"]').fill('onlylettersnodigits');
+    await memberPage.locator('input[name="photoAttestation"]').check();
+    await memberPage.locator('input[name="acceptTerms"]').check();
+    await memberPage.getByRole('button', { name: 'Create my profile' }).click();
+    await expect(memberPage.getByText('Include at least one letter and one number')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await file.setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: PHOTO });
+    await fillSetup(memberPage, memberName, people.member.password);
+    await memberPage.getByRole('button', { name: 'Create my profile' }).click();
+    await expect(memberPage).toHaveURL(/\/member\?welcome=1/, { timeout: 30_000 });
+    await expect(memberPage.getByRole('heading', { name: memberName })).toBeVisible();
+
+    const client = supabase();
+    const { data: invitations } = await client
+      .from('member_invitations')
+      .select('status, auth_user_id')
+      .eq('email', people.member.email)
+      .eq('status', 'accepted');
+    expect(invitations).toHaveLength(1);
+    memberAuthId = invitations?.[0]?.auth_user_id as string;
+    fixtureAuthIds.add(memberAuthId);
+
+    const { data: member } = await client
+      .from('members')
+      .select('id, status, member_since, member_profiles(profile_slug)')
+      .eq('auth_user_id', memberAuthId)
+      .single();
+    memberId = member?.id as string;
+    const profile = member?.member_profiles as unknown as { profile_slug: string };
+    memberSlug = profile.profile_slug;
+    expect(member?.member_since).toBe('2026-01-15');
+
+    // Rejected attempts must not leave photos behind.
+    const { data: files } = await client.storage.from('avatars').list(`member/${memberAuthId}`);
+    expect(files).toHaveLength(1);
+  });
+
+  test('a used invitation link cannot be replayed, and an existing member cannot be re-invited', async ({
+    browser,
+  }) => {
+    const { data } = await supabase()
+      .from('member_invitations')
+      .select('status')
+      .eq('email', people.member.email)
+      .eq('status', 'pending');
+    expect(data).toHaveLength(0);
+
+    await adminPage.goto('/admin/invitations');
+    await adminPage.locator('#invite-email').fill(people.member.email);
+    await adminPage.locator('#invite-paid-since').fill('2026-01-15');
+    await adminPage.getByRole('button', { name: 'Generate invitation link' }).click();
+    await expect(adminPage.getByText('That email already belongs to a member.')).toBeVisible();
+
+    const stranger = await newPage(browser, 'replay');
+    await stranger.goto(
+      '/auth/confirm?token_hash=not-a-real-token&type=invite&next=//evil.example',
+    );
+    await expect(stranger).toHaveURL(/\/login\?notice=invalid-link/);
+    await expect(stranger.getByText('This link is invalid or already used.')).toBeVisible();
+  });
+
+  test('an expired invitation is explained and can be replaced', async ({ browser }) => {
+    const client = supabase();
+    const { data: pending } = await client
+      .from('member_invitations')
+      .select('id, auth_user_id')
+      .eq('email', people.second.email)
+      .eq('status', 'pending')
+      .single();
+    fixtureAuthIds.add(pending?.auth_user_id as string);
+    await client
+      .from('member_invitations')
+      .update({ expires_at: new Date(Date.now() - HOUR).toISOString() })
+      .eq('id', pending?.id);
+
+    const freshLink = await invite(superPage, people.second.email);
+    const { data: rows } = await client
+      .from('member_invitations')
+      .select('status')
+      .eq('email', people.second.email)
+      .order('created_at');
+    expect(rows?.map((row) => row.status)).toEqual(['expired', 'pending']);
+
+    const secondPage = await newPage(browser, 'second member');
+    await secondPage.goto(freshLink);
+    await expect(secondPage).toHaveURL(/\/invite\/accept$/, { timeout: 30_000 });
+    await secondPage.locator('input[type="file"]').setInputFiles({
+      name: 'avatar.png',
+      mimeType: 'image/png',
+      buffer: PHOTO,
+    });
+    await fillSetup(secondPage, 'Second Member', people.second.password);
+    await secondPage.getByRole('button', { name: 'Create my profile' }).click();
+    await expect(secondPage).toHaveURL(/\/member\?welcome=1/, { timeout: 30_000 });
+    await secondPage.context().close();
+  });
+
+  test('members sign out and back in, and each user type lands on its own home', async () => {
+    await memberPage.goto('/member');
+    await memberPage
+      .getByRole('button', { name: /sign out/i })
+      .first()
+      .click();
+    await expect(memberPage).toHaveURL(/\/login\?notice=signed-out/, { timeout: 15_000 });
+    await memberPage.goto('/member');
+    await expect(memberPage).toHaveURL(/\/login\?next=%2Fmember/);
+
+    await signIn(memberPage, people.member.email, people.member.password);
+    await expect(memberPage).toHaveURL(/\/member$/, { timeout: 20_000 });
+    await memberPage.goto('/login');
+    await expect(memberPage).toHaveURL(/\/member$/);
+    await memberPage.goto('/forgot-password');
+    await expect(memberPage).toHaveURL(/\/member$/);
+    await memberPage.goto('/admin');
+    await expect(memberPage).toHaveURL(/notice=admin-required/);
+
+    // Staff must not be stranded on the member setup screen.
+    await superPage.goto('/member');
+    await expect(superPage).toHaveURL(/\/admin$/);
+    await superPage.goto('/login');
+    await expect(superPage).toHaveURL(/\/admin$/);
+  });
+
+  test('a token refreshed while browsing a public page survives', async () => {
+    const before = await memberContext.cookies();
+    const session = readSession(before);
+    const refreshToken = session.refresh_token as string;
+
+    const expired = Buffer.from(JSON.stringify({ ...session, expires_at: 1 }), 'utf8').toString(
+      'base64url',
+    );
+    const value = `base64-${expired}`;
+    const template = before.find((cookie) => /^sb-.*-auth-token/.test(cookie.name));
+    if (!template) throw new Error('No session cookie.');
+    const base = template.name.replace(/\.\d+$/, '');
+    await memberContext.clearCookies({ name: new RegExp(`^${base}`) });
+    const chunks = value.match(/.{1,3180}/g) ?? [];
+    await memberContext.addCookies(
+      chunks.map((chunk, index) => ({
+        ...template,
+        name: chunks.length === 1 ? base : `${base}.${index}`,
+        value: chunk,
+      })),
+    );
+
+    await memberPage.goto('/events');
+    const after = readSession(await memberContext.cookies());
+    expect(after.refresh_token, 'the proxy must persist the rotated token').not.toBe(refreshToken);
+    expect(after.expires_at).toBeGreaterThan(Date.now() / 1000);
+
+    await memberPage.goto('/member');
+    await expect(memberPage).toHaveURL(/\/member$/);
+    await expect(memberPage.getByRole('heading', { name: memberName })).toBeVisible();
+  });
+
+  test('profiles accept real photos up to 2 MB and refuse unsafe links', async () => {
+    const client = supabase();
+    const { data: before } = await client
+      .from('member_profiles')
+      .select('photo_path')
+      .eq('member_id', memberId)
+      .single();
+
+    await memberPage.goto('/member/profile');
+    await memberPage.getByRole('button', { name: 'Add link' }).click();
+    await memberPage.locator('#link-label-0').fill('Plain');
+    await memberPage.locator('#link-url-0').fill('http://insecure.example');
+    await memberPage.getByRole('button', { name: 'Save profile' }).click();
+    await expect(memberPage.getByText('Only https:// links are allowed')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    let size = 700;
+    let photo: Buffer = Buffer.alloc(0);
+    while (photo.length < 1_200_000 && size < 2000) {
+      photo = await sharp(randomBytes(size * size * 3), {
+        raw: { width: size, height: size, channels: 3 },
+      })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      size += 100;
+    }
+    expect(photo.length).toBeGreaterThan(1_000_000);
+    expect(photo.length).toBeLessThan(2_097_152);
+
+    await memberPage.locator('#profile-name').fill(`${memberName} Two`);
+    await memberPage.locator('#profile-about').fill('Testing every workflow.');
+    await memberPage.locator('#link-label-0').fill('Site');
+    await memberPage.locator('#link-url-0').fill('https://example.com/me');
+    await memberPage.locator('#profile-photo').setInputFiles({
+      name: 'large.jpg',
+      mimeType: 'image/jpeg',
+      buffer: photo,
+    });
+    await memberPage.getByRole('button', { name: 'Save profile' }).click();
+    await expect(memberPage.getByText('Profile saved.')).toBeVisible({ timeout: 20_000 });
+
+    const { data: after } = await client
+      .from('member_profiles')
+      .select('photo_path, display_name, about, links')
+      .eq('member_id', memberId)
+      .single();
+    expect(after?.photo_path).not.toBe(before?.photo_path);
+    expect(after?.display_name).toBe(`${memberName} Two`);
+    const { data: files } = await client.storage.from('avatars').list(`member/${memberAuthId}`);
+    expect(files, 'the previous photo must be removed').toHaveLength(1);
+
+    const { data: audit } = await client
+      .from('audit_log')
+      .select('before, after')
+      .eq('action', 'member.profile_updated')
+      .eq('target_id', memberId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    expect(audit?.before).toBeNull();
+    expect(audit?.after).toEqual({ changed: ['display_name', 'about', 'links', 'photo'] });
+
+    await memberPage.locator('#profile-name').fill(memberName);
+    await memberPage.getByRole('button', { name: 'Save profile' }).click();
+    await expect(memberPage.getByText('Profile saved.')).toBeVisible({ timeout: 20_000 });
+  });
+
+  test('privacy settings control the public profile, photo and leaderboard', async () => {
+    const photoUrl = `/api/profile-photo/${memberSlug}`;
+    await anonPage.goto(`/m/${memberSlug}`);
+    await expect(anonPage.getByRole('heading', { name: memberName })).toBeVisible();
+    await expect(anonPage.getByText(people.member.email)).toBeVisible();
+    await expect(anonPage.getByRole('link', { name: 'Site' })).toHaveAttribute(
+      'href',
+      'https://example.com/me',
+    );
+    expect((await anonPage.request.get(photoUrl)).status()).toBe(200);
+
+    await memberPage.goto('/member/privacy');
+    await memberPage.getByRole('switch', { name: 'Email address' }).click();
+    await memberPage.getByRole('switch', { name: 'Profile photo' }).click();
+    await memberPage.getByRole('switch', { name: 'Short bio' }).click();
+    await memberPage.getByRole('button', { name: 'Save privacy settings' }).click();
+    await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
+
+    await anonPage.goto(`/m/${memberSlug}`);
+    await expect(anonPage.getByRole('heading', { name: memberName })).toBeVisible();
+    await expect(anonPage.getByText(people.member.email)).toHaveCount(0);
+    await expect(anonPage.getByText('Testing every workflow.')).toHaveCount(0);
+    expect((await anonPage.request.get(photoUrl)).status()).toBe(404);
+    expect((await memberPage.request.get(photoUrl)).status()).toBe(200);
+
+    await memberPage.reload();
+    await memberPage.getByRole('switch', { name: 'Public profile' }).click();
+    await memberPage.getByRole('button', { name: 'Save privacy settings' }).click();
+    await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
+    await anonPage.goto(`/m/${memberSlug}`);
+    await expect(anonPage.getByRole('heading', { name: 'This profile is private' })).toBeVisible();
+    await expect(anonPage.getByText(memberName)).toHaveCount(0);
+
+    await memberPage.reload();
+    await memberPage.getByRole('switch', { name: 'Public profile' }).click();
+    await memberPage.getByRole('switch', { name: 'Email address' }).click();
+    await memberPage.getByRole('switch', { name: 'Profile photo' }).click();
+    await memberPage.getByRole('switch', { name: 'Short bio' }).click();
+    await memberPage.getByRole('button', { name: 'Save privacy settings' }).click();
+    await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('events are created, validated, published and edited without shifting times', async () => {
+    const now = Date.now();
+    await adminPage.goto('/admin/events');
+    const fillEvent = async (name: string, slug: string) => {
+      await adminPage.locator('#event-name').fill(name);
+      await adminPage.locator('#event-slug').fill(slug);
+      await adminPage.locator('#event-summary').fill('A workflow test event.');
+      await adminPage.locator('#event-location').fill('Westgate 101');
+      await adminPage.locator('#event-starts').fill(newYorkInput(now - HOUR));
+      await adminPage.locator('#event-ends').fill(newYorkInput(now + 3 * HOUR));
+      await adminPage.locator('#mainName').fill('Main hall');
+      await adminPage.locator('#mainMinDuration').fill('0');
+      await adminPage.locator('#mainReward').fill('20');
+      await adminPage.locator('#mainStartsAt').fill(newYorkInput(now - HOUR));
+      await adminPage.locator('#mainEndsAt').fill(newYorkInput(now + 3 * HOUR));
+      await adminPage.locator('#mainCheckInOpensAt').fill(newYorkInput(now - HOUR));
+      await adminPage.locator('#mainCheckInClosesAt').fill(newYorkInput(now + 2 * HOUR));
+      await adminPage.locator('#mainCheckOutOpensAt').fill(newYorkInput(now - HOUR));
+      await adminPage.locator('#mainCheckOutClosesAt').fill(newYorkInput(now + 3 * HOUR));
+    };
+
+    await fillEvent('Workflow Event', 'Bad Slug!');
+    await adminPage.getByRole('button', { name: 'Create event' }).click();
+    await expect(adminPage.getByText('Use lowercase words separated by dashes')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // A validation error must not throw away what was typed.
+    await expect(adminPage.locator('#event-name')).toHaveValue('Workflow Event');
+    await expect(adminPage.locator('#mainCheckOutClosesAt')).toHaveValue(
+      newYorkInput(now + 3 * HOUR),
+    );
+
+    await adminPage.locator('#event-slug').fill(eventSlug);
+    await adminPage.getByRole('button', { name: 'Create event' }).click();
+    await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
+    // A saved event must not leave its values behind in the "new event" form.
+    await expect(adminPage.locator('#event-name')).toHaveValue('');
+    await expect(adminPage.locator('#mainName')).toHaveValue('');
+
+    await fillEvent('Duplicate Slug Event', eventSlug);
+    await adminPage.getByRole('button', { name: 'Create event' }).click();
+    await expect(adminPage.getByText(/already (used|in use)/i)).toBeVisible({ timeout: 15_000 });
+    await expect(adminPage.getByText(/duplicate key|violates|constraint/i)).toHaveCount(0);
+    await expect(adminPage.locator('#event-name')).toHaveValue('Duplicate Slug Event');
+
+    const client = supabase();
+    const { data: event } = await client
+      .from('events')
+      .select('id, starts_at, ends_at, status, event_sessions(id, kind, check_in_opens_at)')
+      .eq('slug', eventSlug)
+      .single();
+    eventId = event?.id as string;
+    expect(event?.status).toBe('draft');
+    const sessions = event?.event_sessions as unknown as {
+      id: string;
+      kind: string;
+      check_in_opens_at: string;
+    }[];
+    mainSessionId = sessions.find((session) => session.kind === 'main')?.id as string;
+
+    // Drafts stay private.
+    await anonPage.goto(`/events/${eventSlug}`);
+    await expect(anonPage.getByRole('heading', { name: 'Workflow Event' })).toHaveCount(0);
+
+    // Saving without touching anything must not move any time.
+    await adminPage.goto(`/admin/events/${eventId}`);
+    await adminPage.getByRole('button', { name: 'Save changes' }).click();
+    await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
+    const { data: resaved } = await client
+      .from('events')
+      .select('starts_at, ends_at, event_sessions(check_in_opens_at)')
+      .eq('id', eventId)
+      .single();
+    expect(new Date(resaved?.starts_at).getTime()).toBe(new Date(event?.starts_at).getTime());
+    expect(new Date(resaved?.ends_at).getTime()).toBe(new Date(event?.ends_at).getTime());
+    const resavedSessions = resaved?.event_sessions as unknown as { check_in_opens_at: string }[];
+    expect(new Date(resavedSessions[0]?.check_in_opens_at).getTime()).toBe(
+      new Date(sessions[0]?.check_in_opens_at ?? 0).getTime(),
+    );
+
+    await adminPage.getByRole('button', { name: 'Mark published' }).click();
+    await expect(adminPage.getByText('Event marked published.')).toBeVisible({ timeout: 15_000 });
+    await anonPage.goto('/events');
+    await expect(anonPage.getByText('Workflow Event')).toBeVisible();
+    await anonPage.goto(`/events/${eventSlug}`);
+    await expect(anonPage.getByRole('heading', { name: 'Workflow Event' })).toBeVisible();
+    const api = await anonPage.request.get('/api/public/events');
+    expect(JSON.stringify(await api.json())).toContain(eventSlug);
+
+    // A bonus session is added by editing the event.
+    await adminPage.goto(`/admin/events/${eventId}`);
+    await adminPage.locator('#bonusName').fill('Bonus lab');
+    await adminPage.locator('#bonusMinDuration').fill('30');
+    await adminPage.locator('#bonusReward').fill('15');
+    await adminPage.locator('#bonusStartsAt').fill(newYorkInput(now - HOUR));
+    await adminPage.locator('#bonusEndsAt').fill(newYorkInput(now + 3 * HOUR));
+    await adminPage.locator('#bonusCheckInOpensAt').fill(newYorkInput(now - HOUR));
+    await adminPage.locator('#bonusCheckInClosesAt').fill(newYorkInput(now + 2 * HOUR));
+    await adminPage.locator('#bonusCheckOutOpensAt').fill(newYorkInput(now - HOUR));
+    await adminPage.locator('#bonusCheckOutClosesAt').fill(newYorkInput(now + 3 * HOUR));
+    await adminPage.getByRole('button', { name: 'Save changes' }).click();
+    await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
+    const { data: bonus } = await client
+      .from('event_sessions')
+      .select('id, minimum_duration_minutes, reward_points')
+      .eq('event_id', eventId)
+      .eq('kind', 'bonus')
+      .single();
+    expect(bonus?.reward_points).toBe(15);
+    bonusSessionId = bonus?.id as string;
+  });
+
+  test('cards go pending, active and replaced, and several can be written in a row', async () => {
+    const lookup = async (url: string) => {
+      await anonPage.goto(new URL(url).pathname);
+      return new URL(anonPage.url()).pathname;
+    };
+
+    await adminPage.goto('/admin/cards');
+    await adminPage.locator('#usb-member').selectOption(memberId);
+    await adminPage.getByRole('button', { name: 'Prepare card' }).click();
+    await expect(adminPage.getByText(`Pending card for ${memberName}`)).toBeVisible({
+      timeout: 20_000,
+    });
+    firstCardUrl = await adminPage.getByLabel('Card URL').inputValue();
+    expect(new URL(firstCardUrl).origin).toBe(origin);
+    expect(await lookup(firstCardUrl)).toBe('/card-unavailable');
+
+    await connectLane(adminPage);
+    await adminPage.getByLabel('NDEF URI').fill(firstCardUrl);
+    await adminPage.getByRole('button', { name: 'Write and verify' }).click();
+    await expect(adminPage.getByText('Write completed and read back.')).toBeVisible({
+      timeout: 10_000,
+    });
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(adminPage.locator('p.break-all')).toHaveText(firstCardUrl, { timeout: 10_000 });
+
+    await adminPage.getByText('I verified the URL was written').click();
+    await adminPage.getByRole('button', { name: 'Activate written card' }).click();
+    await expect(adminPage.getByRole('button', { name: 'Card activated' })).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await lookup(firstCardUrl)).toBe(`/m/${memberSlug}`);
+
+    await memberPage.goto('/member');
+    await expect(memberPage.getByText('Tap at any kiosk.')).toBeVisible();
+
+    // Preparing a replacement must not break the working card, and activating it
+    // must work without reloading the page: organizers write cards in batches.
+    await adminPage.locator('#usb-member').selectOption(memberId);
+    await adminPage.getByRole('button', { name: 'Prepare card' }).click();
+    await expect(adminPage.getByLabel('Card URL')).not.toHaveValue(firstCardUrl, {
+      timeout: 20_000,
+    });
+    const replacementUrl = await adminPage.getByLabel('Card URL').inputValue();
+    expect(await lookup(firstCardUrl)).toBe(`/m/${memberSlug}`);
+    expect(await lookup(replacementUrl)).toBe('/card-unavailable');
+
+    await adminPage.getByText('I verified the URL was written').click();
+    await adminPage.getByRole('button', { name: 'Activate written card' }).click();
+    await expect(adminPage.getByRole('button', { name: 'Card activated' })).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await lookup(firstCardUrl)).toBe('/card-unavailable');
+    expect(await lookup(replacementUrl)).toBe(`/m/${memberSlug}`);
+    activeCardUrl = replacementUrl;
+  });
+
+  test('the kiosk runs check-in and check-out and enforces the PSU ID rule', async () => {
+    const client = supabase();
+    await adminPage.goto('/admin/kiosk');
+    await adminPage.locator('#kiosk-session').selectOption(mainSessionId);
+    await connectLane(adminPage);
+
+    const readCard = async () => {
+      await adminPage.getByRole('button', { name: 'Read card' }).click();
+      await expect(adminPage.getByRole('heading', { name: memberName })).toBeVisible({
+        timeout: 20_000,
+      });
+    };
+
+    // Reader problems are explained in words, and do not stop the next read.
+    await setCard(adminPage, 'error:nfc_not_ready');
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(adminPage.getByText('The NFC module is not responding.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await setCard(adminPage, 'error:ndef_record_missing');
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(adminPage.getByText('This card has no readable URL on it.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // A card that is not ours is refused with a clear message.
+    await setCard(adminPage, 'https://example.com/not-a-card');
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(
+      adminPage.getByText('That tag does not contain a valid GDG card URL.'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // A replaced card is refused too.
+    await setCard(adminPage, firstCardUrl);
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(adminPage.getByText('That card is not active.')).toBeVisible({ timeout: 15_000 });
+
+    // A read alone records nothing, and a dismissed scan stays that way.
+    await setCard(adminPage, activeCardUrl);
+    await readCard();
+    await adminPage.getByRole('button', { name: 'Dismiss scan' }).click();
+    await expect(adminPage.getByText('Scan dismissed. Nothing was recorded.')).toBeVisible({
+      timeout: 15_000,
+    });
+    const { data: none } = await client
+      .from('attendance_records')
+      .select('id')
+      .eq('member_id', memberId);
+    expect(none).toHaveLength(0);
+
+    // The photo is new, so the server refuses confirmation without an ID check.
+    await readCard();
+    await expect(adminPage.getByRole('button', { name: 'PSU ID required' })).toBeDisabled();
+    const { data: scan } = await client
+      .from('device_scans')
+      .select('id')
+      .eq('member_id', memberId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    const skipped = await adminPage.request.post('/api/admin/kiosk/confirm', {
+      headers: { origin },
+      data: { scanId: scan?.id, action: 'check_in' },
+    });
+    expect(skipped.status()).toBe(400);
+    expect((await skipped.json()).error.message).toContain('PSU ID');
+
+    await adminPage.getByLabel("I checked this member's PSU ID").check();
+    await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
+    await expect(adminPage.getByText(`${memberName} checked in.`)).toBeVisible({ timeout: 20_000 });
+
+    const { data: checkedIn } = await client
+      .from('attendance_records')
+      .select('state')
+      .eq('member_id', memberId)
+      .eq('session_id', mainSessionId)
+      .single();
+    expect(checkedIn?.state).toBe('checked_in');
+    await expect.poll(async () => (await balance()).points).toBe(0);
+
+    // An older photo needs no ID check.
+    await client
+      .from('member_profiles')
+      .update({ photo_changed_at: new Date(Date.now() - 72 * HOUR).toISOString() })
+      .eq('member_id', memberId);
+
+    await readCard();
+    await expect(adminPage.getByText('Photo changed in the last 48 hours')).toHaveCount(0);
+    await adminPage.getByRole('button', { name: 'Confirm check-out' }).click();
+    await expect(adminPage.getByText(`${memberName} checked out.`)).toBeVisible({
+      timeout: 20_000,
+    });
+    await expectBalance(20, 20);
+
+    // A finished attendance cannot be repeated.
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(adminPage.getByText('already has a completed attendance record')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // A short stay in a session with a minimum earns nothing.
+    await adminPage.locator('#kiosk-session').selectOption(bonusSessionId);
+    await readCard();
+    await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
+    await expect(adminPage.getByText(`${memberName} checked in.`)).toBeVisible({ timeout: 20_000 });
+    await readCard();
+    await adminPage.getByRole('button', { name: 'Confirm check-out' }).click();
+    await expect(adminPage.getByText(`${memberName} checked out.`)).toBeVisible({
+      timeout: 20_000,
+    });
+    await expectBalance(20, 20);
+
+    await memberPage.goto('/member/activity');
+    await expect(memberPage.getByText('Workflow Event').first()).toBeVisible();
+    await expect(memberPage.getByText('+20 pts').first()).toBeVisible();
+
+    await anonPage.goto('/leaderboard');
+    await expect(anonPage.getByText(memberName).first()).toBeVisible();
+
+    // The event page lists both attendance rows for organizers.
+    await adminPage.goto(`/admin/events/${eventId}`);
+    await expect(adminPage.getByRole('row').filter({ hasText: memberName })).toHaveCount(2);
+  });
+
+  test('a session outside its window and a cancelled event are refused', async () => {
+    const client = supabase();
+    await client
+      .from('event_sessions')
+      .update({ check_in_opens_at: new Date(Date.now() + 5 * HOUR).toISOString() })
+      .eq('id', bonusSessionId);
+    await client.from('attendance_records').select('id').eq('session_id', bonusSessionId);
+
+    await adminPage.getByRole('button', { name: 'Mark cancelled' }).click();
+    await expect(adminPage.getByText('Event marked cancelled.')).toBeVisible({ timeout: 15_000 });
+    await anonPage.goto(`/events/${eventSlug}`);
+    await expect(anonPage.getByRole('heading', { name: 'Workflow Event' })).toHaveCount(0);
+    await adminPage.goto('/admin/kiosk');
+    await expect(adminPage.locator(`#kiosk-session option[value="${mainSessionId}"]`)).toHaveCount(
+      0,
+    );
+
+    await adminPage.goto(`/admin/events/${eventId}`);
+    await adminPage.getByRole('button', { name: 'Mark published' }).click();
+    await expect(adminPage.getByText('Event marked published.')).toBeVisible({ timeout: 15_000 });
+    await client
+      .from('event_sessions')
+      .update({ check_in_opens_at: new Date(Date.now() - HOUR).toISOString() })
+      .eq('id', bonusSessionId);
+  });
+
+  test('superadmins award points and correct attendance through every state', async () => {
+    await adminPage.goto(`/admin/members/${memberId}`);
+    await expect(adminPage).toHaveURL(/notice=superadmin-required/);
+
+    await superPage.goto(`/admin/members/${memberId}`);
+    await superPage.locator('#award-points').fill('5');
+    await superPage.locator('#award-reason').fill('Helped run the event');
+    await superPage.getByRole('button', { name: 'Award points + stars' }).click();
+    await expect(superPage.getByText('Awarded 5 points and stars.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expectBalance(25, 25);
+
+    const { data: record } = await supabase()
+      .from('attendance_records')
+      .select('id')
+      .eq('member_id', memberId)
+      .eq('session_id', bonusSessionId)
+      .single();
+    const correct = async (action: string, reason: string, checkedOutAt?: string) => {
+      const form = superPage.locator(`form:has(input[name="attendanceId"][value="${record?.id}"])`);
+      if (checkedOutAt) await form.locator('input[name="checkedOutAt"]').fill(checkedOutAt);
+      await form.locator('input[name="reason"]').fill(reason);
+      await form.locator('select[name="action"]').selectOption(action);
+      await form.getByRole('button', { name: 'Apply' }).click();
+    };
+
+    await correct('qualify', 'Stayed the full session');
+    await expect(superPage.getByText('Attendance corrected and audited.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expectBalance(40, 40);
+
+    await correct('qualify', 'Second attempt to qualify');
+    await expect(superPage.getByText('This attendance is already qualified.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await correct('disqualify', 'Scanned in error');
+    await expect(superPage.getByText('Attendance corrected and audited.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expectBalance(25, 25);
+
+    await correct('qualify', 'Confirmed after all');
+    await expect(superPage.getByText('Attendance corrected and audited.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expectBalance(40, 40);
+
+    await correct('set_checkout', 'Wrong time entered', newYorkInput(Date.now() - 48 * HOUR));
+    await expect(superPage.getByText('Check-out must be after check-in.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await memberPage.goto('/member/activity');
+    await expect(memberPage.getByText('Correction').first()).toBeVisible();
+  });
+
+  test('members request, cancel and re-request rewards, and organizers decide them', async () => {
+    const client = supabase();
+    const rewardName = `WF ${stamp} sticker`;
+    const secondReward = `WF ${stamp} mug`;
+    const pricey = `WF ${stamp} jacket`;
+
+    const addReward = async (name: string, cost: string, inventory: string) => {
+      await adminPage.goto('/admin/rewards');
+      await adminPage.locator('#reward-name').fill(name);
+      await adminPage.locator('#reward-description').fill('Workflow test reward.');
+      await adminPage.locator('#reward-cost').fill(cost);
+      await adminPage.locator('#reward-inventory').fill(inventory);
+      await adminPage.getByRole('button', { name: 'Create reward' }).click();
+      await expect(adminPage.getByText('Reward saved.')).toBeVisible({ timeout: 15_000 });
+    };
+    await addReward(rewardName, '10', '1');
+    await addReward(secondReward, '5', '');
+    await addReward(pricey, '5000', '');
+
+    const card = (name: string) =>
+      memberPage
+        .getByRole('heading', { name, exact: true })
+        .locator('xpath=ancestor::div[.//form][1]');
+    const request = async (name: string) => {
+      await card(name).getByRole('button', { name: 'Request this' }).click();
+      await memberPage.getByRole('button', { name: 'Reserve points' }).click();
+    };
+    const inventory = async () =>
+      (await client.from('rewards').select('inventory').eq('name', rewardName).single()).data
+        ?.inventory;
+    const redemptions = async (name: string) =>
+      (
+        await client
+          .from('redemptions')
+          .select('id, status')
+          .eq('member_id', memberId)
+          .eq('reward_name_snapshot', name)
+          .order('created_at')
+      ).data ?? [];
+
+    await memberPage.goto('/member/rewards');
+    await expect(card(pricey).getByRole('button', { name: /Need \d+ more points/ })).toBeDisabled();
+
+    await request(rewardName);
+    await expect(memberPage.getByText('Requested. An organizer will follow up.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expectBalance(30, 40);
+    expect(await inventory()).toBe(0);
+
+    await memberPage.getByRole('button', { name: `Cancel request for ${rewardName}` }).click();
+    await expect(
+      memberPage.getByRole('button', { name: `Cancel request for ${rewardName}` }),
+    ).toHaveCount(0, { timeout: 15_000 });
+    await expectBalance(40, 40);
+    expect(await inventory()).toBe(1);
+
+    // Asking again without reloading must create a new request.
+    await request(rewardName);
+    await expect(
+      memberPage.getByRole('button', { name: `Cancel request for ${rewardName}` }),
+    ).toBeVisible({ timeout: 15_000 });
+    const afterRetry = await redemptions(rewardName);
+    expect(afterRetry.map((row) => row.status)).toEqual(['cancelled', 'requested']);
+    await expectBalance(30, 40);
+
+    await adminPage.goto('/admin/rewards');
+    const decide = async (name: string, action: string, reason = '') => {
+      const row = adminPage
+        .locator('li')
+        .filter({ hasText: name })
+        .filter({
+          has: adminPage.locator('select[name="action"]'),
+        });
+      await row.locator('input[name="reason"]').fill(reason);
+      await row.locator('select[name="action"]').selectOption(action);
+      await row.getByRole('button', { name: 'Apply' }).click();
+    };
+    await decide(rewardName, 'approve');
+    await expect(adminPage.getByText('Redemption approve.')).toBeVisible({ timeout: 15_000 });
+    await decide(rewardName, 'fulfil');
+    await expect(adminPage.getByText('Redemption fulfil.')).toBeVisible({ timeout: 15_000 });
+    expect((await redemptions(rewardName)).at(-1)?.status).toBe('fulfilled');
+    await expectBalance(30, 40);
+
+    await memberPage.goto('/member/rewards');
+    await request(secondReward);
+    await expect(memberPage.getByText('Requested. An organizer will follow up.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect.poll(async () => (await balance()).points).toBe(25);
+
+    await adminPage.goto('/admin/rewards');
+    await decide(secondReward, 'reject');
+    await expect(adminPage.getByText('Enter a reason for this action.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await decide(secondReward, 'reject', 'Out of mugs');
+    await expect(adminPage.getByText('Redemption reject.')).toBeVisible({ timeout: 15_000 });
+    await expectBalance(30, 40);
+
+    // A sold-out reward says so, and edits to a reward show up for members.
+    await memberPage.goto('/member/rewards');
+    await expect(card(rewardName).getByRole('button', { name: 'Out of stock' })).toBeDisabled();
+  });
+
+  test('a recovery link resets a password once', async ({ browser }) => {
+    const newPassword = `Wf-Recovered-${stamp}-5e`;
+    await superPage.goto(`/admin/members/${memberId}`);
+    await superPage.getByRole('button', { name: 'Generate recovery link' }).click();
+    const link = await superPage.getByLabel('One-time sign-in link').inputValue();
+    expect(new URL(link).origin).toBe(origin);
+    expect(new URL(link).searchParams.get('next')).toBe('/account/password');
+    await superPage.getByRole('button', { name: 'Done' }).click();
+
+    const recovery = await newPage(browser, 'recovery');
+    await recovery.goto(link);
+    await expect(recovery).toHaveURL(/\/account\/password$/, { timeout: 30_000 });
+    await recovery.getByLabel('New password', { exact: true }).fill('onlylettersnodigits');
+    await recovery.getByLabel('Confirm new password', { exact: true }).fill('onlylettersnodigits');
+    await recovery.getByRole('button', { name: 'Set new password' }).click();
+    await expect(recovery.getByText('Include at least one letter and one number')).toBeVisible({
+      timeout: 15_000,
+    });
+    await recovery.getByLabel('New password', { exact: true }).fill(newPassword);
+    await recovery.getByLabel('Confirm new password', { exact: true }).fill(newPassword);
+    await recovery.getByRole('button', { name: 'Set new password' }).click();
+    await expect(recovery).toHaveURL(/\/member$/, { timeout: 20_000 });
+
+    const replay = await newPage(browser, 'replayed recovery');
+    await replay.goto(link);
+    await expect(replay).toHaveURL(/\/login\?notice=invalid-link/, { timeout: 20_000 });
+
+    const oldLogin = await newPage(browser, 'old password');
+    await signIn(oldLogin, people.member.email, people.member.password);
+    await expect(oldLogin.getByText('Email or password is incorrect.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await signIn(oldLogin, people.member.email, newPassword);
+    await expect(oldLogin).toHaveURL(/\/member$/, { timeout: 20_000 });
+    people.member.password = newPassword;
+
+    // Changing a password ends the member's other sessions.
+    await memberPage.goto('/member');
+    await expect(memberPage).toHaveURL(/\/login/);
+    await signIn(memberPage, people.member.email, newPassword);
+    await expect(memberPage).toHaveURL(/\/member$/, { timeout: 20_000 });
+  });
+
+  test('a suspended member is locked out everywhere and can be restored', async ({ browser }) => {
+    const setStatus = async (status: string, reason: string) => {
+      await superPage.goto(`/admin/members/${memberId}`);
+      await superPage.locator('#member-status').selectOption(status);
+      await superPage.locator('#status-reason').fill(reason);
+      await superPage.getByRole('button', { name: 'Update status' }).click();
+      await expect(superPage.getByText('Member status updated.')).toBeVisible({ timeout: 15_000 });
+    };
+
+    // Preview a scan first, then suspend: confirmation must re-check.
+    await adminPage.goto('/admin/kiosk');
+    await adminPage.locator('#kiosk-session').selectOption(mainSessionId);
+    const { data: extra } = await supabase()
+      .from('device_scans')
+      .insert({
+        member_id: memberId,
+        session_id: mainSessionId,
+        action: 'check_in',
+        status: 'pending',
+        idempotency_key: `wf:${stamp}`,
+      })
+      .select('id')
+      .single();
+
+    await setStatus('suspended', 'Workflow test');
+
+    const stale = await adminPage.request.post('/api/admin/kiosk/confirm', {
+      headers: { origin },
+      data: { scanId: extra?.id, action: 'check_in' },
+    });
+    expect(stale.status()).toBe(403);
+    expect((await stale.json()).error.message).toBe('This membership is not active.');
+
+    await memberPage.goto('/member');
+    await expect(memberPage).toHaveURL(/\/account-suspended$/);
+    await expect(
+      memberPage.getByRole('heading', { name: 'This membership is inactive' }),
+    ).toBeVisible();
+    await memberPage.goto('/invite/accept');
+    await expect(memberPage).toHaveURL(/\/account-suspended$/);
+
+    await anonPage.goto(new URL(activeCardUrl).pathname);
+    await expect(anonPage).toHaveURL(/\/card-unavailable$/);
+    await anonPage.goto(`/m/${memberSlug}`);
+    await expect(anonPage.getByRole('heading', { name: 'This profile is private' })).toBeVisible();
+    await anonPage.goto('/leaderboard');
+    await expect(anonPage.getByText(memberName)).toHaveCount(0);
+
+    const blocked = await newPage(browser, 'suspended sign-in');
+    await signIn(blocked, people.member.email, people.member.password);
+    await expect(blocked.getByText('This membership is not active.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await setStatus('active', 'Workflow test restored');
+    await memberPage.goto('/member');
+    await expect(memberPage).toHaveURL(/\/member$/);
+    await anonPage.goto(new URL(activeCardUrl).pathname);
+    await expect(anonPage).toHaveURL(new RegExp(`/m/${memberSlug}$`));
+  });
+
+  test('signing out on one device leaves the others signed in', async ({ browser }) => {
+    const phone = await newPage(browser, 'second device');
+    await signIn(phone, people.member.email, people.member.password);
+    await expect(phone).toHaveURL(/\/member$/, { timeout: 20_000 });
+    await phone
+      .getByRole('button', { name: /sign out/i })
+      .first()
+      .click();
+    await expect(phone).toHaveURL(/\/login\?notice=signed-out/, { timeout: 15_000 });
+    await phone.goto('/member');
+    await expect(phone).toHaveURL(/\/login/);
+
+    await memberPage.goto('/member');
+    await expect(memberPage).toHaveURL(/\/member$/);
+    await expect(memberPage.getByRole('heading', { name: memberName })).toBeVisible();
+  });
+
+  test('a revoked card stops working, including for a scan already on screen', async () => {
+    await adminPage.goto('/admin/kiosk');
+    await adminPage.locator('#kiosk-session').selectOption(bonusSessionId);
+    await connectLane(adminPage);
+
+    // The bonus attendance is complete, so start from a fresh session for this.
+    const client = supabase();
+    const now = Date.now();
+    const { data: session } = await client
+      .from('event_sessions')
+      .insert({
+        event_id: eventId,
+        name: 'Extra lab',
+        kind: 'bonus',
+        starts_at: new Date(now - HOUR).toISOString(),
+        ends_at: new Date(now + HOUR).toISOString(),
+        check_in_opens_at: new Date(now - HOUR).toISOString(),
+        check_in_closes_at: new Date(now + HOUR).toISOString(),
+        check_out_opens_at: new Date(now - HOUR).toISOString(),
+        check_out_closes_at: new Date(now + HOUR).toISOString(),
+        minimum_duration_minutes: 0,
+        reward_points: 0,
+      })
+      .select('id')
+      .single();
+    await adminPage.reload();
+    await adminPage.locator('#kiosk-session').selectOption(session?.id as string);
+    await connectLane(adminPage);
+    await setCard(adminPage, activeCardUrl);
+    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await expect(adminPage.getByRole('heading', { name: memberName })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const { data: card } = await client
+      .from('card_credentials')
+      .select('id')
+      .eq('member_id', memberId)
+      .eq('status', 'active')
+      .single();
+    await superPage.goto('/admin/cards');
+    await superPage
+      .locator(`form:has(input[name="cardId"][value="${card?.id}"])`)
+      .getByRole('button', { name: 'Revoke' })
+      .click();
+    await expect(superPage.getByText('Card revoked.')).toBeVisible({ timeout: 15_000 });
+
+    await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
+    await expect(adminPage.getByText('This card is no longer active.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await anonPage.goto(new URL(activeCardUrl).pathname);
+    await expect(anonPage).toHaveURL(/\/card-unavailable$/);
+    await anonPage.goto(`/m/${memberSlug}`);
+    await expect(anonPage.getByRole('heading', { name: memberName })).toBeVisible();
+    await memberPage.goto('/member');
+    await expect(memberPage.getByText('Marked lost.')).toBeVisible();
+  });
+
+  test('user types convert both ways, with the member flow on demotion', async ({ browser }) => {
+    const client = supabase();
+    const { data: invitation } = await client
+      .from('member_invitations')
+      .select('auth_user_id')
+      .eq('email', people.second.email)
+      .eq('status', 'accepted')
+      .single();
+    const secondAuthId = invitation?.auth_user_id as string;
+    const secondRow = () => superPage.getByRole('row').filter({ hasText: people.second.email });
+
+    // A normal admin can revoke a member, and that member can no longer sign in.
+    await adminPage.goto('/admin/users');
+    await adminPage
+      .getByRole('row')
+      .filter({ hasText: people.second.email })
+      .getByRole('button', { name: 'Revoke access' })
+      .click();
+    await expect(adminPage.getByText('Member access revoked.')).toBeVisible({ timeout: 15_000 });
+    const second = await newPage(browser, 'second member again');
+    await signIn(second, people.second.email, people.second.password);
+    await expect(second.getByText('This membership is not active.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Member -> admin removes the member data and keeps the account.
+    await superPage.goto('/admin/users');
+    await secondRow()
+      .getByRole('combobox', { name: /User type for/ })
+      .selectOption('admin');
+    await secondRow().getByRole('button', { name: 'Save' }).click();
+    await expect(superPage.getByText('Their member profile was deleted.')).toBeVisible({
+      timeout: 15_000,
+    });
+    const { data: gone } = await client
+      .from('members')
+      .select('id')
+      .eq('auth_user_id', secondAuthId);
+    expect(gone).toHaveLength(0);
+    const { data: stillThere } = await client.auth.admin.getUserById(secondAuthId);
+    expect(stillThere.user?.email).toBe(people.second.email);
+
+    await signIn(second, people.second.email, people.second.password);
+    await expect(second).toHaveURL(/\/admin-mfa/, { timeout: 20_000 });
+
+    // Admin -> member keeps the password and opens member setup again.
+    await superPage.goto('/admin/users');
+    await secondRow()
+      .getByRole('combobox', { name: /User type for/ })
+      .selectOption('member');
+    await secondRow().getByRole('button', { name: 'Save' }).click();
+    await expect(superPage.getByText('Changed to member.')).toBeVisible({ timeout: 15_000 });
+
+    await second.goto('/invite/accept');
+    await expect(second.getByRole('heading', { name: 'Make it yours' })).toBeVisible();
+    await expect(second.locator('input[name="password"]')).toHaveCount(0);
+    await second.locator('input[type="file"]').setInputFiles({
+      name: 'avatar.png',
+      mimeType: 'image/png',
+      buffer: PHOTO,
+    });
+    await fillSetup(second, 'Second Member Again');
+    await second.getByRole('button', { name: 'Create my profile' }).click();
+    await expect(second).toHaveURL(/\/member\?welcome=1/, { timeout: 30_000 });
+    await expect(second.getByRole('heading', { name: 'Second Member Again' })).toBeVisible();
+  });
+
+  test('a returning staff member verifies TOTP, and the audit log records the work', async ({
+    browser,
+  }) => {
+    const again = await newPage(browser, 'superadmin again');
+    await signIn(again, people.superadmin.email, people.superadmin.password);
+    await expect(again).toHaveURL(/\/admin-mfa/, { timeout: 20_000 });
+    await expect(again.getByRole('button', { name: 'Set up authenticator' })).toHaveCount(0);
+    await again.getByLabel('Six-digit code').fill('000000');
+    await again.getByRole('button', { name: 'Verify and open admin' }).click();
+    await expect(again.getByText('That code did not work')).toBeVisible({ timeout: 15_000 });
+    await again.getByLabel('Six-digit code').fill(totp(superSecret, Date.now() + 30_000));
+    await again.getByRole('button', { name: 'Verify and open admin' }).click();
+    await expect(again).toHaveURL(/\/admin$/, { timeout: 20_000 });
+
+    await again.goto('/admin/audit');
+    await expect(again.getByRole('heading', { name: 'Audit log' })).toBeVisible();
+    await again.locator('#audit-action').fill('attendance');
+    await again.getByRole('button', { name: 'Filter' }).click();
+    await expect(again.getByText('attendance.check_in').first()).toBeVisible({ timeout: 15_000 });
+
+    const { data: rows } = await supabase()
+      .from('audit_log')
+      .select('action, target_id, reason, before, after')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    const serialized = JSON.stringify(rows);
+    expect(serialized, 'no one-time link in the audit log').not.toContain('token_hash');
+    expect(serialized, 'no card URL in the audit log').not.toContain('/c/');
+    const recovery = rows?.find((row) => row.action === 'member.recovery_link_generated');
+    expect(recovery?.target_id).toBe(memberAuthId);
+  });
+
+  test('member and admin pages fit a phone and stay reachable', async () => {
+    const checkFit = async (page: Page, paths: string[]) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      for (const target of paths) {
+        const response = await page.goto(target);
+        expect(response?.status(), target).toBe(200);
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        );
+        expect(overflow, `${target} overflows at 375px`).toBeLessThanOrEqual(1);
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+    };
+    await checkFit(memberPage, [
+      '/member',
+      '/member/activity',
+      '/member/id',
+      '/member/profile',
+      '/member/privacy',
+      '/member/rewards',
+    ]);
+    await checkFit(superPage, [
+      '/admin',
+      '/admin/users',
+      '/admin/invitations',
+      '/admin/cards',
+      '/admin/kiosk',
+      '/admin/events',
+      `/admin/events/${eventId}`,
+      '/admin/rewards',
+      `/admin/members/${memberId}`,
+      '/admin/audit',
+    ]);
+    await checkFit(anonPage, ['/', '/events', `/events/${eventSlug}`, '/leaderboard', '/privacy']);
+  });
+
+  test('repeated bad passwords are slowed down', async ({ browser }) => {
+    const page = await newPage(browser, 'rate limit');
+    const email = `wf-locked-${stamp}@example.com`;
+    let limited = false;
+    // The limit is a fixed window, so a run can straddle a boundary and need more.
+    for (let attempt = 0; attempt < 24 && !limited; attempt += 1) {
+      await page.goto('/login');
+      await page.getByLabel('Email').fill(email);
+      await page.getByLabel('Password').fill('not-the-right-password-1');
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await expect(
+        page.getByText(/Email or password is incorrect|Too many sign-in attempts/),
+      ).toBeVisible({ timeout: 15_000 });
+      limited = await page.getByText('Too many sign-in attempts').isVisible();
+    }
+    expect(limited).toBe(true);
+  });
+
+  test('no page hit a CSP violation or an uncaught error', () => {
+    expect(browserProblems).toEqual([]);
+  });
+});

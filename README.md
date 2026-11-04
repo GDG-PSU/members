@@ -80,7 +80,7 @@ pnpm dev
 one-time password link to a file.
 
 ```bash
-pnpm db:bootstrap-admin --email you@psu.edu --out .local/admin-link.txt
+pnpm db:bootstrap-admin --email you@psu.edu --role superadmin --out .local/admin-link.txt
 ```
 
 Open that link to set a password, then set up an authenticator app, which admin pages require.

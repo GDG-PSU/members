@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Alert, Button, buttonVariants, Card, Field, Input, Textarea } from '@gdg/ui';
 import { completeSetupAction, type SetupState } from '@/app/(auth)/invite/accept/actions';
 import { MAX_PROFILE_PHOTO_BYTES, PROFILE_PHOTO_TOO_LARGE } from '@/lib/profile/limits';
+import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: SetupState = {};
 
@@ -21,7 +22,13 @@ export function SetupForm({
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   return (
-    <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
+    <form
+      action={action}
+      onReset={keepValuesOnError(state)}
+      className="space-y-5"
+      noValidate
+      encType="multipart/form-data"
+    >
       <Alert variant="info">
         {email} is invited. Add your name and a face photo.{' '}
         {requirePassword ? null : 'Your existing password will stay the same. '}

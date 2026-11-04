@@ -1060,11 +1060,22 @@ function normalizeSession(session: ReturnType<typeof readSession>) {
   };
 }
 
-export async function saveEventAction(formData: FormData) {
+/** Errors come back to the form rather than through a redirect, so typed values survive. */
+export type AdminFormState = { error?: string };
+
+function eventSaveError(error: { code?: string; message: string }): AdminFormState {
+  if (error.code === '23505') return { error: 'That slug is already used by another event.' };
+  return { error: domainErrorMessage(error.message) };
+}
+
+export async function saveEventAction(
+  _prev: AdminFormState,
+  formData: FormData,
+): Promise<AdminFormState> {
   const { user } = await requireAdminActor();
   const returnTo = readReturnTo(formData);
   const eventId = readString(formData, 'eventId') || undefined;
-  if (eventId && !z.uuid().safeParse(eventId).success) fail(returnTo, 'Invalid event.');
+  if (eventId && !z.uuid().safeParse(eventId).success) return { error: 'Invalid event.' };
   const sessions = [normalizeSession(readSession(formData, 'main', 'main'))];
   if (readString(formData, 'bonusName')) {
     const bonus = normalizeSession(readSession(formData, 'bonus', 'bonus'));
@@ -1083,7 +1094,7 @@ export async function saveEventAction(formData: FormData) {
     sessions,
   });
   if (!parsed.success) {
-    fail(returnTo, parsed.error.issues[0]?.message ?? 'Check the event form.');
+    return { error: parsed.error.issues[0]?.message ?? 'Check the event form.' };
   }
 
   const admin = createSupabaseAdmin();
@@ -1102,7 +1113,7 @@ export async function saveEventAction(formData: FormData) {
         is_public: parsed.data.isPublic,
       })
       .eq('id', id);
-    if (error) fail(returnTo, `Event update failed: ${error.message}`);
+    if (error) return eventSaveError(error);
   } else {
     const { data, error } = await admin
       .from('events')
@@ -1119,7 +1130,7 @@ export async function saveEventAction(formData: FormData) {
       })
       .select('id')
       .single();
-    if (error || !data) fail(returnTo, `Event creation failed: ${error?.message ?? 'unknown'}`);
+    if (error || !data) return eventSaveError(error ?? { message: 'Event insert returned no row' });
     id = data.id;
   }
 
@@ -1150,7 +1161,7 @@ export async function saveEventAction(formData: FormData) {
         .update(payload)
         .eq('id', session.id)
         .eq('event_id', id);
-      if (error) fail(returnTo, `Session update failed: ${error.message}`);
+      if (error) return eventSaveError(error);
     } else {
       const { data: existing } = await admin
         .from('event_sessions')
@@ -1160,10 +1171,10 @@ export async function saveEventAction(formData: FormData) {
         .maybeSingle();
       if (existing) {
         const { error } = await admin.from('event_sessions').update(payload).eq('id', existing.id);
-        if (error) fail(returnTo, `Session update failed: ${error.message}`);
+        if (error) return eventSaveError(error);
       } else {
         const { error } = await admin.from('event_sessions').insert(payload);
-        if (error) fail(returnTo, `Session creation failed: ${error.message}`);
+        if (error) return eventSaveError(error);
       }
     }
   }
@@ -1253,7 +1264,10 @@ export async function correctAttendanceAction(formData: FormData) {
 /* Rewards                                                                    */
 /* -------------------------------------------------------------------------- */
 
-export async function saveRewardAction(formData: FormData) {
+export async function saveRewardAction(
+  _prev: AdminFormState,
+  formData: FormData,
+): Promise<AdminFormState> {
   const { user } = await requireAdminActor();
   const returnTo = readReturnTo(formData);
   const inventoryRaw = readString(formData, 'inventory');
@@ -1266,7 +1280,9 @@ export async function saveRewardAction(formData: FormData) {
     isActive: formData.get('isActive') === 'on',
     fulfillmentNote: readString(formData, 'fulfillmentNote'),
   });
-  if (!parsed.success) fail(returnTo, parsed.error.issues[0]?.message ?? 'Check the reward form.');
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Check the reward form.' };
+  }
 
   const admin = createSupabaseAdmin();
   const payload = {
@@ -1280,7 +1296,7 @@ export async function saveRewardAction(formData: FormData) {
   const { error } = parsed.data.id
     ? await admin.from('rewards').update(payload).eq('id', parsed.data.id)
     : await admin.from('rewards').insert({ ...payload, created_by: user.id });
-  if (error) fail(returnTo, `Reward save failed: ${error.message}`);
+  if (error) return { error: domainErrorMessage(error.message) };
   await audit(
     user.id,
     parsed.data.id ? 'reward.updated' : 'reward.created',

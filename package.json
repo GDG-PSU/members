@@ -21,6 +21,7 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:verify": "node scripts/db-verify.mjs",
     "db:seed": "node scripts/db-seed.mjs",
+    "db:reset": "node scripts/db-reset.mjs",
     "db:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
     "admin:enroll-totp": "node scripts/admin-enroll-totp.mjs",
     "e2e": "playwright test",
