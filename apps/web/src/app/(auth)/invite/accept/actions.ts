@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { newPasswordSchema } from '@gdg/contracts';
 import { requireUser } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { storeProfilePhoto, PhotoError } from '@/lib/profile/photo';
@@ -15,10 +16,8 @@ const setupSchema = z.object({
 });
 
 function passwordProblem(password: string, confirmPassword: string): string | null {
-  if (password.length < 12) return 'Use at least 12 characters';
-  if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-    return 'Include at least one letter and one number';
-  }
+  const parsed = newPasswordSchema.safeParse(password);
+  if (!parsed.success) return parsed.error.issues[0]?.message ?? 'Check your password.';
   if (password !== confirmPassword) return 'Passwords do not match';
   return null;
 }
@@ -38,14 +37,19 @@ export async function completeSetupAction(
   const admin = createSupabaseAdmin();
   const { data: invitation } = await admin
     .from('member_invitations')
-    .select('requires_password')
+    .select('requires_password, expires_at')
     .eq('email', email)
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
     .maybeSingle();
+  // Checked before anything is stored or changed: an account without a live
+  // invitation must not be able to upload files or change its password here.
+  if (!invitation || new Date(invitation.expires_at as string) < new Date()) {
+    return { error: 'This invitation is no longer valid. Contact GDG@PSU.' };
+  }
   // Staff demoted to member already have a password. Their invitation skips
-  // the password fields; a missing invitation is handled by the RPC below.
-  const requiresPassword = invitation?.requires_password !== false;
+  // the password fields.
+  const requiresPassword = invitation.requires_password !== false;
 
   const parsed = setupSchema.safeParse({
     displayName: formData.get('displayName'),
@@ -84,12 +88,17 @@ export async function completeSetupAction(
   } catch (error) {
     return { error: error instanceof PhotoError ? error.message : 'Photo upload failed.' };
   }
+  const discardPhoto = async () => {
+    const { error } = await admin.storage.from('avatars').remove([photoPath]);
+    if (error) console.error('[setup] photo cleanup failed', error.message);
+  };
 
   if (parsed.data.password) {
     const { error: passwordError } = await viewer.supabase.auth.updateUser({
       password: parsed.data.password,
     });
     if (passwordError) {
+      await discardPhoto();
       return { error: 'Your password could not be set. The invitation may have expired.' };
     }
   }
@@ -119,6 +128,7 @@ export async function completeSetupAction(
   }
 
   if (!memberId) {
+    await discardPhoto();
     console.error('[setup] complete_member_setup failed', lastError);
     return {
       error:

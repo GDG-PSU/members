@@ -70,12 +70,12 @@ No body. Clears the Supabase session and responds `303` to `/login?notice=signed
 Resolves an NFC card URL.
 
 - Token must match `^[A-Za-z0-9_-]{43}$`; otherwise redirects to `/card-unavailable`.
-- Applies `consume_rate_limit(bucket = card-lookup:<first 16 hex of SHA-256(token)>, limit = 30, window = 60s)`.
+- Applies `consume_rate_limit(bucket = card-lookup:<hash of the client address>, limit = 120, window = 60s)`.
 - Hashes the token (SHA-256), looks up `card_credentials` with `status = 'active'`, and redirects `307` to `/m/<profile-slug>` with `Cache-Control: no-store`.
 - Unknown, revoked, replaced, lost or rate-limited tokens redirect to `/card-unavailable` with no member metadata.
 - No member data, token value or internal identifier is returned in the response body.
 
-Limitation: the limiter bucket is per token, not per client IP. Cycling many valid-format tokens is not globally limited at this layer.
+The bucket is per client rather than per token: 256-bit tokens cannot be guessed, and a per-token bucket would let anyone add a database row for each random URL.
 
 ## Public JSON endpoints
 

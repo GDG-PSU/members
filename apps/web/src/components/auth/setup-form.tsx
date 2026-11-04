@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, buttonVariants, Card, Field, Input, Textarea } from '@gdg/ui';
 import { completeSetupAction, type SetupState } from '@/app/(auth)/invite/accept/actions';
+import { MAX_PROFILE_PHOTO_BYTES, PROFILE_PHOTO_TOO_LARGE } from '@/lib/profile/limits';
 
 const initial: SetupState = {};
 
@@ -17,6 +18,7 @@ export function SetupForm({
   const [state, action, pending] = useActionState(completeSetupAction, initial);
   const [photoName, setPhotoName] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   return (
     <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
@@ -79,7 +81,12 @@ export function SetupForm({
                 className="sr-only"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
-                  if (!file) {
+                  // A body over the Server Action limit fails before the action
+                  // runs, so an oversized file has to be caught here.
+                  const tooLarge = Boolean(file && file.size > MAX_PROFILE_PHOTO_BYTES);
+                  setPhotoError(tooLarge ? PROFILE_PHOTO_TOO_LARGE : null);
+                  if (tooLarge) event.target.value = '';
+                  if (!file || tooLarge) {
                     setPhotoName(null);
                     setPreview(null);
                     return;
@@ -94,6 +101,11 @@ export function SetupForm({
             </p>
           </div>
         </div>
+        {photoError ? (
+          <Alert variant="danger" className="mt-3">
+            {photoError}
+          </Alert>
+        ) : null}
         <label className="mt-3 flex items-start gap-2.5 text-[0.82rem] leading-relaxed text-muted-foreground">
           <input
             type="checkbox"

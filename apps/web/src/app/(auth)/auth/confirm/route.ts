@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
+import { safeAuthNextPath } from '@/lib/security/request';
 import { createSupabaseServer } from '@/lib/supabase/server';
 
 const TYPES = new Set<EmailOtpType>([
@@ -11,8 +12,6 @@ const TYPES = new Set<EmailOtpType>([
   'signup',
 ]);
 
-const NEXT_PATHS = new Set(['/invite/accept', '/admin-mfa', '/account/password', '/member']);
-
 /**
  * Confirms an emailed Supabase token on our own origin. Admin-generated
  * invite/recovery links use this route so they work on the production host
@@ -22,8 +21,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get('token_hash');
   const type = url.searchParams.get('type');
-  const requestedNext = url.searchParams.get('next') ?? '/invite/accept';
-  const next = NEXT_PATHS.has(requestedNext) ? requestedNext : '/invite/accept';
+  const next = safeAuthNextPath(url.searchParams.get('next'));
 
   if (!tokenHash || !type || !TYPES.has(type as EmailOtpType)) {
     return NextResponse.redirect(new URL('/login?notice=invalid-link', url.origin));

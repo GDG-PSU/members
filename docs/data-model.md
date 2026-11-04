@@ -5,8 +5,8 @@
 > `device_scans` row with `device_id = null` as preview state before the admin
 > confirms; no device is registered. Cards are stored in `card_credentials`:
 > `prepare_card` creates a pending credential, the admin writes its URL locally,
-> and `activate_card` marks it active. Legacy device tables are retained for
-> historical records only.
+> and `activate_card` marks it active and replaces the member's previous card.
+> Legacy device tables are retained for historical records only.
 
 The schema source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new migration. Use the Supabase CLI (`supabase db push`) or its GitHub integration as the single migration authority. The legacy `pnpm db:migrate` records a separate history and must never be mixed with the CLI.
 
@@ -25,6 +25,9 @@ Current migration order:
 | `0009_controlled_erasure.sql`    | Controlled erasure without weakening append-only guards                                 |
 | `0010_photo_identity.sql`        | Photo-change timestamp and the 48-hour kiosk identity window                            |
 | `0011_usb_kiosk.sql`             | Allows the transient USB-kiosk scan row with no registered device                       |
+| `0012_superadmins.sql`           | Superadmin role, narrower admin read policies                                           |
+| `0013_exclusive_user_types.sql`  | `set_user_type`: a user is exactly one of member, admin, superadmin                     |
+| `0014_security_hardening.sql`    | Closes API access to privileged functions and columns; hardens domain transitions       |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -32,9 +35,9 @@ All instants are stored as `timestamptz` (UTC). Event wall-clock times are confi
 
 ### `user_roles`
 
-Server-assigned roles. Primary key `(auth_user_id, role)`; currently only `admin`. `revoked_at` null means active. No member-facing write policy exists.
+Server-assigned roles. Primary key `(auth_user_id, role)`; `admin` or `superadmin`. `revoked_at` null means active. No member-facing write policy exists. The `user_roles_keep_last_superadmin` trigger refuses to revoke or delete the last active superadmin, whichever code path tries it, and takes a lock so concurrent revocations cannot both succeed. Only a reviewed `erase_member` is exempt.
 
-`public.is_admin(uid)` is `SECURITY DEFINER`, `STABLE`, empty `search_path`, and checks for an unrevoked admin row.
+`public.is_admin(uid)` and `public.is_superadmin(uid)` are `SECURITY DEFINER`, `STABLE`, empty `search_path`, and check for an unrevoked role row, an AAL2 session and `uid = auth.uid()`.
 
 ### `member_invitations`
 
@@ -70,11 +73,11 @@ Defaults are public, including `show_email`; members can hide email during setup
 
 ### `card_credentials`
 
-`member_id`, unique `token_hash` (SHA-256), `token_ciphertext` (AES-256-GCM envelope, used only for the member's authenticated digital ID and for write jobs), `status` (`pending`, `active`, `revoked`, `lost`, `replaced`), `issued_at`, revocation actor/reason, `replaces_card_id`, timestamps.
+`member_id`, unique `token_hash` (SHA-256), `token_ciphertext` (AES-256-GCM envelope), `status` (`pending`, `active`, `revoked`, `lost`, `replaced`), `issued_at`, revocation actor/reason, `replaces_card_id`, timestamps. `token_hash` and `token_ciphertext` are not readable through the API; only the server uses them.
 
 - A card row may exist as `pending` without a token.
 - Partial unique index `card_credentials_one_active` allows at most one active card per member.
-- Replacing a card revokes the previous one atomically through `prepare_card`/`activate_card`. A member's `/m/` URL never changes.
+- `prepare_card` supersedes only an earlier unwritten card. The active card keeps working until `activate_card` replaces it, so an abandoned or failed write never strands a member. A lost card is revoked explicitly with `revoke_card`. A member's `/m/` URL never changes.
 - Plaintext tokens are never stored and never logged.
 
 ### `card_write_jobs`
@@ -101,6 +104,8 @@ Belongs to an event; `kind` (`main` or `bonus`); start/end; check-in window (`ch
 Unique `(member_id, session_id)`. Stores check-in timestamp/actor, check-out timestamp/actor, `state` (`checked_in`, `completed`, `rejected`), computed `duration_minutes`, `qualified`, `reward_points` and `ledger_id`.
 
 Points are granted only on confirmed check-out when `duration_minutes >= minimum_duration_minutes` and the session reward is positive. A bonus session has its own attendance row; it is never inferred from the main session.
+
+A grant that was reversed by a correction spends its source key, so `attendance_grant_key` gives the next grant for that attendance a new one (`attendance:<id>:<n>`). An unreversed grant keeps its key, which keeps retries idempotent. `confirm_scan` re-checks the member, card and event before confirming, because they can change while a scan is pending.
 
 ### `attendance_audit_events`
 
@@ -150,15 +155,17 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 ### `rate_limit_counters`
 
-`(bucket, window_start)` primary key with hit count. `consume_rate_limit(bucket, limit, seconds)` is atomic and service-role only; used by public token lookups and device requests where implemented.
+`(bucket, window_start)` primary key with hit count. `consume_rate_limit(bucket, limit, seconds)` is atomic and service-role only. It backs card lookups (per client), sign-in (per client and per account), TOTP verification and photo uploads (per account), kiosk confirmation and device requests. Client addresses and emails are hashed before they become bucket names.
 
 ## Views
 
-| View              | Security                                                                        | Exposure                |
-| ----------------- | ------------------------------------------------------------------------------- | ----------------------- |
-| `public_profiles` | Definer (owner `postgres`), explicit column projection                          | `anon`, `authenticated` |
-| `leaderboard`     | Definer, filtered by public profile + points + leaderboard + display-name flags | `anon`, `authenticated` |
-| `member_balances` | Security invoker, so base-table RLS applies                                     | `authenticated`         |
+| View              | Security                                                                        | Exposure        |
+| ----------------- | ------------------------------------------------------------------------------- | --------------- |
+| `public_profiles` | Definer (owner `postgres`), explicit column projection                          | `service_role`  |
+| `leaderboard`     | Definer, filtered by public profile + points + leaderboard + display-name flags | `service_role`  |
+| `member_balances` | Security invoker, so base-table RLS applies                                     | `authenticated` |
+
+The public pages and `/api/public/*` read the two projections with the server-only client, one profile or one bounded page at a time. They are not exposed through the Supabase API, where anyone holding the publishable key could dump them.
 
 `public_profiles` returns only: slug, conditional display name/photo/about/links/member number/member-since/points/stars/attended-events/email, and `created_at`. It never returns internal UUIDs, Auth IDs, card data, notes or role information. Profiles with `public_profile = false` and non-active members are excluded.
 
@@ -174,27 +181,31 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 ## Functions
 
-| Function                     | Access                     | Notes                                                              |
-| ---------------------------- | -------------------------- | ------------------------------------------------------------------ |
-| `set_updated_at()`           | trigger                    | Sets `updated_at`                                                  |
-| `prevent_mutation()`         | trigger                    | Raises `append_only_relation`                                      |
-| `is_admin(uid)`              | anon/authenticated/service | Role check                                                         |
-| `current_member_id()`        | authenticated/service      | Resolves active member                                             |
-| `log_audit(...)`             | service_role               | Inserts audit row                                                  |
-| `grant_points(...)`          | service_role               | Idempotent points + stars                                          |
-| `reverse_grant(...)`         | service_role               | Compensating reversal                                              |
-| `redeem_reward(...)`         | service_role               | Atomic balance/inventory debit                                     |
-| `decide_redemption(...)`     | service_role               | Status transitions + refund                                        |
-| `prepare_card(...)`          | service_role               | Revokes previous, creates pending card                             |
-| `activate_card(...)`         | service_role               | Activates one card, supersedes others                              |
-| `revoke_card(...)`           | service_role               | Revokes pending/active card                                        |
-| `queue_write_job(...)`       | service_role               | One-use encrypted URL payload                                      |
-| `claim_write_job(...)`       | service_role               | Device-scoped claim with locking                                   |
-| `complete_write_job(...)`    | service_role               | Read-back gate, payload destruction                                |
-| `complete_member_setup(...)` | service_role               | Idempotent invite acceptance                                       |
-| `confirm_scan(...)`          | service_role               | Admin-confirmed attendance state machine                           |
-| `correct_attendance(...)`    | service_role               | Audited corrections/reversals                                      |
-| `consume_rate_limit(...)`    | service_role               | Atomic fixed-window limiter                                        |
-| `erase_member(uid)`          | service_role               | Reviewed erasure; lifts append-only guard for its transaction only |
+| Function                     | Access                | Notes                                                              |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------ |
+| `set_updated_at()`           | trigger               | Sets `updated_at`                                                  |
+| `prevent_mutation()`         | trigger               | Raises `append_only_relation`                                      |
+| `is_admin(uid)`              | authenticated/service | Role check used by RLS                                             |
+| `is_superadmin(uid)`         | authenticated/service | Role check used by RLS                                             |
+| `current_member_id()`        | authenticated/service | Resolves active member                                             |
+| `set_user_type(...)`         | service_role          | Exclusive member/admin/superadmin conversion                       |
+| `log_audit(...)`             | service_role          | Inserts audit row                                                  |
+| `grant_points(...)`          | service_role          | Idempotent points + stars                                          |
+| `reverse_grant(...)`         | service_role          | Compensating reversal                                              |
+| `redeem_reward(...)`         | service_role          | Atomic balance/inventory debit                                     |
+| `decide_redemption(...)`     | service_role          | Status transitions + refund                                        |
+| `prepare_card(...)`          | service_role          | Creates a pending card, supersedes an earlier unwritten one        |
+| `activate_card(...)`         | service_role          | Activates one card, replaces the previous active card              |
+| `revoke_card(...)`           | service_role          | Revokes pending/active card                                        |
+| `queue_write_job(...)`       | service_role          | One-use encrypted URL payload                                      |
+| `claim_write_job(...)`       | service_role          | Device-scoped claim with locking                                   |
+| `complete_write_job(...)`    | service_role          | Read-back gate, payload destruction                                |
+| `complete_member_setup(...)` | service_role          | Idempotent invite acceptance                                       |
+| `confirm_scan(...)`          | service_role          | Admin-confirmed attendance state machine                           |
+| `correct_attendance(...)`    | service_role          | Audited corrections/reversals                                      |
+| `consume_rate_limit(...)`    | service_role          | Atomic fixed-window limiter                                        |
+| `erase_member(uid)`          | service_role          | Reviewed erasure; lifts append-only guard for its transaction only |
 
-All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions are revoked from `public` and granted only to `service_role`; the web server authorizes the actor before calling them.
+All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions can be executed only by `service_role`; the web server authorizes the actor before calling them.
+
+Supabase's default ACL grants `EXECUTE`, and full table privileges, to `anon` and `authenticated` directly, so `revoke ... from public` does not remove API access. Migration 0014 revokes those grants explicitly and removes the default ACL entries, so a new function or table in `public` starts closed. `pnpm db:verify` fails if any function other than the three RLS helpers becomes callable by an API role.

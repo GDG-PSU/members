@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import { Plus, Trash2, UserRound } from 'lucide-react';
 import { Alert, Button, buttonVariants, Card, CardContent, Field, Input, Textarea } from '@gdg/ui';
 import { updateProfileAction, type ActionState } from '@/app/(member)/member/actions';
+import { MAX_PROFILE_PHOTO_BYTES, PROFILE_PHOTO_TOO_LARGE } from '@/lib/profile/limits';
 
 const initial: ActionState = {};
 
@@ -23,6 +24,7 @@ export function ProfileForm({
   const [state, action, pending] = useActionState(updateProfileAction, initial);
   const [links, setLinks] = useState(initialLinks.length > 0 ? initialLinks : []);
   const [preview, setPreview] = useState<string | null>(photoUrl);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const updateLink = (index: number, field: 'label' | 'url', value: string) => {
     setLinks((current) =>
@@ -71,6 +73,15 @@ export function ProfileForm({
                   className="sr-only"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
+                    // A body over the Server Action limit fails before the action
+                    // runs, so an oversized file has to be caught here.
+                    if (file && file.size > MAX_PROFILE_PHOTO_BYTES) {
+                      event.target.value = '';
+                      setPhotoError(PROFILE_PHOTO_TOO_LARGE);
+                      setPreview(photoUrl);
+                      return;
+                    }
+                    setPhotoError(null);
                     setPreview(file ? URL.createObjectURL(file) : photoUrl);
                   }}
                 />
@@ -79,6 +90,7 @@ export function ProfileForm({
                 </p>
               </div>
             </div>
+            {photoError ? <Alert variant="danger">{photoError}</Alert> : null}
 
             <Field label="Display name" htmlFor="profile-name" required>
               <Input

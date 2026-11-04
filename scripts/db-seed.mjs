@@ -77,9 +77,9 @@ try {
     );
     await client.query(
       `insert into public.members (id, auth_user_id, public_number, member_since)
-       values ($1, $1, $3, current_date - 120)
+       values ($1, $1, $2, current_date - 120)
        on conflict (id) do nothing`,
-      [id, id, number],
+      [id, number],
     );
     await client.query(
       `insert into public.member_private (member_id, email) values ($1, $2)

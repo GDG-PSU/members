@@ -264,7 +264,9 @@ bool NfcLane::ParseNdefUri(const uint8_t* buffer, size_t length, String& uri,
   }
   position += typeLength;
 
-  if (payloadLength < 1 || position + payloadLength > messageLength) {
+  // Compared by subtraction: a long-form length comes straight from the tag, and
+  // adding it could wrap the 32-bit size_t and pass a bound it does not meet.
+  if (payloadLength < 1 || payloadLength > messageLength - position) {
     errorCode = "truncated_payload";
     return false;
   }

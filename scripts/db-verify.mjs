@@ -2,14 +2,17 @@
 /**
  * Database integration verification.
  *
- * Runs entirely inside a transaction that is rolled back, so it can be run
- * against a disposable/staging project without leaving rows behind.
+ * Most checks run in a transaction that is rolled back. The concurrency checks
+ * need committed rows and clean up after themselves, but a failed run can leave
+ * them behind, so this is for a disposable local/staging database only. A
+ * non-local host must be allowed explicitly with DB_VERIFY_ALLOW_HOSTED=yes.
  *
  *   node scripts/db-verify.mjs
  *
- * Covers: ledger idempotency and stars, redemption inventory/balance races,
- * attendance windows/threshold/duplicate handling, reversals, card lifecycle
- * and RLS (member isolation, private profiles, anon denial).
+ * Covers: API role privileges, ledger idempotency and stars, redemption
+ * inventory/balance races, attendance windows/threshold/duplicate handling,
+ * reversals and re-qualification, card lifecycle, the last-superadmin guard and
+ * RLS (member isolation, private profiles, anon denial).
  */
 import process from 'node:process';
 import { Client } from 'pg';
@@ -21,9 +24,18 @@ if (!env.DATABASE_URL) {
   process.exit(1);
 }
 
+const isLocal = /@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(env.DATABASE_URL);
+if (!isLocal && env.DB_VERIFY_ALLOW_HOSTED !== 'yes') {
+  console.error(
+    'Refusing to run against a non-local database. Use a disposable database, or set DB_VERIFY_ALLOW_HOSTED=yes for a staging project. Never run this against production.',
+  );
+  process.exit(1);
+}
+const ssl = isLocal ? false : { rejectUnauthorized: false };
+
 const client = new Client({
   connectionString: env.DATABASE_URL,
-  ssl: env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
+  ssl,
   connectionTimeoutMillis: 15000,
 });
 
@@ -52,6 +64,20 @@ async function expectError(name, sql, params, expectedFragment) {
   }
 }
 
+async function expectDenied(name, role, sql, params = []) {
+  await client.query('savepoint denied_ctx');
+  await client.query(`set local role ${role}`);
+  try {
+    await client.query(sql, params);
+    check(name, false, 'expected permission denied');
+  } catch (error) {
+    check(name, /permission denied/i.test(error.message), `got: ${error.message}`);
+  }
+  await client.query('rollback to savepoint denied_ctx');
+  await client.query('reset role');
+  await client.query('release savepoint denied_ctx');
+}
+
 async function asUser(userId, fn, aal = 'aal1') {
   await client.query('savepoint rls_ctx');
   await client.query(`set local role authenticated`);
@@ -70,6 +96,77 @@ await client.connect();
 await client.query('begin');
 
 try {
+  // ---- API role privileges ---------------------------------------------------
+  // Supabase grants EXECUTE on new public functions to anon and authenticated
+  // directly, so `revoke ... from public` alone leaves them callable over
+  // /rest/v1/rpc. This must stay empty whatever a future migration adds.
+  const { rows: exposed } = await client.query(`
+    select p.proname,
+      has_function_privilege('anon', p.oid, 'execute') as anon,
+      has_function_privilege('authenticated', p.oid, 'execute') as authenticated
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+  `);
+  const authenticatedHelpers = new Set(['current_member_id', 'is_admin', 'is_superadmin']);
+  const anonCallable = exposed.filter((fn) => fn.anon).map((fn) => fn.proname);
+  const memberCallable = exposed
+    .filter((fn) => fn.authenticated && !authenticatedHelpers.has(fn.proname))
+    .map((fn) => fn.proname);
+  check('anon cannot execute any public function', anonCallable.length === 0, anonCallable.join());
+  check(
+    'authenticated can execute only the RLS helpers',
+    memberCallable.length === 0,
+    memberCallable.join(),
+  );
+
+  await expectDenied(
+    'anon cannot read the public profile view',
+    'anon',
+    'select email from public.public_profiles',
+  );
+  await expectDenied(
+    'authenticated cannot read the public profile view',
+    'authenticated',
+    'select email from public.public_profiles',
+  );
+  await expectDenied(
+    'anon cannot read the leaderboard view',
+    'anon',
+    'select slug from public.leaderboard',
+  );
+  await expectDenied(
+    'anon cannot touch rate limit counters',
+    'anon',
+    'select * from public.rate_limit_counters',
+  );
+  await expectDenied(
+    'members cannot read organizer notes',
+    'authenticated',
+    'select admin_note from public.member_private',
+  );
+  await expectDenied(
+    'API roles cannot read card tokens',
+    'authenticated',
+    'select token_ciphertext from public.card_credentials',
+  );
+  await expectDenied(
+    'API roles cannot read card token hashes',
+    'authenticated',
+    'select token_hash from public.card_credentials',
+  );
+  await expectDenied(
+    'API roles cannot read device secrets',
+    'authenticated',
+    'select secret_ciphertext from public.devices',
+  );
+  await expectDenied(
+    'API roles cannot read write payloads',
+    'authenticated',
+    'select payload_ciphertext from public.card_write_jobs',
+  );
+
   // GoTrue's admin API scans these columns into non-nullable values; a partial
   // row makes /auth/v1/admin/users fail with a 500 until it is repaired.
   const { rows: users } = await client.query(`
@@ -336,6 +433,82 @@ try {
     afterReverse.rows[0].stars === beforeReverse.rows[0].stars - 25,
   );
 
+  // ---- Attendance corrections ----------------------------------------------
+  // A source key can only be spent once, so a re-grant after a reversal needs a
+  // new key or it silently awards nothing.
+  const balanceOf = async (memberId) =>
+    (
+      await client.query(`select points, stars from public.member_balances where member_id = $1`, [
+        memberId,
+      ])
+    ).rows[0];
+  const correct = (action) =>
+    client.query(`select public.correct_attendance($1, $2, null, 'Verification correction', $3)`, [
+      attendanceId,
+      action,
+      adminId,
+    ]);
+
+  await correct('disqualify');
+  const afterDisqualify = await balanceOf(memberA);
+  check(
+    're-disqualifying an already reversed grant changes nothing',
+    afterDisqualify.points === afterReverse.rows[0].points,
+    JSON.stringify(afterDisqualify),
+  );
+
+  await correct('qualify');
+  const afterQualify = await balanceOf(memberA);
+  check(
+    're-qualifying after a reversal grants points and stars again',
+    afterQualify.points === afterDisqualify.points + 25 &&
+      afterQualify.stars === afterDisqualify.stars + 25,
+    JSON.stringify(afterQualify),
+  );
+  const requalified = await client.query(
+    `select qualified, reward_points, ledger_id from public.attendance_records where id = $1`,
+    [attendanceId],
+  );
+  check(
+    're-qualified attendance links its new ledger entry',
+    requalified.rows[0].qualified === true &&
+      requalified.rows[0].ledger_id !== completed.rows[0].ledger_id,
+  );
+
+  await correct('disqualify');
+  check(
+    'second disqualification reverses the new grant',
+    (await balanceOf(memberA)).points === afterDisqualify.points,
+  );
+  await correct('qualify');
+  check(
+    'second re-qualification grants again',
+    (await balanceOf(memberA)).points === afterDisqualify.points + 25,
+  );
+
+  await expectError(
+    'check-out before check-in is rejected',
+    `select public.correct_attendance($1, 'set_checkout', now() - interval '10 years', 'Verification correction', $2)`,
+    [attendanceId, adminId],
+    'checkout_before_check_in',
+  );
+
+  // ---- Confirmation re-checks state that changed after the preview ---------
+  const staleScan = await createScan(memberB, 'verify-scan-stale');
+  await client.query(`update public.members set status = 'suspended' where id = $1`, [memberB]);
+  await expectError(
+    'a member suspended after the preview cannot be confirmed',
+    `select public.confirm_scan($1, 'check_out', $2)`,
+    [staleScan, adminId],
+    'member_not_active',
+  );
+  await client.query(`select public.confirm_scan($1, 'reject', $2)`, [staleScan, adminId]);
+  const dismissed = await client.query(`select status from public.device_scans where id = $1`, [
+    staleScan,
+  ]);
+  check('a stale scan can still be dismissed', dismissed.rows[0].status === 'rejected');
+  await client.query(`update public.members set status = 'active' where id = $1`, [memberB]);
+
   await expectError(
     'append-only ledger blocks updates',
     `update public.point_ledger set delta = 999 where id = $1`,
@@ -356,16 +529,120 @@ try {
   );
   check('card activates and records issue time', activeCard.rows[0].status === 'active');
 
-  await client.query(`select public.prepare_card($1, 'verify-card-hash-2', 'cipher2', $2)`, [
-    memberA,
+  const cardStatus = async (id) =>
+    (
+      await client.query(`select status, revoked_at from public.card_credentials where id = $1`, [
+        id,
+      ])
+    ).rows[0];
+
+  const abandoned = await client.query(
+    `select public.prepare_card($1, 'verify-card-hash-2', 'cipher2', $2) as id`,
+    [memberA, adminId],
+  );
+  check(
+    'preparing a replacement leaves the working card active',
+    (await cardStatus(cardId)).status === 'active',
+  );
+
+  const replacement = await client.query(
+    `select public.prepare_card($1, 'verify-card-hash-3', 'cipher3', $2) as id`,
+    [memberA, adminId],
+  );
+  check(
+    'a newer preparation supersedes an unwritten card',
+    (await cardStatus(abandoned.rows[0].id)).status === 'replaced',
+  );
+
+  await client.query(`select public.activate_card($1, $2)`, [replacement.rows[0].id, adminId]);
+  const oldCard = await cardStatus(cardId);
+  check('activating the replacement revokes the previous card', oldCard.status === 'replaced');
+  check('revoked card has revoked_at', oldCard.revoked_at !== null);
+  check(
+    'the replacement is the active card',
+    (await cardStatus(replacement.rows[0].id)).status === 'active',
+  );
+
+  await client.query(`select public.revoke_card($1, $2, 'Verification loss')`, [
+    replacement.rows[0].id,
     adminId,
   ]);
-  const oldCard = await client.query(
-    `select status, revoked_at from public.card_credentials where id = $1`,
-    [cardId],
+  const scanCard = await client.query(
+    `select public.prepare_card($1, 'verify-card-hash-4', 'cipher4', $2) as id`,
+    [memberB, adminId],
   );
-  check('new card preparation revokes the previous card', oldCard.rows[0].status === 'replaced');
-  check('revoked card has revoked_at', oldCard.rows[0].revoked_at !== null);
+  await client.query(`select public.activate_card($1, $2)`, [scanCard.rows[0].id, adminId]);
+  const { rows: cardScanRows } = await client.query(
+    `insert into public.device_scans (member_id, card_id, session_id, idempotency_key, status)
+     values ($1, $2, $3, 'usb:verify-revoked-card', 'pending') returning id`,
+    [memberB, scanCard.rows[0].id, bonusSession],
+  );
+  await client.query(`select public.revoke_card($1, $2, 'Verification loss')`, [
+    scanCard.rows[0].id,
+    adminId,
+  ]);
+  await expectError(
+    'a card revoked after the preview cannot be confirmed',
+    `select public.confirm_scan($1, 'check_out', $2)`,
+    [cardScanRows[0].id, adminId],
+    'card_not_active',
+  );
+
+  // ---- User types ----------------------------------------------------------
+  const { rows: staffRows } = await client.query(`
+    insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+      raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
+    values
+      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.super@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0),
+      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.invitee@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0),
+      ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'verify.other@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0)
+    returning id, email
+  `);
+  const superId = staffRows.find((u) => u.email === 'verify.super@example.test').id;
+  const inviteeId = staffRows.find((u) => u.email === 'verify.invitee@example.test').id;
+  const otherId = staffRows.find((u) => u.email === 'verify.other@example.test').id;
+  await client.query(
+    `insert into public.user_roles (auth_user_id, role) values ($1, 'superadmin')`,
+    [superId],
+  );
+  await client.query(`select public.set_user_type($1, 'superadmin', $1)`, [superId]);
+  const keptSuper = await client.query(
+    `select revoked_at from public.user_roles where auth_user_id = $1 and role = 'superadmin'`,
+    [superId],
+  );
+  check('re-saving a superadmin keeps the role', keptSuper.rows[0].revoked_at === null);
+
+  await expectError(
+    'revoking every superadmin is refused',
+    `update public.user_roles set revoked_at = now() where role = 'superadmin' and revoked_at is null`,
+    [],
+    'last_superadmin',
+  );
+  await expectError(
+    'deleting every superadmin is refused',
+    `delete from public.user_roles where role = 'superadmin'`,
+    [],
+    'last_superadmin',
+  );
+
+  await expectError(
+    'staff cannot complete member setup',
+    `select public.complete_member_setup($1, 'verify.super@example.test', 'Verify Staff', 'verify-profile-slug-staffxxx', 'member/s.webp', 'GDG-VRFS01', '', '[]'::jsonb)`,
+    [superId],
+    'user_is_staff',
+  );
+
+  await client.query(
+    `insert into public.member_invitations (email, paid_since, auth_user_id)
+     values ('verify.invitee@example.test', current_date, $1)`,
+    [inviteeId],
+  );
+  await expectError(
+    'an invitation cannot be used from a different account',
+    `select public.complete_member_setup($1, 'verify.invitee@example.test', 'Verify Other', 'verify-profile-slug-otherxxx', 'member/o.webp', 'GDG-VRFO01', '', '[]'::jsonb)`,
+    [otherId],
+    'invitation_not_found',
+  );
 
   // ---- RLS -----------------------------------------------------------------
   const ownLedger = await asUser(memberAId, async () => {
@@ -407,10 +684,10 @@ try {
   );
   check('RLS: admin with MFA reads all profiles', adminSeesAll >= 2);
 
-  const publicView = await asUser(memberAId, async () => {
-    const res = await client.query(`select slug from public.public_profiles`);
-    return res.rows.map((r) => r.slug);
-  });
+  // The projections are read with the server-only client, as the app does.
+  const publicView = (await client.query(`select slug from public.public_profiles`)).rows.map(
+    (r) => r.slug,
+  );
   check(
     'public projection includes public profile',
     publicView.includes('verify-profile-slug-aaaaaaaa'),
@@ -464,20 +741,15 @@ try {
   await client.query('rollback');
 
   // ---- True concurrency (separate committed transactions) ------------------
-  const concurrency = new Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
-  });
-  const racer = new Client({
-    connectionString: env.DATABASE_URL,
-    ssl: env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
-  });
+  const concurrency = new Client({ connectionString: env.DATABASE_URL, ssl });
+  const racer = new Client({ connectionString: env.DATABASE_URL, ssl });
   await concurrency.connect();
   await racer.connect();
   let raceUserId = null;
   let raceRewardId = null;
   let eraseAuthId = null;
   let eraseMemberId = null;
+  const superAuthIds = [];
   try {
     const { rows: raceUser } = await concurrency.query(
       `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
@@ -534,6 +806,70 @@ try {
     );
     check('balance never goes negative', finalBalance[0].points === 0);
 
+    // A double-submitted redemption must return the same request, not a 500.
+    await concurrency.query(
+      `select public.grant_points($1, 100, 'admin_adjustment', $2, 'Idempotency setup')`,
+      [memberId, `verify:race-repeat:${raceUserId}`],
+    );
+    await concurrency.query('begin');
+    const firstRedeem = await concurrency.query(
+      `select public.redeem_reward($1, $2, 1, 'verify-race-repeat') as id`,
+      [memberId, raceRewardId],
+    );
+    await racer.query('begin');
+    const repeatRedeem = racer
+      .query(`select public.redeem_reward($1, $2, 1, 'verify-race-repeat') as id`, [
+        memberId,
+        raceRewardId,
+      ])
+      .then((result) => result.rows[0].id)
+      .catch((error) => error.message);
+    await concurrency.query('commit');
+    const repeatResult = await repeatRedeem;
+    await racer.query('rollback').catch(() => {});
+    check(
+      'a concurrent repeat of a redemption key returns the same redemption',
+      repeatResult === firstRedeem.rows[0].id,
+      String(repeatResult),
+    );
+
+    // ---- Last superadmin under concurrency (migration 0014) ----------------
+    for (const label of ['a', 'b']) {
+      const { rows } = await concurrency.query(
+        `insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+           raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
+         values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', $1, now(), now(), now(),
+           '{}'::jsonb, '{}'::jsonb, 0)
+         returning id`,
+        [`verify.super.${label}.${Date.now()}@example.test`],
+      );
+      superAuthIds.push(rows[0].id);
+      await concurrency.query(
+        `insert into public.user_roles (auth_user_id, role) values ($1, 'superadmin')`,
+        [rows[0].id],
+      );
+    }
+    const revokeSuper = `update public.user_roles set revoked_at = now()
+      where auth_user_id = $1 and role = 'superadmin' and revoked_at is null`;
+    await concurrency.query('begin');
+    await concurrency.query(revokeSuper, [superAuthIds[0]]);
+    await racer.query('begin');
+    const secondRevoke = racer
+      .query(revokeSuper, [superAuthIds[1]])
+      .then(() => 'revoked')
+      .catch((error) => error.message);
+    await concurrency.query('commit');
+    const secondRevokeResult = await secondRevoke;
+    await racer.query(secondRevokeResult === 'revoked' ? 'commit' : 'rollback').catch(() => {});
+    const { rows: superadmins } = await racer.query(
+      `select count(*)::int as n from public.user_roles where role = 'superadmin' and revoked_at is null`,
+    );
+    check(
+      'concurrent revocations cannot remove the last superadmin',
+      superadmins[0].n >= 1,
+      `${superadmins[0].n} left; second revoke: ${secondRevokeResult}`,
+    );
+
     // ---- Controlled erasure (migration 0009) -------------------------------
     // Account closure must remove history even though the ledgers are
     // append-only; ordinary deletes must stay blocked afterwards.
@@ -589,7 +925,7 @@ try {
         erasedRows.rows[0].profile === 0,
     );
   } finally {
-    for (const authId of [raceUserId, eraseAuthId]) {
+    for (const authId of [raceUserId, eraseAuthId, ...superAuthIds]) {
       if (!authId) continue;
       try {
         await concurrency.query(`select public.erase_member($1)`, [authId]);

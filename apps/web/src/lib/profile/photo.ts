@@ -1,36 +1,24 @@
-import sharp from 'sharp';
 import { randomUUID } from 'node:crypto';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { MAX_PROFILE_PHOTO_BYTES, PROFILE_PHOTO_TOO_LARGE } from '@/lib/profile/limits';
+import { normalizeProfilePhoto, PhotoError } from '@/lib/profile/normalize-photo';
+import { withinRateLimit } from '@/lib/security/rate-limit';
 
-const MAX_BYTES = 2 * 1024 * 1024;
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export { PhotoError };
 
-export class PhotoError extends Error {}
-
-/**
- * Validates, strips metadata, square-crops and re-encodes an uploaded photo.
- * The client filename and content type are never trusted.
- */
 export async function storeProfilePhoto(file: File, ownerId: string): Promise<string> {
-  if (!ALLOWED.has(file.type)) {
-    throw new PhotoError('Use a JPEG, PNG or WebP image.');
-  }
-  if (file.size > MAX_BYTES) {
-    throw new PhotoError('Images must be 2 MB or smaller.');
+  if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+    throw new PhotoError(PROFILE_PHOTO_TOO_LARGE);
   }
   const input = Buffer.from(await file.arrayBuffer());
   if (input.length === 0) throw new PhotoError('The image was empty.');
 
-  let output: Buffer;
-  try {
-    output = await sharp(input)
-      .rotate()
-      .resize(512, 512, { fit: 'cover', position: 'attention' })
-      .webp({ quality: 84 })
-      .toBuffer();
-  } catch {
-    throw new PhotoError('That file is not a readable image.');
+  // Decoding is the most expensive thing a signed-in account can trigger.
+  if (!(await withinRateLimit(`photo-upload:${ownerId}`, 10, 3600))) {
+    throw new PhotoError('Too many photo uploads. Try again later.');
   }
+
+  const output = await normalizeProfilePhoto(input);
 
   const path = `member/${ownerId}/${randomUUID()}.webp`;
   const supabase = createSupabaseAdmin();

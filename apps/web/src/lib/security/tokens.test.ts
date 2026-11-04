@@ -10,6 +10,19 @@ import {
   safeEqual,
 } from './tokens';
 
+describe('stored secret authentication', () => {
+  it('rejects a payload whose authentication tag was shortened', () => {
+    const [version, iv, tag, data] = encryptSecret('card-url').split('.') as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    const truncated = Buffer.from(tag, 'base64url').subarray(0, 4).toString('base64url');
+    expect(() => decryptSecret([version, iv, truncated, data].join('.'))).toThrow();
+  });
+});
+
 describe('profile and card tokens', () => {
   it('generates 24-character URL-safe profile slugs', () => {
     const slugs = new Set<string>();

@@ -31,7 +31,8 @@ export function UsbCardPreparation({ members }: { members: MemberOption[] }) {
         <h2 className="type-h3 mt-1.5">Prepare a URL for this writer</h2>
         <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Prepare a pending card, copy its URL into the writer below, write and read it back, then
-          activate it. The card stays unavailable at <code>/c/…</code> until activation.
+          activate it. The card stays unavailable at <code>/c/…</code> until activation, and the
+          member&apos;s current card keeps working until then.
         </p>
 
         <form
@@ -51,7 +52,7 @@ export function UsbCardPreparation({ members }: { members: MemberOption[] }) {
             </Select>
           </Field>
           <Field label="Reason (optional)" htmlFor="usb-reason">
-            <Input id="usb-reason" name="reason" />
+            <Input id="usb-reason" name="reason" maxLength={200} />
           </Field>
           <Button type="submit" disabled={preparing}>
             {preparing ? 'Preparing…' : 'Prepare card'}

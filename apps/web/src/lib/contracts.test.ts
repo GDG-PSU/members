@@ -3,6 +3,7 @@ import {
   defaultVisibility,
   deviceScanSchema,
   leaderboardQuerySchema,
+  newPasswordSchema,
   profileUpdateSchema,
   visibilitySchema,
 } from '@gdg/contracts';
@@ -56,6 +57,14 @@ describe('contracts', () => {
       false,
     );
     expect(deviceScanSchema.safeParse({ ...valid, idempotencyKey: 'x' }).success).toBe(false);
+  });
+
+  it('requires a long password with a letter and a number', () => {
+    expect(newPasswordSchema.safeParse('correct-horse-7').success).toBe(true);
+    expect(newPasswordSchema.safeParse('short-1').success).toBe(false);
+    expect(newPasswordSchema.safeParse('no-digits-in-this-one').success).toBe(false);
+    expect(newPasswordSchema.safeParse('123456789012345').success).toBe(false);
+    expect(newPasswordSchema.safeParse(`a1${'x'.repeat(127)}`).success).toBe(false);
   });
 
   it('bounds leaderboard pagination', () => {

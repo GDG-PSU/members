@@ -67,7 +67,15 @@ export function decryptSecret(payload: string): string {
   if (version !== 'v1' || !ivPart || !tagPart || !dataPart) {
     throw new Error('Unsupported secret payload');
   }
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivPart, BASE64URL));
+  // Pinned so a stored value cannot pass authentication with a shortened tag.
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    encryptionKey(),
+    Buffer.from(ivPart, BASE64URL),
+    {
+      authTagLength: 16,
+    },
+  );
   decipher.setAuthTag(Buffer.from(tagPart, BASE64URL));
   return Buffer.concat([
     decipher.update(Buffer.from(dataPart, BASE64URL)),

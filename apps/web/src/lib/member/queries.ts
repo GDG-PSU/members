@@ -114,19 +114,3 @@ export async function getCardStatus(
   if (!data) return { id: null, status: 'none' };
   return { id: data.id as string, status: data.status as CardStatus['status'] };
 }
-
-export async function getActiveCardUrl(
-  supabase: SupabaseClient,
-  memberId: string,
-): Promise<string | null> {
-  const { data } = await supabase
-    .from('card_credentials')
-    .select('token_ciphertext, status')
-    .eq('member_id', memberId)
-    .eq('status', 'active')
-    .maybeSingle();
-  if (!data?.token_ciphertext) return null;
-  const { decryptSecret } = await import('@/lib/security/tokens');
-  const token = decryptSecret(data.token_ciphertext as string);
-  return `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/c/${token}`;
-}

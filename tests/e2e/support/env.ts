@@ -13,9 +13,14 @@ export function siteOrigin(): string {
   return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? baseUrl()).origin;
 }
 
+/**
+ * The authenticated specs create and erase real Auth users and fixtures, so a
+ * hosted project has to be opted into explicitly. Never opt in production.
+ */
 export function hasSupabaseAdminCredentials(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (url?.includes('.supabase.co') && process.env.E2E_ALLOW_HOSTED_SUPABASE !== 'yes') {
+    return false;
+  }
+  return Boolean(url && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY));
 }

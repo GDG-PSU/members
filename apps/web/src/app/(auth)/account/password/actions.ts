@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
+import { newPasswordSchema } from '@gdg/contracts';
 import { getViewer } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -9,10 +10,7 @@ export type PasswordState = { error?: string };
 
 const schema = z
   .object({
-    password: z
-      .string()
-      .min(12, 'Use at least 12 characters.')
-      .max(128, 'Use 128 characters or fewer.'),
+    password: newPasswordSchema,
     confirmPassword: z.string(),
   })
   .refine((value) => value.password === value.confirmPassword, {

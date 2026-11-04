@@ -13,7 +13,7 @@ export function PasswordForm({ email }: { email: string }) {
     <form action={action} className="space-y-4">
       <p className="text-sm leading-relaxed text-muted-foreground">
         Signed in as <span className="font-semibold text-foreground">{email}</span>. Choose a new
-        password with at least 12 characters.
+        password with at least 12 characters, including a letter and a number.
       </p>
       <Field label="New password" htmlFor="new-password">
         <Input

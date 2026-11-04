@@ -344,7 +344,7 @@ export default async function AdminMemberDetailPage({
             <CardContent className="pt-5">
               <h2 className="mb-1 text-sm font-bold">Cards</h2>
               <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-                A new card revokes the previous one. The profile URL never changes.
+                Activating a new card replaces the previous one. The profile URL never changes.
               </p>
 
               <div className="mb-3 space-y-2">
