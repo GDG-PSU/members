@@ -8,8 +8,8 @@ GDG@PSU is a student-run community at Penn State. This notice describes what the
 - **Profile:** display name (required), a clear face photo (required), optional short bio and up to six `https://` links.
 - **Membership:** member-since date, public member number, membership status and internal account identifiers.
 - **Participation:** event attendance (check-in/check-out times, session, duration, qualification), points ledger and stars ledger, reward requests and redemptions.
-- **Cards and devices:** card status and issuance/revocation events (never the printed card token in logs), plus organizer audit records of actions taken on your account.
-- **Operational:** minimal device diagnostics (firmware version, last seen); no card UID is used as a credential.
+- **Cards:** card status and issuance/revocation events (never the printed card token in logs), plus organizer audit records of actions taken on your account.
+- **Reader:** the USB reader is a local browser peripheral. The app does not register it, store a device secret, or collect firmware/last-seen telemetry. No card UID is used as a credential.
 
 Payment processing is out of scope. Do not send payment-card details to organizers for this system.
 

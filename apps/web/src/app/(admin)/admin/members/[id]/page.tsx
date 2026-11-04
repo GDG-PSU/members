@@ -24,7 +24,6 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import {
   adjustMemberPointsAction,
   correctAttendanceAction,
-  prepareCardAction,
   revokeCardAction,
   setMemberStatusAction,
 } from '@/app/(admin)/admin/actions';
@@ -63,7 +62,7 @@ export default async function AdminMemberDetailPage({
   const profile = Array.isArray(row.member_profiles) ? row.member_profiles[0] : row.member_profiles;
   const priv = Array.isArray(row.member_private) ? row.member_private[0] : row.member_private;
 
-  const [balances, ledger, attendance, cards, writerDevices] = await Promise.all([
+  const [balances, ledger, attendance, cards] = await Promise.all([
     admin.from('member_balances').select('points, stars').eq('member_id', id).maybeSingle(),
     admin
       .from('point_ledger')
@@ -84,11 +83,6 @@ export default async function AdminMemberDetailPage({
       .select('id, status, issued_at, created_at, revoke_reason')
       .eq('member_id', id)
       .order('created_at', { ascending: false }),
-    admin
-      .from('devices')
-      .select('id, device_id, lane_label, mode, status')
-      .eq('mode', 'writer')
-      .eq('status', 'active'),
   ]);
 
   const activeCard = (cards.data ?? []).find((card) => card.status === 'active');
@@ -389,42 +383,16 @@ export default async function AdminMemberDetailPage({
                 ) : null}
               </div>
 
-              <form action={prepareCardAction} className="space-y-3">
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <input type="hidden" name="memberId" value={id} />
-                <Field label="Writer lane" htmlFor="writer-lane">
-                  <Select
-                    id="writer-lane"
-                    name="deviceId"
-                    required
-                    defaultValue=""
-                    className="h-10"
-                  >
-                    {(writerDevices.data ?? []).length === 0 ? (
-                      <option value="" disabled>
-                        No active writer device
-                      </option>
-                    ) : (
-                      (writerDevices.data ?? []).map((device) => (
-                        <option key={device.id as string} value={device.id as string}>
-                          {device.lane_label as string} ({device.device_id as string})
-                        </option>
-                      ))
-                    )}
-                  </Select>
-                </Field>
-                <Field label="Reason (optional)" htmlFor="prepare-reason">
-                  <Input id="prepare-reason" name="reason" className="h-10" />
-                </Field>
-                <SubmitButton
-                  size="small"
-                  pendingLabel="Queuing…"
-                  confirmMessage="This replaces any existing pending card and queues a write job on that lane."
-                  className="w-full"
-                >
-                  Prepare card + queue write
-                </SubmitButton>
-              </form>
+              <Link
+                href="/admin/usb"
+                className={buttonVariants({
+                  variant: 'secondary',
+                  size: 'sm',
+                  className: 'w-full',
+                })}
+              >
+                Open USB card writer
+              </Link>
 
               {activeCard ? (
                 <p className="mt-3 text-[0.72rem] leading-relaxed text-muted-foreground">

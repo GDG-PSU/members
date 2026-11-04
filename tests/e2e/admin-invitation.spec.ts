@@ -48,6 +48,9 @@ test.describe('admin invitation and member setup', () => {
     let memberId: string | null = null;
     let invitationLink = '';
     let totpSecret = '';
+    let cardUrl = '';
+    let kioskEventId: string | null = null;
+    let kioskSessionId: string | null = null;
 
     try {
       await test.step('create a disposable admin account', async () => {
@@ -85,6 +88,12 @@ test.describe('admin invitation and member setup', () => {
       });
 
       await test.step('admin generates and copies an invitation link', async () => {
+        await page.goto('/admin');
+        await expect(page.getByRole('link', { name: 'Devices', exact: true })).toHaveCount(0);
+        await page.goto('/admin/devices');
+        await expect(page).toHaveURL(/\/admin\/usb$/);
+        await expect(page.getByRole('heading', { name: 'USB devices' })).toBeVisible();
+
         await page.goto('/admin/invitations');
         const memberForm = page
           .locator('form')
@@ -240,7 +249,7 @@ test.describe('admin invitation and member setup', () => {
           await expect(page.getByText(`Pending card for ${displayName}`)).toBeVisible({
             timeout: 20_000,
           });
-          const cardUrl = await page.getByLabel('Card URL').inputValue();
+          cardUrl = await page.getByLabel('Card URL').inputValue();
           expect(new URL(cardUrl).origin).toBe(origin);
           expect(new URL(cardUrl).pathname).toMatch(/^\/c\/[A-Za-z0-9_-]{43}$/);
 
@@ -263,6 +272,162 @@ test.describe('admin invitation and member setup', () => {
           expect(card?.status).toBe('active');
           expect(card?.issued_at).toBeTruthy();
         });
+
+        await test.step('USB kiosk reads an active card and confirms attendance', async () => {
+          expect(memberId).toBeTruthy();
+          expect(cardUrl).toBeTruthy();
+
+          const now = Date.now();
+          const startsAt = new Date(now - 60 * 60_000).toISOString();
+          const endsAt = new Date(now + 2 * 60 * 60_000).toISOString();
+          const { data: event, error: eventError } = await supabase
+            .from('events')
+            .insert({
+              name: 'E2E Kiosk Event',
+              slug: `e2e-kiosk-${stamp}`,
+              summary: 'Fixture for the USB kiosk flow.',
+              location: 'Test room',
+              starts_at: startsAt,
+              ends_at: endsAt,
+              status: 'published',
+              is_public: false,
+            })
+            .select('id')
+            .single();
+          expect(eventError).toBeNull();
+          kioskEventId = event?.id as string;
+
+          const { data: session, error: sessionError } = await supabase
+            .from('event_sessions')
+            .insert({
+              event_id: kioskEventId,
+              name: 'Kiosk session',
+              kind: 'main',
+              starts_at: startsAt,
+              ends_at: endsAt,
+              check_in_opens_at: startsAt,
+              check_in_closes_at: new Date(now + 60 * 60_000).toISOString(),
+              check_out_opens_at: startsAt,
+              check_out_closes_at: endsAt,
+              minimum_duration_minutes: 0,
+              reward_points: 5,
+              is_enabled: true,
+            })
+            .select('id')
+            .single();
+          expect(sessionError).toBeNull();
+          kioskSessionId = session?.id as string;
+
+          await page.addInitScript(
+            ({ cardUrl: fixtureCardUrl }) => {
+              const encoder = new TextEncoder();
+              const decoder = new TextDecoder();
+              class FakeSerialPort {
+                readable: ReadableStream<Uint8Array>;
+                writable: WritableStream<Uint8Array>;
+                private controller!: ReadableStreamDefaultController<Uint8Array>;
+
+                constructor() {
+                  this.readable = new ReadableStream<Uint8Array>({
+                    start: (controller) => {
+                      this.controller = controller;
+                    },
+                  });
+                  this.writable = new WritableStream<Uint8Array>({
+                    write: (chunk) => {
+                      const text = decoder.decode(chunk);
+                      for (const line of text.split('\n')) {
+                        if (!line.trim()) continue;
+                        const command = JSON.parse(line) as { id: number; cmd: string };
+                        const result =
+                          command.cmd === 'info'
+                            ? {
+                                protocol: 2,
+                                firmware: 'test',
+                                deviceId: 'esp32-test',
+                                chipId: 'test',
+                                nfcReady: true,
+                                nfcFirmware: 0x32010607,
+                                uptimeMs: 1,
+                              }
+                            : command.cmd === 'nfc.read'
+                              ? { uri: fixtureCardUrl }
+                              : {};
+                        this.controller.enqueue(
+                          encoder.encode(
+                            JSON.stringify({ id: command.id, ok: true, result }) + '\n',
+                          ),
+                        );
+                      }
+                    },
+                  });
+                }
+
+                async open() {}
+                async close() {}
+                getInfo() {
+                  return { usbVendorId: 0x10c4, usbProductId: 0xea60 };
+                }
+              }
+
+              const port = new FakeSerialPort();
+              Object.defineProperty(navigator, 'serial', {
+                configurable: true,
+                value: { requestPort: async () => port },
+              });
+            },
+            { cardUrl },
+          );
+
+          await page.goto('/admin/kiosk');
+          await expect(page.getByRole('heading', { name: 'Kiosk' })).toBeVisible();
+          await page.getByRole('button', { name: 'Connect lane' }).click();
+          await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
+          await page.getByRole('button', { name: 'Read card' }).click();
+          await expect(page.getByRole('heading', { name: displayName })).toBeVisible({
+            timeout: 20_000,
+          });
+
+          const identityCheck = page.getByLabel("I checked this member's PSU ID");
+          if (await identityCheck.isVisible().catch(() => false)) {
+            await identityCheck.check();
+          }
+          await page.getByRole('button', { name: 'Confirm check-in' }).click();
+          await expect(page.getByText(`${displayName} checked in.`)).toBeVisible({
+            timeout: 20_000,
+          });
+
+          const { data: checkedIn } = await supabase
+            .from('attendance_records')
+            .select('state, checked_in_at')
+            .eq('member_id', memberId)
+            .eq('session_id', kioskSessionId)
+            .single();
+          expect(checkedIn?.state).toBe('checked_in');
+          expect(checkedIn?.checked_in_at).toBeTruthy();
+
+          await page.getByRole('button', { name: 'Read card' }).click();
+          await expect(page.getByRole('heading', { name: displayName })).toBeVisible({
+            timeout: 20_000,
+          });
+          if (await identityCheck.isVisible().catch(() => false)) {
+            await identityCheck.check();
+          }
+          await page.getByRole('button', { name: 'Confirm check-out' }).click();
+          await expect(page.getByText(`${displayName} checked out.`)).toBeVisible({
+            timeout: 20_000,
+          });
+
+          const { data: checkedOut } = await supabase
+            .from('attendance_records')
+            .select('state, qualified, reward_points, checked_out_at')
+            .eq('member_id', memberId)
+            .eq('session_id', kioskSessionId)
+            .single();
+          expect(checkedOut?.state).toBe('completed');
+          expect(checkedOut?.checked_out_at).toBeTruthy();
+          expect(checkedOut?.reward_points).toBe(5);
+        });
       } finally {
         await memberContext.close();
       }
@@ -278,6 +443,16 @@ test.describe('admin invitation and member setup', () => {
         await deleteMemberFixture(supabase, invitedUserId).catch((error) => {
           console.warn('Could not delete the member fixture:', error);
         });
+      }
+      if (kioskEventId) {
+        try {
+          const { error } = await supabase.from('events').delete().eq('id', kioskEventId);
+          if (error) {
+            console.warn('Could not delete the kiosk event fixture:', error);
+          }
+        } catch (error) {
+          console.warn('Could not delete the kiosk event fixture:', error);
+        }
       }
       await supabase.from('member_invitations').delete().eq('email', memberEmail);
       if (adminUserId) {

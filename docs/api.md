@@ -1,10 +1,12 @@
 # API and server actions
 
-> **Current hardware note (2026-11-04):** `/api/device/v1/*` and the kiosk
-> endpoints are legacy and are not called by the USB firmware. Current card
-> operations are server actions used by `/admin/usb`: prepare a pending card,
-> display its one-time `/c/<token>` URL, then activate it after the admin attests
-> to a matching USB read-back.
+> **Current hardware note (2026-11-04):** `/api/device/v1/*` and
+> `GET /api/admin/kiosk/pending` are legacy and are not called by the USB
+> firmware or the current kiosk UI. `POST /api/admin/kiosk/confirm` is still the
+> confirmation transaction used by `/admin/kiosk`; the preview is the
+> `previewUsbKioskAction` Server Action. Card operations are Server Actions used
+> by `/admin/usb`: prepare a pending card, display its one-time `/c/<token>` URL,
+> then activate it after the admin attests to a matching USB read-back.
 
 This repository has three kinds of server surface:
 
@@ -21,7 +23,7 @@ This repository has three kinds of server surface:
 | Member/auth Server Actions                                                      | Implemented                                                             |
 | `GET /api/public/leaderboard`, `/api/public/events`, `/api/public/events/:slug` | Implemented                                                             |
 | Admin portal + Server Actions                                                   | Implemented under `app/(admin)/admin/*`; admin MFA gate at `/admin-mfa` |
-| `GET /api/admin/kiosk/pending`, `POST /api/admin/kiosk/confirm`                 | Implemented (cookie session + server-side admin check)                  |
+| `GET /api/admin/kiosk/pending`, `POST /api/admin/kiosk/confirm`                 | Pending endpoint legacy; confirmation used by the USB kiosk             |
 | `/api/device/v1/*`                                                              | Implemented; device auth, rate limits and idempotency enforced          |
 
 All authenticated surfaces derive the actor from the verified Supabase session and re-check the role in the database; no client-supplied role or member id is trusted.
@@ -84,8 +86,12 @@ Limitation: the limiter bucket is per token, not per client IP. Cycling many val
 
 ## Admin endpoints
 
-- `GET /api/admin/kiosk/pending` — poll the pending scan queue; returns member name/photo, `photoChangedAt`, `photoChangedRecently` (within 48 hours), event/session and suggested action. Requires an admin cookie session.
-- `POST /api/admin/kiosk/confirm` — body `{ scanId, action: 'check_in'|'check_out'|'reject', reason?, identityCheck? }`; calls `confirm_scan` atomically, applies a per-admin rate limit (60/min), and returns `{ ok, attendanceId }`. If the member's photo changed within 48 hours, a check-in or check-out without `identityCheck: true` is rejected with 400; a successful check writes an `attendance.identity_checked` audit row. A scan is never awarded automatically.
+- `GET /api/admin/kiosk/pending` — legacy pending-scan polling endpoint. It is retained for historical data and diagnostics; the USB kiosk does not use it.
+- `POST /api/admin/kiosk/confirm` — body `{ scanId, action: 'check_in'|'check_out'|'reject', reason?, identityCheck? }`; calls `confirm_scan` atomically, applies a per-admin rate limit (60/min), and returns `{ ok, attendanceId }`. If the member's photo changed within 48 hours, a check-in or check-out without `identityCheck: true` is rejected with 400; a successful check writes an `attendance.identity_checked` audit row. A scan is never awarded automatically. This is the current USB kiosk confirmation endpoint.
+
+### USB kiosk preview
+
+`/admin/kiosk` calls the `previewUsbKioskAction` Server Action after Web Serial returns one card URI. The action validates the URL/token, active card and member, session and check-in/check-out window, and photo-change state. It creates a short-lived pending `device_scans` row with `device_id = null` and `metadata.source = 'usb-kiosk'`, then returns the member preview and suggested action. The admin confirms through `POST /api/admin/kiosk/confirm`, which invokes the same `confirm_scan` transaction used by the legacy path. A read alone never changes attendance or points.
 
 All other admin mutations are Server Actions (below). They require `getViewer().isAdmin` on the server and write an `audit_log` row; most finish with `redirect()` to the originating page with a notice/error query parameter. Link-returning actions instead return `{ ok, email, link }` to a client form (never a redirect URL), so tokens are not placed in browser history or server logs. Delivery is manual: the admin copies the link, sends it privately, and the app never calls an email provider.
 
@@ -95,11 +101,11 @@ All other admin mutations are Server Actions (below). They require `getViewer().
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Invitations | `createInvitationAction` (returns a one-time link), `regenerateInvitationLinkAction` (new link, 14-day record window), `revokeInvitationAction`. Duplicate pending invitations blocked; the Auth user is rolled back if the invitation row fails. **No email is sent.** |
 | Members     | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction` (returns a one-time link; no email). Reasoned and audited.                                                                                                                                    |
-| Cards       | `prepareCardAction` (new token + revoke previous + encrypted one-time write job), `revokeCardAction`, `completeWriteJobAction` (cancel).                                                                                                                                |
+| Cards       | `prepareUsbCardAction`, `activateUsbCardAction`, `revokeCardAction`. The legacy `prepareCardAction`/`completeWriteJobAction` remain server-side but are not exposed by the USB UI.                                                                                      |
 | Events      | `saveEventAction` (event + exactly one main session + optional bonus), `setEventStatusAction`.                                                                                                                                                                          |
-| Kiosk       | `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions.                                                                                                                                                                           |
+| Kiosk       | `previewUsbKioskAction` (USB read preview, transient scan), `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions.                                                                                                               |
 | Rewards     | `saveRewardAction`, `decideRedemptionAction` (approve/fulfil/reject/cancel with refund).                                                                                                                                                                                |
-| Devices     | `createDeviceAction` (secret returned once), `updateDeviceAction` (lane/mode/enable/rotate secret).                                                                                                                                                                     |
+| Devices     | Legacy `createDeviceAction`, `updateDeviceAction` remain server-side only. There is no Devices tab; `/admin/devices` redirects to `/admin/usb`.                                                                                                                         |
 | MFA         | `/admin-mfa` actions `enrollMfaAction`, `verifyMfaAction` (Supabase TOTP, AAL2 required for `/admin/*`).                                                                                                                                                                |
 
 ## Server Actions
@@ -133,7 +139,7 @@ Server Actions are POST requests generated by Next for same-origin forms; they a
 | Token lookup       | fixed-window limiter in Postgres (`consume_rate_limit`)                                  |
 | Invite acceptance  | `complete_member_setup` returns the existing member for the Auth user                    |
 
-## Device API (implemented)
+## Device API (legacy, retained for historical data)
 
 Headers: `x-device-id`, `x-device-timestamp` (Unix seconds), `x-request-id` (unique nonce), and `x-device-signature` (lowercase HMAC-SHA-256); JSON bodies; HTTPS with certificate validation. The signed string is `METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(body)`. Device keys are encrypted server-side, signatures are compared in constant time, clocks must be within 120 seconds, and nonces are retained for ten minutes. Existing devices must rotate their secrets after migration 0007. Disabled/revoked devices are rejected; each device has a 120/min auth and 40/min scan budget.
 

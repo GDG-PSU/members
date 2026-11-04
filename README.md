@@ -9,6 +9,10 @@ Google Developer Group at Penn State.
 - **Card writing:** sign in as an admin, open `/admin/usb`, prepare a pending
   card URL, connect the lane with Chrome/Edge Web Serial, write and read back the
   URL, then activate the card.
+- **Attendance kiosk:** sign in as an admin, open `/admin/kiosk`, connect the
+  same local lane, select an event session, read a card, and confirm check-in or
+  check-out after checking the member's photo and identity. The retired device
+  registry is gone; `/admin/devices` redirects to `/admin/usb`.
 - **No SMTP:** invitation and recovery links are generated in the admin UI and
   delivered manually.
 
@@ -35,9 +39,11 @@ ready.
   digital ID QR, rewards/redemptions, and admin/MFA gates.
 - Immutable points/stars ledger, staff-validated attendance records, audit log,
   private profile photos, and RLS-backed public projections.
-- Admin card preparation/activation through the local USB lane.
-- Legacy signed device/kiosk routes remain for historical data and are not used
-  by the current USB firmware. Do not register new WiFi lanes.
+- Admin card preparation/activation and attendance confirmation through the
+  local USB lane at `/admin/usb` and `/admin/kiosk`.
+- Legacy signed device routes and the old pending-scan endpoint remain for
+  historical data only. They are not used by the USB firmware or the current
+  kiosk UI. Do not register new WiFi lanes.
 
 ## Stack
 
@@ -132,7 +138,8 @@ wiring is in [docs/hardware-bringup.md](docs/hardware-bringup.md).
 - `pnpm test` — PASS, 29/29
 - `pnpm build` — PASS
 - `pnpm e2e` — PASS, 19 passed / 1 intentionally skipped; includes invitation,
-  USB card preparation, activation and database status
+  member setup, USB card preparation/activation, and a fake-serial kiosk
+  check-in/check-out with database assertions
 - `pnpm db:verify` — PASS, 46/46
 - Firmware compile — PASS, 304,129 bytes (23.2% flash)
 - Physical PN532: card read/write/read-back PASS on COM3; firmware 2.0.0,
@@ -144,8 +151,8 @@ wiring is in [docs/hardware-bringup.md](docs/hardware-bringup.md).
 
 Not performed by the agent: a fresh Vercel deployment confirmation, a real
 Chrome/Edge Web Serial session against this host, full TOTP sign-in on the hosted
-origin, and a production card written for a live member. Those remain browser
-and operator checks.
+origin, a hosted `/admin/kiosk` read/confirm, and a production card written for a
+live member. Those remain browser and operator checks.
 
 ## Documentation
 

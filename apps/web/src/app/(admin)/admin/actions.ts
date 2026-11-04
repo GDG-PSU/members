@@ -20,6 +20,8 @@ import {
 } from '@gdg/contracts';
 import { getViewer } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { photoChangedWithin } from '@/lib/profile/identity';
+import { profilePhotoUrl } from '@/lib/profile/photo';
 import {
   encryptSecret,
   generateCardToken,
@@ -471,6 +473,152 @@ export type UsbCardState = {
   memberLabel?: string;
   activated?: boolean;
 };
+
+export type UsbKioskPreview = {
+  ok?: boolean;
+  error?: string;
+  scanId?: string;
+  memberName?: string;
+  memberNumber?: string;
+  photoUrl?: string | null;
+  photoChangedAt?: string | null;
+  photoChangedRecently?: boolean;
+  eventName?: string;
+  sessionName?: string;
+  action?: 'check_in' | 'check_out';
+};
+
+function cardTokenFromUri(uri: string): string | null {
+  try {
+    const url = new URL(uri);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    const match = /^\/c\/([A-Za-z0-9_-]{20,100})\/?$/.exec(url.pathname);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves a card URL read over the browser-local USB lane and creates a
+ * short-lived pending scan. It deliberately does not require a registered
+ * device: the admin's authenticated session and the existing confirmation
+ * transaction remain the authority. No attendance is written here.
+ */
+export async function previewUsbKioskAction(input: {
+  uri: string;
+  sessionId: string;
+}): Promise<UsbKioskPreview> {
+  const { user } = await requireAdminActor();
+  const parsed = z
+    .object({
+      uri: z.string().trim().min(1).max(2048),
+      sessionId: z.uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { error: 'Scan a valid card and select an event session.' };
+
+  const token = cardTokenFromUri(parsed.data.uri);
+  if (!token) return { error: 'That tag does not contain a valid GDG card URL.' };
+
+  const admin = createSupabaseAdmin();
+  const { data: card } = await admin
+    .from('card_credentials')
+    .select('id, member_id, status')
+    .eq('token_hash', hashToken(token))
+    .maybeSingle();
+  if (!card || card.status !== 'active') {
+    return { error: 'That card is not active. Use a current member card or issue a replacement.' };
+  }
+
+  const { data: member } = await admin
+    .from('members')
+    .select(
+      'id, status, public_number, member_profiles(display_name, profile_slug, photo_changed_at)',
+    )
+    .eq('id', card.member_id)
+    .maybeSingle();
+  const profile = Array.isArray(member?.member_profiles)
+    ? member.member_profiles[0]
+    : member?.member_profiles;
+  if (!member || member.status !== 'active') {
+    return { error: 'That member is not active.' };
+  }
+
+  const { data: session } = await admin
+    .from('event_sessions')
+    .select(
+      'id, name, kind, check_in_opens_at, check_in_closes_at, check_out_opens_at, check_out_closes_at, is_enabled, events(name, status)',
+    )
+    .eq('id', parsed.data.sessionId)
+    .maybeSingle();
+  const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
+  if (!session || !session.is_enabled || event?.status === 'cancelled') {
+    return { error: 'That event session is not available.' };
+  }
+
+  const now = Date.now();
+  const opens = new Date(session.check_in_opens_at as string).getTime();
+  const closes = new Date(session.check_in_closes_at as string).getTime();
+  const checkOutOpens = new Date(session.check_out_opens_at as string).getTime();
+  const checkOutCloses = new Date(session.check_out_closes_at as string).getTime();
+
+  const { data: attendance } = await admin
+    .from('attendance_records')
+    .select('id, state, checked_in_at, checked_out_at')
+    .eq('member_id', member.id)
+    .eq('session_id', session.id)
+    .maybeSingle();
+
+  let action: 'check_in' | 'check_out';
+  if (!attendance) {
+    if (now < opens || now > closes) {
+      return { error: 'Check-in is not open for that session.' };
+    }
+    action = 'check_in';
+  } else if (attendance.state === 'checked_in') {
+    if (now < checkOutOpens || now > checkOutCloses) {
+      return { error: 'Check-out is not open for that session.' };
+    }
+    action = 'check_out';
+  } else {
+    return { error: 'This member already has a completed attendance record for that session.' };
+  }
+
+  const { data: scan, error: scanError } = await admin
+    .from('device_scans')
+    .insert({
+      device_id: null,
+      member_id: member.id,
+      card_id: card.id,
+      session_id: session.id,
+      action,
+      status: 'pending',
+      idempotency_key: `usb:${randomUUID()}`,
+      expires_at: new Date(now + 3 * 60_000).toISOString(),
+      metadata: { source: 'usb-kiosk', actor: user.id },
+    })
+    .select('id')
+    .single();
+  if (scanError || !scan) {
+    console.error(`[usb-kiosk] could not create pending scan: ${scanError?.message ?? 'unknown'}`);
+    return { error: 'The kiosk could not start this scan. Try again.' };
+  }
+
+  const photoChangedAt = (profile?.photo_changed_at as string | undefined) ?? null;
+  return {
+    ok: true,
+    scanId: scan.id as string,
+    memberName: (profile?.display_name as string | null) ?? 'Member',
+    memberNumber: member.public_number as string,
+    photoUrl: profilePhotoUrl((profile?.profile_slug as string | null) ?? null),
+    photoChangedAt,
+    photoChangedRecently: photoChangedWithin(photoChangedAt),
+    eventName: (event?.name as string | null) ?? 'Event',
+    sessionName: session.name as string,
+    action,
+  };
+}
 
 /**
  * Prepares a pending card for the local Web Serial writer. Unlike the legacy

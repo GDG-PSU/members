@@ -1,6 +1,13 @@
 # Threat model
 
-Scope: member identity/profile data, attendance, points/stars, rewards inventory, cards, device credentials and admin actions.
+> **Current hardware note (2026-11-04):** the supported reader is USB-only and
+> has no network client or device credential. Rows below about signed device
+> requests, device secrets, writer mode and WiFi lanes describe the legacy API
+> retained for historical data; they are not the current trust boundary. The
+> current boundary is physical USB access plus an AAL2 admin session, and every
+> card read is only a preview until a human confirms it.
+
+Scope: member identity/profile data, attendance, points/stars, rewards inventory, cards, admin actions, and the legacy device API retained for historical data.
 
 Assets ranked by impact:
 
@@ -36,7 +43,7 @@ Assets ranked by impact:
 
 ## Specific abuse cases and expected behavior
 
-- **Scan alone:** creates a pending scan only; no attendance, no points, no profile change.
+- **Card read alone:** creates a short-lived preview/scan only; no attendance, no points, no profile change.
 - **No checkout:** attendance remains `checked_in`; zero points; event history does not count it.
 - **Below threshold:** `qualified = false`, no ledger row.
 - **Bonus session:** separate attendance row; main-session attendance never implies bonus eligibility.
@@ -57,7 +64,7 @@ This is a working checklist, not a certification. "Tested" means an automated ch
 | V1 Encoding / injection     | Partial     | Parameterized Supabase queries and SQL functions; public text rendered as text. No dedicated XSS test.                                                                                                                                        |
 | V2 Authentication           | Partial     | Supabase Auth, no public signup, invitation-only setup, password minimum 12 with letter+digit. Admin TOTP enrollment and the invitation/setup flow are E2E-tested; lockout and rate-limit behavior are not.                                   |
 | V3 Session management       | Partial     | HttpOnly Supabase SSR cookies, server-side `getUser()`; cookie flags/refresh behavior not E2E-tested.                                                                                                                                         |
-| V4 Access control           | Tested (DB) | RLS member isolation, private profile exclusion, anon ledger denial (38/38 db checks). Route-level IDOR tests pending.                                                                                                                        |
+| V4 Access control           | Tested (DB) | RLS member isolation, private profile exclusion, anon ledger denial (46/46 db checks). Route-level IDOR tests pending.                                                                                                                        |
 | V5 Validation/serialization | Partial     | Zod at server boundaries, size caps, `https://` link validation, image re-encode, explicit public API projections. The invitation/setup flow is automated; other authenticated admin endpoints are covered by typecheck and code review only. |
 | V6 Cryptography             | Partial     | SHA-256 token hashing, AES-256-GCM encrypted card payloads, 256-bit tokens, constant-time comparison helper; key management relies on env secrets.                                                                                            |
 | V7 Error/logging            | Partial     | Stable API error codes, request IDs, redacted audit JSON; no centralized log shipping or redaction test.                                                                                                                                      |

@@ -1,10 +1,12 @@
 # Data model
 
 > **Current hardware note (2026-11-04):** The USB reader does not use devices,
-> device secrets, pending scans, or card write jobs. Cards are still stored in
-> `card_credentials`: `prepare_card` creates a pending credential, the admin
-> writes its URL locally, and `activate_card` marks it active. Legacy device
-> tables are retained for historical records only.
+> device secrets, or card write jobs. The USB kiosk does use a short-lived
+> `device_scans` row with `device_id = null` as preview state before the admin
+> confirms; no device is registered. Cards are stored in `card_credentials`:
+> `prepare_card` creates a pending credential, the admin writes its URL locally,
+> and `activate_card` marks it active. Legacy device tables are retained for
+> historical records only.
 
 The schema source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new migration. Use the Supabase CLI (`supabase db push`) or its GitHub integration as the single migration authority. The legacy `pnpm db:migrate` records a separate history and must never be mixed with the CLI.
 
@@ -22,6 +24,7 @@ Current migration order:
 | `0008_admin_rls_mfa.sql`         | MFA enforcement for admin database policies                                             |
 | `0009_controlled_erasure.sql`    | Controlled erasure without weakening append-only guards                                 |
 | `0010_photo_identity.sql`        | Photo-change timestamp and the 48-hour kiosk identity window                            |
+| `0011_usb_kiosk.sql`             | Allows the transient USB-kiosk scan row with no registered device                       |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -131,7 +134,7 @@ Member, reward, snapshotted reward name/unit cost, quantity (1–5), points debi
 
 ## Devices, scans, audit, rate limits
 
-### `devices`
+### `devices` (legacy)
 
 Unique public `device_id` (`^[a-z0-9][a-z0-9-]{2,31}$`), lane label, `secret_hash` (only a verifier is stored), status (`active`, `disabled`, `revoked`), mode (`kiosk`, `writer`), optional event/session assignment, firmware/last-seen metadata, rotation timestamp.
 
@@ -139,7 +142,7 @@ Device credentials are independent of user identity. A secret is shown once at p
 
 ### `device_scans`
 
-A scan is intent only: device, resolved member, card, session, suggested `action`, status (`pending`, `confirmed`, `rejected`, `expired`), unique `(device_id, idempotency_key)`, expiry (default 3 minutes), confirming admin. Attendance and points change only through `confirm_scan` from an authenticated admin action.
+A scan is intent only: optional device (null for the USB kiosk), resolved member, card, session, suggested `action`, status (`pending`, `confirmed`, `rejected`, `expired`), expiry (default 3 minutes), confirming admin. The USB kiosk creates a short-lived pending row from `previewUsbKioskAction`; attendance and points change only through `confirm_scan` from an authenticated admin action.
 
 ### `audit_log`
 

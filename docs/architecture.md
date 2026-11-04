@@ -1,10 +1,12 @@
 # Architecture
 
 > **Current hardware path (2026-11-04):** The reader is a USB-only ESP32 +
-> PN532 controlled by an admin browser over Web Serial at `/admin/usb`. It has
-> no WiFi, server device client, registration, HMAC secret, heartbeat, or kiosk
-> polling. The signed device API, kiosk queue, and writer-job sections below are
-> legacy history; do not use them for the current hardware.
+> PN532 controlled by an admin browser over Web Serial at `/admin/usb` and
+> `/admin/kiosk`. It has no WiFi, server device client, registration, HMAC
+> secret, heartbeat, or kiosk polling. The signed device API, kiosk queue, and
+> writer-job sections below are legacy history; do not use them for the current
+> hardware. The old Devices tab is removed; `/admin/devices` redirects to
+> `/admin/usb`.
 
 ## System shape
 
@@ -16,12 +18,15 @@ Member / Admin browser
                 ├── Supabase Storage (`avatars` bucket, server-side uploads)
                 └── Admin copies one-time auth links (no SMTP; email is manual)
 
-ESP32 + PN532 lane A ─┐
-ESP32 + PN532 lane B ─┼── HTTPS, device ID + per-device secret → /api/device/v1/*
-                      │      (narrow middleware API; never Supabase keys)
-                      └── server creates pending scans / one-use write jobs
-Admin kiosk browser ── authenticated admin → confirms or rejects pending scans
+Admin browser (AAL2) ── USB serial ── ESP32 + PN532 (no WiFi, no server client)
+  ├── /admin/usb   → prepare / write / read back / activate cards
+  ├── /admin/kiosk → select session → read card → confirm check-in/check-out
+  └── Server Actions / API → Next.js → Supabase
 ```
+
+The former WiFi path (`/api/device/v1/*`, pending-scan polling, writer jobs) is
+retained only for historical records and is not part of the current hardware
+flow.
 
 The repository is a pnpm workspace with Turborepo:
 
@@ -36,8 +41,8 @@ The repository is a pnpm workspace with Turborepo:
 
 1. **Browser → Next server.** The browser holds only an HttpOnly Supabase session cookie. Every member/admin page, server action and route handler re-checks the session and the server-side role/member record. Client-side visibility is never authorization.
 2. **Next server → Supabase.** The server holds the Supabase secret (service) key. Signed-in requests use the user's access token, so Postgres RLS applies to member reads. Privileged writes are executed by the server only after an explicit authorization check and then call narrowly-scoped SQL functions.
-3. **Device → Next server.** Devices have their own identity (public device ID + high-entropy secret), separate from user identity. They can heartbeat, submit a card token, claim their own write job, and report completion. They cannot award points, choose members/events, or reach Supabase.
-4. **Admin → attendance/points.** A tap creates only a `pending` scan. A human admin must confirm check-in, then check-out, before points exist. A card link (`/c/...`) is a routing identifier, never an authentication factor.
+3. **USB lane → admin browser → Next server (current).** The reader exposes only local newline-delimited JSON over Web Serial; it never reaches the network. The admin page still requires a verified AAL2 admin session, and every preview/confirmation is re-authorized server-side. The former signed device API is legacy and unused.
+4. **Admin → attendance/points.** A card read creates only a preview and a short-lived pending scan. A human admin must confirm check-in, then check-out, before points exist. A card link (`/c/...`) is a routing identifier, never an authentication factor.
 5. **Public → data.** Public pages read explicit projections (`public_profiles`, `leaderboard`) with column-level visibility. No public query serializes a table row or Auth user.
 
 ## Current authentication implementation
@@ -68,20 +73,20 @@ The repository is a pnpm workspace with Turborepo:
 ### Attendance and points
 
 ```text
-device scan → POST /api/device/v1/scans
-  → device auth + schema validation + idempotency
-  → resolve card hash to an active card
-  → insert device_scans(status = pending, expires_at = now + 3 min)
-  → kiosk polls pending scans
-  → admin confirms check-in   (confirm_scan inserts attendance, state = checked_in)
-  → admin confirms check-out  (confirm_scan computes duration in the transaction)
+USB card read (Web Serial nfc.read)
+  → admin selects event session on /admin/kiosk
+  → previewUsbKioskAction validates card, member, session/window and photo state
+  → insert device_scans(status = pending, device_id = null, expires_at = now + 3 min)
+  → admin verifies photo/PSU ID and confirms check-in
+       → POST /api/admin/kiosk/confirm → confirm_scan
+  → admin reads the same card again and confirms check-out
        ├─ below threshold or no checkout → no ledger row, qualified = false
        └─ at/over threshold → grant_points(source_key = attendance:<id>)
                                → point_ledger + mirrored star_ledger
   → audit_log + attendance_audit_events
 ```
 
-`confirm_scan` locks the scan, validates expiry/window/session state, and performs all changes in one transaction. Duplicate check-in, duplicate check-out, missing check-in, expired scan and out-of-window attempts raise stable error codes that the UI maps to human messages.
+`confirm_scan` locks the scan, validates expiry/window/session state, and performs all changes in one transaction. Duplicate check-in, duplicate check-out, missing check-in, expired scan and out-of-window attempts raise stable error codes that the UI maps to human messages. The legacy WiFi flow (`POST /api/device/v1/scans` plus polling) is described below only for historical context and is not executed by the USB kiosk.
 
 ### Spending points
 
@@ -105,15 +110,15 @@ Audit rows outlive the accounts they name. `audit_log.actor_auth_id` is a UUID w
 Vercel functions are short-lived and stateless, so the design avoids:
 
 - in-memory locks or rate limits (locks and limiter state live in Postgres);
-- long-lived jobs or background daemons (write jobs are short polling, scans expire);
+- long-lived jobs or background daemons (USB commands are request/response and scans expire);
 - local filesystem state (uploads go to Supabase Storage);
 - long request chains (device requests are bounded and return typed errors quickly).
 
-Kiosk and device updates use short polling rather than realtime channels; polling is simpler to authorize, works through campus networks, and needs no durable-object process. Realtime may be added later without changing the authoritative database transitions.
+The USB kiosk is a local, operator-driven request/response flow; it does not poll a device queue. Realtime may be added later without changing the authoritative database transitions.
 
 ## Failure behavior
 
-- Device API/network failure → firmware shows offline/error, never awards attendance locally, never replays untrusted offline scans. Recovery is an explicitly audited admin correction.
+- USB lane failure → the page shows the serial/protocol error; no attendance is written locally. Recovery is a retry or an explicitly audited admin correction.
 - Duplicate taps → device idempotency key + pending-scan uniqueness + `confirm_scan` locks.
 - Request retries → idempotent SQL functions keyed by source/idempotency keys.
 - Photo upload failure → setup/profile update returns an actionable error; no partial profile is created without a photo.

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Gift, Mail, ScanLine, Users } from 'lucide-react';
+import { ArrowRight, Gift, Mail, Users } from 'lucide-react';
 import { buttonVariants, Card, CardContent, MetricCard, PageShell } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
@@ -17,17 +17,12 @@ export default async function AdminOverviewPage() {
   await requireAdmin();
   const admin = createSupabaseAdmin();
 
-  const [members, invites, scans, jobs, redemptions, rewards, recentAudit] = await Promise.all([
+  const [members, invites, redemptions, rewards, recentAudit] = await Promise.all([
     admin.from('members').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     admin
       .from('member_invitations')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
-    admin.from('device_scans').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    admin
-      .from('card_write_jobs')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['queued', 'claimed']),
     admin
       .from('redemptions')
       .select('id', { count: 'exact', head: true })
@@ -40,11 +35,7 @@ export default async function AdminOverviewPage() {
       .limit(8),
   ]);
 
-  const readiness = [
-    { label: 'Queued card writes', value: jobs.count ?? 0 },
-    { label: 'Active rewards', value: rewards.count ?? 0 },
-    { label: 'Pending scans', value: scans.count ?? 0 },
-  ];
+  const readiness = [{ label: 'Active rewards', value: rewards.count ?? 0 }];
 
   return (
     <PageShell>
@@ -63,15 +54,9 @@ export default async function AdminOverviewPage() {
         </div>
       </div>
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <MetricCard label="Active members" value={members.count ?? 0} icon={<Users />} />
         <MetricCard label="Pending invitations" value={invites.count ?? 0} icon={<Mail />} />
-        <MetricCard
-          label="Pending scans"
-          value={scans.count ?? 0}
-          hint="Awaiting human confirmation"
-          icon={<ScanLine />}
-        />
         <MetricCard
           label="Open redemption requests"
           value={redemptions.count ?? 0}
@@ -136,10 +121,10 @@ export default async function AdminOverviewPage() {
               Points are granted only after a human confirmation.
             </p>
             <Link
-              href="/admin/devices"
+              href="/admin/usb"
               className={buttonVariants({ variant: 'soft', size: 'sm', className: 'mt-3' })}
             >
-              Device health
+              USB card writer
               <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           </CardContent>

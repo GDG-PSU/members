@@ -4,14 +4,15 @@
 > Prepare a card URL at `/admin/usb`, write it with the PN532 through Web Serial,
 > verify the read-back, then activate it. There is no device registration,
 > WiFi, heartbeat, HMAC secret, kiosk scan queue, or writer-job operation for
-> this lane. The older two-lane/device procedures below are retained only as
-> legacy history and must not be used for new hardware.
+> this lane. The same lane powers `/admin/kiosk`; select a session, read a card,
+> verify the member, and confirm attendance. The retired `/admin/devices` URL
+> redirects to `/admin/usb`.
 
 Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**.
 
 ## Current availability (read first)
 
-This checkout contains the database, public site, auth/invite/setup, member portal, admin portal, kiosk UI, card-writer flow, device middleware API and firmware project. The software steps below are available today. Steps that depend on physical hardware or the recorded PSU network details remain marked **[pending]**. Email is manual: admins generate links in the portal and send them from their own mailbox.
+This checkout contains the database, public site, auth/invite/setup, member portal, admin portal, USB writer and kiosk UI, and firmware project. The legacy device middleware API remains for historical data only. The software steps below are available today. Steps that depend on physical hardware remain marked **[pending]**. Email is manual: admins generate links in the portal and send them from their own mailbox.
 
 Never award attendance or points "to fix it later" without a reason and an audit record. Never edit ledger rows.
 
@@ -30,29 +31,28 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ## Preflight (day before / morning of)
 
 1. **Event and sessions:** publish the event with exactly one main session; add bonus sessions only if they need their own check-in/out. Confirm windows, minimum duration and reward points.
-2. **Devices:** both lanes active, correct lane labels, assigned to the event/session, firmware version and last-seen recent.
-3. **Network:** kiosk shows online, server time sane, certificate valid. Do not disable TLS. **[pending]**
+2. **USB lane:** connect the reader at `/admin/usb` and confirm `info` reports NFC ready. There is no server registration or lane label. **[pending hardware]**
+3. **Pages:** admin and kiosk pages load with AAL2, server time is sane, and the HTTPS certificate is valid. The reader itself does not use the network.
 4. **Test card:** perform a write test only on a non-production test card. **[pending writer + hardware]**
-5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, photos load. **[target-project enrollment unverified]**
-6. **Offline plan:** know the support email flow and where the manual attendance log is kept if the API is down. Offline scans are never buffered/replayed as verified attendance.
+5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, and photos load. **[target-project enrollment unverified]**
+6. **Offline plan:** know the support email flow and where the manual attendance log is kept if the API is down. Card reads are never buffered/replayed as verified attendance.
 
-## Two-lane operation during an event
+## USB kiosk operation during an event
 
-1. Member taps their card at lane A or B. Firmware parses only `https://<configured-host>/c/<43-char token>` and posts one scan with an idempotency key. **[pending]**
-2. The kiosk shows the pending scan with member name/photo and current attendance state. **Nothing is awarded yet.** If it says **Photo changed in the last 48 hours**, ask for the member's PSU ID.
-3. An organizer compares the person to the photo, and for a recent photo change matches the PSU ID and ticks **I checked this member's PSU ID**. Then press **Confirm check-in**; the server rejects the confirmation if the check is missing. Duplicate taps show a clear "already checked in" state.
-4. At the end, the member taps again; the organizer confirms **Check-out**. The server computes duration. Only at/over the session threshold are points and stars added.
+1. Connect the reader at `/admin/kiosk` and select the event/session. Confirm the connection status shows the expected firmware and NFC readiness. **[pending hardware]**
+2. Tap the member's card. The page shows the member name/photo and current attendance state. **Nothing is awarded yet.** If it says **Photo changed in the last 48 hours**, ask for the member's PSU ID.
+3. An organizer compares the person to the photo, and for a recent photo change matches the PSU ID and ticks **I checked this member's PSU ID**. Then press **Confirm check-in**; the server rejects the confirmation if the check is missing. Duplicate reads show a clear "already checked in" state.
+4. At the end, tap the card again; the organizer confirms **Check-out**. The server computes duration. Only at/over the session threshold are points and stars added.
 5. A member who leaves without checkout gets no attendance. Do not confirm a checkout they did not make.
-6. Bonus sessions are separate: tap and confirm them independently. A main-session check-out does not qualify a bonus session.
-7. If a lane is slow or offline, members can use the other lane. An offline lane must show that state prominently.
+6. Bonus sessions are separate: read and confirm them independently. A main-session check-out does not qualify a bonus session.
+7. If the lane is slow or disconnected, reconnect it and retry. Use the digital ID and an audited manual correction rather than inventing a scan.
 
-### Writer mode (issuing/replacing cards)
+### Writing or replacing a card
 
-1. Queue one card write for one member on one device.
-2. Put the unit in writer mode; it must stop accepting attendance scans while writing, and the admin UI must show that lane as unavailable. **[pending]**
-3. Insert a blank/eligible NFC tag and tap. The firmware writes exactly one NDEF HTTPS URL and reads it back. Success requires an exact read-back match; failure yields a clear code.
-4. On success the card becomes active, the old card (if any) is revoked, and the member can use the digital ID.
-5. Never write a card for a member whose identity/photo you have not verified. Never leave a write job queued overnight.
+1. Open `/admin/usb`, select the member, and prepare one pending card URL.
+2. Connect the lane, insert a blank/eligible NFC tag, and write the URL. The firmware writes exactly one NDEF HTTPS URL and reads it back. Success requires an exact read-back match; failure yields a clear code. **[pending hardware]**
+3. Verify the browser read-back matches the prepared URL, then activate the card. The previous card (if any) is revoked and the member can use the digital ID.
+4. Never write a card for a member whose identity/photo you have not verified. Do not leave a prepared URL active overnight.
 
 ## Lost, stolen or replaced card
 
@@ -70,17 +70,17 @@ Corrections are admin-only, require a reason, and are audited.
 - **Wrong session:** do not edit history. Reject/annotate and ask an organizer to handle it through the documented correction path.
 - If a member emails support, verify from their registered address, inspect the attendance row and audit trail, then act. Never accept a screenshot as proof of attendance.
 
-## Device management
+## USB lane management
 
-- **Disable a device:** set status `disabled`; it must fail authentication on the next request. Revoke if lost/stolen.
-- **Rotate a secret:** rotate, update only that unit's untracked `include/secrets.h`, reflash, confirm heartbeat, then retire the old secret.
-- **One lane down:** label it offline, move the queue to the other lane, and never run two kiosk processes on the same lane.
+- **Reconnect:** close the kiosk/writer tab or use **Disconnect**, then reconnect and select the port again. Do not open two admin tabs against the same lane.
+- **Lost or untrusted reader:** stop using it, remove physical access, and inspect recent `device_scans`/audit records. The reader has no server secret to rotate; it cannot reach the network on its own.
+- **Browser support:** use a current Chrome or Edge build with Web Serial. Safari and Firefox are not supported.
 
 ## Incidents
 
 | Incident                                                  | Immediate steps                                                                                                                                                                                                                                                                                                                                                               |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Suspected device key leak                                 | Disable/rotate the device; inspect scans/jobs from it; reflash the unit; audit log review                                                                                                                                                                                                                                                                                     |
+| Lost or untrusted USB reader                              | Stop using it, remove physical access, inspect recent scans/audit rows, and reflash a trusted unit if needed. The USB reader has no server credential.                                                                                                                                                                                                                        |
 | Compromised admin account                                 | Revoke the role (`user_roles.revoked_at`), reset the TOTP factor in Supabase Auth, force sign-out/rotate credentials, review `audit_log`, check card/ledger changes                                                                                                                                                                                                           |
 | Lost admin authenticator                                  | Reset the factor in Supabase Auth, sign in with the password, re-enroll with `pnpm admin:enroll-totp`; do not disable the AAL2 gate                                                                                                                                                                                                                                           |
 | Bad ledger grant                                          | Do **not** delete. Use `reverse_grant` with actor + reason, then verify sums                                                                                                                                                                                                                                                                                                  |
@@ -108,7 +108,7 @@ Corrections are admin-only, require a reason, and are audited.
 
 ## Closing an event
 
-1. Confirm no pending scans are older than a few minutes; reject/expire the rest.
+1. Confirm no kiosk preview is left open; close the kiosk/writer tabs and review the last confirmations.
 2. Export or review attendance and reward totals; check for anomalies (duplicate rewards, zero-duration qualifications).
 3. Mark the event completed (or cancelled) so it stops appearing as upcoming.
 4. Record device status, incidents and corrections in the event notes.

@@ -5,7 +5,7 @@ Target: Next.js on **Vercel** at
 USB-only ESP32 + PN532 reader. No custom domain, DNS change, campus WiFi, or
 firmware server endpoint is required.
 
-The hosted Supabase project is `potjjlmgnrqxseeendmx`; migrations 0001–0010 are
+The hosted Supabase project is `potjjlmgnrqxseeendmx`; migrations 0001–0011 are
 applied. The database was reset on 2026-11-04 and one administrator setup link
 was generated for `sainaman@psu.edu`. Hosting is live and the latest source has
 been pushed; verify the Vercel deployment after the push before treating this
@@ -86,6 +86,9 @@ hosted admin dashboard. Do not send the link through this repository or chat.
    read-back, and activate it.
 5. There is no device registration, WiFi onboarding, certificate, or PSU network
    approval step for this reader.
+6. For attendance, open `/admin/kiosk`, choose the event session, connect the
+   lane, read a card, verify the member and photo, and confirm check-in or
+   check-out. A read is only a preview; it never changes attendance by itself.
 
 Do not expose the serial port through a network proxy. Physical USB access can
 issue the same local commands; the admin/MFA session protects the web page, not

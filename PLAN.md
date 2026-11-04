@@ -6,6 +6,9 @@
 > heartbeat, HMAC secret, kiosk polling, or writer-job polling. An authenticated
 > admin at `/admin/usb` reads and writes cards directly from Chrome/Edge. A
 > blank or malformed tag is a card-format error, not an authentication error.
+> The same lane powers `/admin/kiosk`: select an event session, read a card,
+> verify the member, and confirm check-in or check-out. The retired Devices tab
+> is gone and `/admin/devices` redirects to `/admin/usb`.
 >
 > The public origin for generated links is **https://members-bay-eight.vercel.app**.
 > Sections that describe the former WiFi device API, server-side scan queue,
@@ -31,7 +34,7 @@ Build a polished, responsive, low-clutter web experience and hardware-backed wor
 - earn points through staff-validated event check-in/check-out and approved in-event activities;
 - redeem points for rewards without losing lifetime stars.
 
-Admins manage invitations, members, roles, profiles, NFC cards and event cards, events and bonus sessions, attendance validation, point awards/redemptions, devices, audit history, and admin-issued password recovery links.
+Admins manage invitations, members, roles, profiles, NFC cards and event cards, events and bonus sessions, attendance validation, point awards/redemptions, audit history, and admin-issued password recovery links. The USB reader is a local Web Serial peripheral, not a registered device.
 
 The product should feel like a carefully designed digital membership card and event companion—not a large text-heavy management system. The primary surfaces should be visual, scannable, and easy to use on a phone in a noisy event environment.
 
@@ -101,11 +104,11 @@ Use a custom shared component library in `packages/ui` (or equivalent root works
 3. Member authentication, first-run activation, profile editor, digital ID, points/stars, event history, and reward redemption.
 4. Admin authentication and role-gated dashboard.
 5. Member invitation lifecycle, member management, profile moderation, admin-issued password recovery links, and membership status controls.
-6. Event/session management, check-in/check-out rules, attendance queue and operator confirmation, manual activity awards, and audit trail.
+6. Event/session management, check-in/check-out rules, attendance preview and operator confirmation, manual activity awards, and audit trail.
 7. Points ledger, lifetime stars accounting, reward catalog, redemptions, refunds, and balance reconciliation.
 8. NFC card issuance/replacement/revocation and read/write workflows through the registered ESP32 + PN532 devices.
 9. Optional event-information NFC tags using `/e/...` URLs.
-10. Device registration/configuration status, health/heartbeat, key rotation/revocation, and lane labels.
+10. USB lane bring-up and local serial diagnostics; no device registration, health/heartbeat, key rotation, or lane labels.
 11. Supabase migrations, RLS policies, pgTAP database tests, API/unit/integration tests, browser E2E tests, firmware tests where supported, CI, documentation, and a complete Git repo.
 12. A fake/local development mode and seed data that permit meaningful testing without production secrets or physical hardware.
 
@@ -311,14 +314,18 @@ Use a coherent, mobile-first navigation. Route names can be adjusted if document
 - `/admin/cards` — issue, write, verify, revoke, replace, show card status and write-job history.
 - `/admin/usb` — prepare a pending card URL, connect a local lane over Web Serial, read/write/read-back, activate the card.
 - `/admin/events` and `/admin/events/[id]` — create/edit main events and bonus sessions, configure duration/points, activity options, event public visibility.
-- `/admin/kiosk` — pending scan queue, active event/session, two lane statuses, photo validation, check-in/out/deny, recent confirmations.
+- `/admin/kiosk` — USB lane connection, event-session selection, card read preview, photo/PSU ID validation, check-in/out confirmation, recent results.
 - `/admin/points` — ledger search, manual award/adjustment with reason, no destructive edits.
 - `/admin/rewards` and `/admin/redemptions` — catalog, inventory, request transitions, refunds.
-- `/admin/devices` — allowlist, lane labels, enrollment/revocation/key rotation, last seen/firmware state.
+- The retired `/admin/devices` URL redirects to `/admin/usb`; there is no device-registry UI.
 - `/admin/audit` — filterable, read-only audit events.
 - `/admin/support` — recovery-link issuance and support tracking.
 
 ### Device API (server-only and versioned)
+
+> **Legacy:** this HTTP device API is retained for historical data only. The
+> current USB reader speaks newline-delimited JSON over Web Serial and never
+> calls these endpoints.
 
 Use explicit versioning such as `/api/device/v1/...`. Every device endpoint verifies the per-device request signature and allowlist status before doing anything.
 

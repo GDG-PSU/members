@@ -21,7 +21,10 @@ left behind; the production reset removes any residue.
 The authenticated E2E suite now includes: disposable admin sign-in and TOTP,
 invitation creation, member setup, privacy/photo checks, USB card preparation,
 URL shape/origin checks, activation, and database status `active` with an
-issuance timestamp.
+issuance timestamp. It also uses a fake Web Serial port to read that active card
+at `/admin/kiosk`, confirm check-in and check-out, and assert the attendance
+state and reward in the database. The fixture event, member, and admin are
+removed afterward through the audited erasure path.
 
 ## Hardware coverage
 

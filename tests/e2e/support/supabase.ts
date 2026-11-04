@@ -60,7 +60,9 @@ export async function deleteMemberFixture(
       .from('avatars')
       .remove(files.map((file) => `member/${authUserId}/${file.name}`));
   }
-  const { error } = await client.auth.admin.deleteUser(authUserId);
+  // Fixture members can now have attendance and ledger history. Use the
+  // reviewed erasure path so the append-only guards cascade correctly.
+  const { error } = await client.rpc('erase_member', { p_auth_user_id: authUserId });
   if (error) throw new Error(`Could not delete member fixture ${authUserId}: ${error.message}`);
 }
 
@@ -69,6 +71,6 @@ export async function deleteAdminFixture(
   client: SupabaseClient,
   authUserId: string,
 ): Promise<void> {
-  const { error } = await client.auth.admin.deleteUser(authUserId);
+  const { error } = await client.rpc('erase_member', { p_auth_user_id: authUserId });
   if (error) throw new Error(`Could not delete admin fixture ${authUserId}: ${error.message}`);
 }
