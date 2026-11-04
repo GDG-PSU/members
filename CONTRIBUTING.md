@@ -4,8 +4,9 @@
 
 ```bash
 pnpm install
-cp .env.example .env.local   # fill in values; never commit it
-pnpm dlx supabase@2.122.0 start  # local Supabase with migrations
+cp .env.example apps/web/.env.local   # read by the web app; never commit it
+cp .env.example .env.local            # read by the scripts; never commit it
+pnpm dlx supabase@2.122.0 start  # local Supabase with migrations; copy its URLs and keys into both
 pnpm dev                     # http://localhost:3000
 ```
 
@@ -19,7 +20,7 @@ pnpm db:verify
 pnpm build
 ```
 
-`pnpm db:verify` runs inside a transaction that is rolled back, but it does create and remove a concurrency-test user/reward. Run it against local/staging Supabase, not production, unless you accept temporary rows.
+`pnpm db:verify` mostly runs inside a transaction that is rolled back, but its concurrency checks create and remove temporary users and a reward. It refuses a non-local database unless `DB_VERIFY_ALLOW_HOSTED=yes`. Use that only for staging, never production.
 
 ## Working rules
 

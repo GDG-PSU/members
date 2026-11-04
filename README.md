@@ -1,189 +1,142 @@
-# GDG@PSU Members
+# MemberPass
 
-Member identity, NFC cards, event attendance, points/stars and rewards for the
-Google Developer Group at Penn State.
+MemberPass is the member platform for the Google Developer Group at Penn State (GDG@PSU). Members
+get a profile, an NFC membership card, and points for showing up to events. Organizers get the tools
+to run all of it.
 
-- **Hosted app:** <https://members-bay-eight.vercel.app>
-- **Reader:** ESP32 + PN532 over **USB serial only**. No WiFi, server device API,
-  registration, heartbeat, HMAC secret, kiosk polling, or writer-job polling.
-- **Card writing:** sign in as an admin, open `/admin/cards`, prepare a pending
-  card URL, connect the lane with Chrome/Edge Web Serial, write and read back the
-  URL, then activate the card. If the reader is empty, the writer waits for a
-  card before writing.
-- **Attendance kiosk:** sign in as an admin, open `/admin/kiosk`, connect the
-  same local lane, select an event session, choose **Read card**, and confirm
-  check-in or check-out after checking the member's photo and identity. The
-  kiosk keeps waiting until a card is placed; select **Cancel** to stop. The
-  retired device registry is gone; `/admin/devices` redirects to `/admin/cards`.
-- **No SMTP:** invitation and recovery links are generated in the admin UI and
-  delivered manually.
-- **Staff roles:** normal admins run member operations and see only their own
-  invitation/activity history. Superadmins additionally manage Users and read
-  the full Audit log; only superadmins can invite admins or superadmins.
+**Live app:** <https://mempass.vercel.app>
 
-## Current state
+Membership is by invitation, so there is no public sign-up page.
 
-The production database was reset on **2026-11-04**. A one-time superadmin
-setup link for `sainaman@psu.edu` was written to
-`.local/sainaman-admin-link.txt` (gitignored); it is not committed or printed.
-The account has the `superadmin` role and must set a password, then enroll TOTP
-at `/admin-mfa` before `/admin` opens.
+## What it does
 
-The browser build was verified against the hosted Supabase project with the
-production build (`next start`) and the checks listed below. The latest code is
-pushed; a Vercel deployment is not complete until the hosting deployment reports
-ready.
+**For members**
 
-## What the app includes
+- A profile with a photo, a short bio, and links, with privacy controls for each field
+- An NFC card, plus a digital ID with a QR code for when the card isn't handy
+- Points and stars for attending events: points can be spent on rewards, and stars are a lifetime
+  total
+- A spot on the public leaderboard, which they can opt out of
 
-- Public home, leaderboard, events, and privacy-aware member profiles at
-  `/m/<profile>`.
-- Revocable card URLs at `/c/<token>`; a card URL is a public locator, never a
-  login or an attendance credential.
-- Invitation-first Supabase Auth, member setup, profile and privacy controls,
-  digital ID QR, rewards/redemptions, and admin/MFA gates.
-- Immutable points/stars ledger, staff-validated attendance records, audit log,
-  private profile photos, and RLS-backed public projections.
-- Admin card preparation/activation and attendance confirmation through the
-  local USB lane at `/admin/cards` and `/admin/kiosk`.
-- Legacy signed device routes and the old pending-scan endpoint remain for
-  historical data only. They are not used by the USB firmware or the current
-  kiosk UI. Do not register new WiFi lanes.
+**For organizers**
 
-## Stack
+- Invite members and see who has joined
+- Write NFC cards using a USB reader
+- Check people in and out at events
+- Create events, manage rewards, and approve redemptions
 
-- Next.js 16 App Router, React 19, strict TypeScript
-- pnpm workspace + Turborepo
-- Tailwind CSS v4 and the shared `@gdg/ui` component system
-- Supabase Postgres, Auth and Storage; SQL migrations, RLS and
-  `SECURITY DEFINER` functions
-- ESP32/PN532 firmware with PlatformIO (Arduino framework)
+Superadmins can also manage staff accounts, adjust individual member records, and read the full
+audit log.
 
-## Quick start
+**For everyone**
 
-Prerequisites: Node 20.9+ (24 used locally), pnpm 11, and a Supabase project.
+Public pages show upcoming events, the leaderboard, and any member profile that's set to public.
+
+## How check-in works
+
+1. A member taps their card on a USB reader plugged into an organizer's laptop.
+2. The kiosk page shows the member's name and photo.
+3. The organizer checks it's the right person and confirms.
+4. The member taps again on the way out. If they stayed long enough, they earn the event's points.
+
+A card only holds a link to the member's profile, and NFC tags can be copied. That's why a person
+always confirms attendance, and why tapping a card never logs anyone in or awards points on its own.
+
+## Built with
+
+- Next.js 16, React 19, and TypeScript
+- Tailwind CSS v4 and a shared component library
+- Supabase for the Postgres database, sign-in, and file storage
+- An ESP32 and a PN532 NFC reader, connected through the browser's Web Serial API
+- pnpm workspaces and Turborepo
+
+## Getting started
+
+You'll need Node 20.9 or newer, pnpm 11, and Docker for the local database.
+
+**1. Install dependencies and create your env files.** The web app reads `apps/web/.env.local`, and
+the scripts read `.env.local` in the repository root.
 
 ```bash
 pnpm install
-cp .env.example .env.local   # fill in values; .env.local is gitignored
-pnpm dev                     # http://localhost:3000
+cp .env.example apps/web/.env.local
+cp .env.example .env.local
 ```
 
-Set `NEXT_PUBLIC_SITE_URL` to `http://localhost:3000` for local testing and to
-`https://members-bay-eight.vercel.app` for production-generated links. Use the
-Supabase CLI or GitHub integration as the migration authority; do not mix the
-legacy `pnpm db:migrate` history with a CLI-managed database.
-
-### Environment variables
-
-Names only; values stay in the environment or Vercel/Supabase dashboards.
-
-| Variable                        | Notes                                                        |
-| ------------------------------- | ------------------------------------------------------------ |
-| `NEXT_PUBLIC_SITE_URL`          | Canonical origin for callbacks and one-time links            |
-| `NEXT_PUBLIC_SUPPORT_EMAIL`     | Support address (`gdg@psu.edu`)                              |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                                         |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable key; used by the RLS-bound server/browser client |
-| `SUPABASE_SECRET_KEY`           | Server only; auth-admin and privileged operations            |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Server-only legacy fallback                                  |
-| `CARD_WRITE_ENCRYPTION_KEY`     | Server only; 32-byte base64 AES-GCM key                      |
-| `DATABASE_URL`                  | Scripts and database verification only                       |
-
-Never commit `.env*`, firmware secrets, recovery/invite links, or production
-member data.
-
-### First admin
-
-The only production account created by the reset is the invited administrator.
-To regenerate the setup link, run with the hosted origin and a gitignored output:
+**2. Start a local database.** This runs Supabase in Docker and applies the migrations. It prints
+the URLs and keys to copy into both env files, and `.env.example` explains each value.
 
 ```bash
-NEXT_PUBLIC_SITE_URL=https://members-bay-eight.vercel.app \
-  pnpm db:bootstrap-admin --email sainaman@psu.edu \
-  --out .local/sainaman-admin-link.txt
+pnpm dlx supabase@2.122.0 start
 ```
 
-Deliver the file privately, then delete it. The link only sets a password; TOTP
-enrollment at `/admin-mfa` is still required.
-
-## Commands
-
-| Command                   | Purpose                                            |
-| ------------------------- | -------------------------------------------------- |
-| `pnpm dev`                | Run the web app                                    |
-| `pnpm build`              | Production build                                   |
-| `pnpm typecheck`          | Strict TypeScript                                  |
-| `pnpm lint`               | ESLint                                             |
-| `pnpm test`               | Vitest unit tests                                  |
-| `pnpm format:check`       | Prettier                                           |
-| `pnpm db:verify`          | Rollback-safe database invariants and RLS checks   |
-| `pnpm e2e`                | Playwright public and authenticated browser suites |
-| `pnpm db:bootstrap-admin` | Grant admin and write a one-time recovery link     |
-| `pnpm admin:enroll-totp`  | Enroll TOTP through the real `/admin-mfa` flow     |
-| `pnpm verify`             | Available local gates; blocked gates fail visibly  |
-
-Firmware:
+**3. Start the app.** It runs at <http://localhost:3000>.
 
 ```bash
-cd firmware/kiosk-reader
-pio run
-pio run --target upload --upload-port COM3
-pio device monitor -b 115200
+pnpm dev
 ```
 
-Disconnect the PN532 while flashing if esptool loses COM3 during reset, then
-reconnect it. The USB protocol is documented in [docs/usb-api.md](docs/usb-api.md);
-wiring is in [docs/hardware-bringup.md](docs/hardware-bringup.md).
+**4. Create your first admin.** There's no sign-up page, so this script grants the role and writes a
+one-time password link to a file.
 
-## Verification (2026-11-04)
+```bash
+pnpm db:bootstrap-admin --email you@psu.edu --out .local/admin-link.txt
+```
 
-- `pnpm format:check` — tested after final formatting
-- `pnpm lint` — PASS
-- `pnpm typecheck` — PASS
-- `pnpm test` — PASS, 29/29
-- `pnpm build` — PASS
-- `pnpm e2e` — PASS, 19 passed / 1 intentionally skipped; includes invitation,
-  member setup, USB card preparation/activation, and a fake-serial kiosk
-  check-in/check-out with database assertions
-- `pnpm db:verify` — PASS, 46/46
-- Firmware compile — PASS, 304,129 bytes (23.2% flash)
-- Physical PN532: card read/write/read-back PASS on COM3; firmware 2.0.0,
-  protocol 2, device ID `esp32-3c1c6cc92df4`
-- The final hosted-URI rewrite attempt returned `no_card` because the NTAG was
-  not on the antenna; rerun the write after placing the tag on the reader
-- Hosted `/`, `/leaderboard`, `/events`, `/privacy`, `/login` return 200; admin
-  routes redirect anonymous visitors to `/login`
+Open that link to set a password, then set up an authenticator app, which admin pages require.
+Delete the file when you're done.
 
-Not performed by the agent: a fresh Vercel deployment confirmation, a real
-Chrome/Edge Web Serial session against this host, full TOTP sign-in on the hosted
-origin, a hosted `/admin/kiosk` read/confirm, and a production card written for a
-live member. Those remain browser and operator checks.
+### Using the card reader
+
+Writing cards and running the kiosk also need the reader hardware and Chrome or Edge, the browsers
+with Web Serial. See [hardware bring-up](docs/hardware-bringup.md) for wiring and the
+[firmware README](firmware/kiosk-reader/README.md) for flashing.
+
+## Useful commands
+
+| Command             | What it does                                        |
+| ------------------- | --------------------------------------------------- |
+| `pnpm dev`          | Run the app locally                                 |
+| `pnpm build`        | Make a production build                             |
+| `pnpm test`         | Run the unit tests                                  |
+| `pnpm lint`         | Check the code with ESLint                          |
+| `pnpm typecheck`    | Check types                                         |
+| `pnpm format:check` | Check formatting with Prettier                      |
+| `pnpm e2e`          | Run the browser tests against a running app         |
+| `pnpm db:verify`    | Check database rules, on a disposable database only |
+
+## Project layout
+
+| Folder                  | What's in it                              |
+| ----------------------- | ----------------------------------------- |
+| `apps/web`              | The Next.js app                           |
+| `packages/ui`           | Shared design tokens and components       |
+| `packages/contracts`    | Shared validation schemas and types       |
+| `supabase/migrations`   | The database schema, rules, and functions |
+| `firmware/kiosk-reader` | Firmware for the USB card reader          |
+| `scripts`               | Database checks and admin setup           |
+| `tests/e2e`             | Browser tests                             |
+| `docs`                  | Detailed documentation                    |
 
 ## Documentation
 
-- [Architecture and trust boundaries](docs/architecture.md)
+- [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
 - [API and server actions](docs/api.md)
 - [Threat model](docs/threat-model.md)
 - [Deployment](docs/deployment.md)
 - [Operations runbook](docs/operations-runbook.md)
-- [Test plan and results](docs/test-plan.md)
-- [Hardware bring-up](docs/hardware-bringup.md)
+- [Test plan](docs/test-plan.md)
 - [USB protocol](docs/usb-api.md)
-- [Firmware README](firmware/kiosk-reader/README.md)
 
-## Security highlights
+[AGENTS.md](AGENTS.md) has the working rules for AI coding agents, along with the project's current
+status and open items.
 
-- Points/stars are append-only ledgers; balances are sums, corrections are
-  compensating entries.
-- Card tokens are 256-bit, hashed for lookup, encrypted for owner-only display,
-  and independently revocable. NFC UID and card URLs are never credentials.
-- Public projections enforce profile, field and metric visibility server-side.
-- Profile photos are re-encoded server-side and held in a private bucket.
-- USB access trusts physical possession of the reader; the admin page still
-  requires an admin/MFA session and card activation requires an explicit
-  read-back attestation.
-- Static NFC tags can be cloned. Staff must validate identity and attendance.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem, follow
+[SECURITY.md](SECURITY.md) rather than opening a public issue. [PRIVACY.md](PRIVACY.md) explains what
+data the app keeps about members.
 
 ## License
 

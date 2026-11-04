@@ -6,9 +6,10 @@ deployment, or conventions, update the relevant section **in the same change**. 
 re-read the affected sections and amend anything this file now gets wrong. Add new gotchas when you
 find them. `PLAN.md` and `PROMPT.md` are retired; do not recreate them.
 
-`README.md` is the product overview, and `docs/` is the deep reference. This file is the short,
-operational source of truth for how to work here. If this file and the code disagree, inspect the
-code and migrations, fix this file, and call out the discrepancy.
+`README.md` is the overview for people, and `docs/` is the deep reference. This file is the
+operational source of truth for how to work here, and section 13 holds the project's current state
+and progress. If this file and the code disagree, inspect the code and migrations, fix this file, and
+call out the discrepancy.
 
 ## 1. What this repository is
 
@@ -32,7 +33,7 @@ WiFi device API is legacy and must not be revived as part of normal work. See
 | `tests/e2e`                 | Playwright public and authenticated browser tests, including disposable fixtures.                                     |
 | `firmware/kiosk-reader`     | PlatformIO ESP32/PN532 USB firmware. No network or secret handling.                                                   |
 | `docs`                      | Architecture, data model, API, USB protocol, operations, deployment, security, hardware, and test records.            |
-| Root `README.md`            | Stack, quick start, deployment summary, and current-state notes.                                                      |
+| Root `README.md`            | Plain-language overview and quick start for people. Status, test results, and agent rules belong in this file.        |
 | `CONTRIBUTING.md`           | Human contribution rules; the commit rules below still apply to agents.                                               |
 | `SECURITY.md`, `PRIVACY.md` | Security reporting and data-handling expectations.                                                                    |
 
@@ -333,6 +334,9 @@ not assume CI covers those.
 
 This is mandatory.
 
+**Work directly on `main`.** Do not create a feature branch or open a pull request unless the user
+asks for one.
+
 1. Inspect `git status --short`, `git diff`, and, when staged, `git diff --cached`. Stage only files
    related to the current task.
 2. Do not commit `.env*` (except the template), `.local/`, `.next/`, `node_modules/`, coverage,
@@ -373,15 +377,15 @@ permission.
 
 - Shell paths containing route-group parentheses must be quoted, e.g.
   `"apps/web/src/app/(admin)/admin/users/page.tsx"`.
-- `NEXT_PUBLIC_SITE_URL` must match the origin you actually use. It drives generated links and the
-  kiosk confirmation origin check; a mismatch causes confusing auth/link failures.
+- `NEXT_PUBLIC_SITE_URL` must match the origin you actually use. It drives generated invitation,
+  recovery, and card links; a mismatch causes confusing auth/link failures.
+- The repository is public. Keep the details of an unfixed vulnerability out of commits, pull
+  requests, and docs until the fix is live.
 - The card route's nested embed (`members!inner(... member_profiles!inner(...))`) is intentional:
   there is no direct foreign key from `card_credentials` to `member_profiles`. Do not "simplify" it
   back into a failing embed.
 - `/admin/usb` and `/admin/devices` are aliases, not current destinations. `/admin/cards` is the
   canonical card surface; `/admin/kiosk` is attendance.
-- `.env.example` begins with a `[TEMPLATE]` marker. Remove that line from a copied `.env.local`; do
-  not commit the filled file.
 - `pnpm verify` is not green because its final coverage gate is deliberately blocked. Do not report
   it as a pass.
 - `pnpm db:verify` can leave temporary concurrency rows even though the main checks roll back. It is
@@ -396,6 +400,8 @@ permission.
   or E2E callback depends on port 3000.
 - On Supabase, `revoke ... from public` removes nothing from `anon`/`authenticated`: its default ACL
   grants them directly. Check with `has_function_privilege`, or `get_advisors`, not by reading SQL.
+- Next reads `apps/web/.env.local`; the scripts read `.env.local` in the root. A fresh setup needs
+  both.
 - `.env.local` in this checkout points at the hosted production project. Scripts and specs that
   write must be pointed elsewhere with `DATABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL`.
 - Hosted Auth settings are not in `supabase/config.toml`, which only configures the local stack. See
@@ -434,3 +440,81 @@ letting it drift into a changelog.
 At the end of every task, ask: **"Does `AGENTS.md` still describe this repository accurately?"** If
 the answer is no, fix it before committing. Stage the updated `AGENTS.md` with the code change. Do
 not recreate `PLAN.md` or `PROMPT.md`.
+
+Project status goes in section 13, not in `README.md`. Update it when a stage finishes or an open
+item closes, replacing what is out of date rather than appending to it. Date what you verify, and
+record what was not verified as plainly as what was.
+
+## 13. Current state and progress
+
+Last updated 2026-11-04.
+
+### Where things stand
+
+- **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
+  `https://members-bay-eight.vercel.app` redirects there. `docs/deployment.md`, `.env.production`,
+  and the `SITE_URL` fallback in `lib/env.ts` still name the old host.
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0014 applied.
+- **Data:** production was reset on 2026-11-04 and the first superadmin was bootstrapped through a
+  gitignored `.local/` link. At the last check it held staff accounts and no member data.
+- **Latest stage:** the security audit and hardening in pull request #1 are merged and deployed, and
+  CI passed. See `0014_security_hardening.sql` and commit `680503a`.
+
+### Waiting on a person
+
+These are hosted settings that an agent should not change. Check their current values rather than
+assuming them, and do not record a weak setting here, because this repository is public:
+
+- Confirm public signup is off in Supabase Auth, since the app is invitation-only.
+  `/auth/v1/settings` reports it as `disable_signup`.
+- Confirm leaked-password protection is on, where the plan offers it.
+- Confirm `NEXT_PUBLIC_SITE_URL` in Vercel matches the production host before writing physical cards,
+  because card URLs are built from it.
+
+### Verification record
+
+Results from the hardening work on 2026-11-04:
+
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes
+  46 unit tests.
+- `pnpm db:verify` passes 76/76 on a throwaway local Postgres set up with Supabase's default ACL. It
+  has not run on a real Supabase stack, and 24 of those checks fail without migration 0014.
+- Public E2E specs pass 8/8 on desktop Chromium.
+- The firmware builds. The NDEF length fix has not been flashed to a reader.
+- On production, `anon` can execute no public function, and `authenticated` can execute only the
+  three RLS helpers. Calls with the publishable key to `set_user_type`, `confirm_scan`, and the
+  public projections are refused.
+
+Earlier the same day, before the hardening:
+
+- The full E2E suite passed 19 with 1 intentionally skipped, including invitation, member setup, USB
+  card preparation, and a fake-serial kiosk check-in and check-out. Request logs show it ran against
+  production, which section 7 forbids, so it now skips hosted projects by default.
+- A physical PN532 passed read, write, and read-back on COM3 with firmware 2.0.0. A later rewrite of
+  the hosted URL returned `no_card` because no tag was on the antenna. See the firmware note in
+  section 7 before claiming a hardware pass.
+
+### Not verified yet
+
+- The authenticated E2E specs since the hardening, which need a disposable database. That leaves
+  sign-in, TOTP, member setup, cards, the kiosk, HttpOnly cookies, token refresh, and the new rate
+  limits unconfirmed in a browser.
+- A real Chrome or Edge Web Serial session on the hosted app, a hosted `/admin/kiosk` read and
+  confirmation, and a production card written for a live member.
+
+### Known issues and open decisions
+
+- **Decision:** email is public by default and profile pages can be indexed by search engines. The
+  email default is deliberate (`PRIVACY.md`). Consider hiding it by default and adding `noindex`.
+- **Decision:** the legacy device API is still reachable, though no devices are registered. Consider
+  removing it.
+- `/auth/confirm` consumes its one-time token on GET, so link scanners in email or chat can burn
+  invitation links.
+- Inviting a staff email as a member is refused, but only after a recovery link was generated, which
+  can invalidate that person's outstanding link.
+- The public read APIs have no rate limit.
+- The database scripts connect without validating the TLS certificate.
+- `scripts/admin-enroll-totp.mjs` reads a credentials file that nothing creates anymore.
+- Migration 0012 hard-codes a personal email and cannot be edited now that it is applied.
+- `pnpm audit` reports one moderate `minimatch` advisory in dev tooling only; `pnpm audit --prod` is
+  clean.
