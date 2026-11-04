@@ -21,22 +21,27 @@ export default async function InvitationsPage({
 }: {
   searchParams: Promise<{ notice?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  const viewer = await requireAdmin();
   const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
-  const [{ data: invitations }, { data: adminInvitations }] = await Promise.all([
-    admin
-      .from('member_invitations')
-      .select('id, email, status, paid_since, note, created_at, expires_at, accepted_at')
-      .order('created_at', { ascending: false })
-      .limit(100),
-    admin
-      .from('audit_log')
-      .select('id, after, created_at')
-      .eq('action', 'admin.invited')
-      .order('created_at', { ascending: false })
-      .limit(100),
-  ]);
+
+  let memberInviteQuery = admin
+    .from('member_invitations')
+    .select('id, email, status, paid_since, note, created_at, expires_at, accepted_at')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (!viewer.isSuperadmin) {
+    memberInviteQuery = memberInviteQuery.eq('created_by', viewer.user.id);
+  }
+  const { data: invitations } = await memberInviteQuery;
+  const { data: adminInvitations } = viewer.isSuperadmin
+    ? await admin
+        .from('audit_log')
+        .select('id, after, created_at')
+        .eq('action', 'admin.invited')
+        .order('created_at', { ascending: false })
+        .limit(100)
+    : { data: [] };
 
   return (
     <PageShell className="pb-10">
@@ -55,22 +60,26 @@ export default async function InvitationsPage({
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-5 sm:p-6">
-              <p className="type-overline text-secondary">Staff access</p>
-              <h2 className="type-h3 mt-1.5">Invite an administrator</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                Grants the admin role. TOTP is required before access.
-              </p>
-              <div className="mt-4">
-                <AdminInviteForm />
-              </div>
-            </CardContent>
-          </Card>
+          {viewer.isSuperadmin ? (
+            <Card>
+              <CardContent className="p-5 sm:p-6">
+                <p className="type-overline text-secondary">Staff access</p>
+                <h2 className="type-h3 mt-1.5">Invite an admin or superadmin</h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  Grants an admin or superadmin role. TOTP is required before access.
+                </p>
+                <div className="mt-4">
+                  <AdminInviteForm />
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
         <div className="min-w-0">
-          <h2 className="type-h3 mb-3">Invitation history</h2>
+          <h2 className="type-h3 mb-3">
+            {viewer.isSuperadmin ? 'Invitation history' : 'Your invitation history'}
+          </h2>
           {!invitations || invitations.length === 0 ? (
             <EmptyState title="No invitations yet" description="Invite your first paid member." />
           ) : (
@@ -139,44 +148,55 @@ export default async function InvitationsPage({
             />
           )}
 
-          <div className="mt-8">
-            <h3 className="type-h3 mb-3">Administrator invitations</h3>
-            {!adminInvitations || adminInvitations.length === 0 ? (
-              <p className="border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-                No administrator invitations yet.
-              </p>
-            ) : (
-              <DataTable
-                caption="Administrator invitations"
-                rows={adminInvitations}
-                getRowKey={(row) => String(row.id)}
-                columns={[
-                  {
-                    key: 'email',
-                    header: 'Email',
-                    render: (row) => {
-                      const details = row.after as { email?: string } | null;
-                      return (
-                        <p className="text-sm font-semibold">{details?.email ?? 'Unknown email'}</p>
-                      );
+          {viewer.isSuperadmin ? (
+            <div className="mt-8">
+              <h3 className="type-h3 mb-3">Administrator invitations</h3>
+              {!adminInvitations || adminInvitations.length === 0 ? (
+                <p className="border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+                  No administrator invitations yet.
+                </p>
+              ) : (
+                <DataTable
+                  caption="Administrator invitations"
+                  rows={adminInvitations}
+                  getRowKey={(row) => String(row.id)}
+                  columns={[
+                    {
+                      key: 'email',
+                      header: 'Email',
+                      render: (row) => {
+                        const details = row.after as { email?: string } | null;
+                        return (
+                          <p className="text-sm font-semibold">
+                            {details?.email ?? 'Unknown email'}
+                          </p>
+                        );
+                      },
                     },
-                  },
-                  {
-                    key: 'access',
-                    header: 'Access',
-                    render: () => <span className="text-sm">Administrator</span>,
-                  },
-                  {
-                    key: 'created',
-                    header: 'Link generated',
-                    render: (row) => (
-                      <span className="text-xs">{formatDateTime(row.created_at as string)}</span>
-                    ),
-                  },
-                ]}
-              />
-            )}
-          </div>
+                    {
+                      key: 'access',
+                      header: 'Access',
+                      render: (row) => {
+                        const details = row.after as { role?: string } | null;
+                        return (
+                          <span className="text-sm">
+                            {details?.role === 'superadmin' ? 'Superadmin' : 'Administrator'}
+                          </span>
+                        );
+                      },
+                    },
+                    {
+                      key: 'created',
+                      header: 'Link generated',
+                      render: (row) => (
+                        <span className="text-xs">{formatDateTime(row.created_at as string)}</span>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </PageShell>

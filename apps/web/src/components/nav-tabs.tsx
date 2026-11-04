@@ -9,13 +9,17 @@ export function NavTabs({
   ariaLabel,
   className,
 }: {
-  items: { href: string; label: string }[];
+  items: { href: string; label: string; activePrefixes?: string[] }[];
   ariaLabel: string;
   className?: string;
 }) {
   const pathname = usePathname();
   const active = items
-    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .filter((item) =>
+      [item.href, ...(item.activePrefixes ?? [])].some(
+        (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+      ),
+    )
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (

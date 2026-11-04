@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { DataTable, EmptyState, Field, Input, PageShell, Button } from '@gdg/ui';
-import { requireAdmin } from '@/lib/auth/viewer';
+import { requireSuperadmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
 
@@ -16,7 +16,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<{ action?: string }>;
 }) {
-  await requireAdmin();
+  await requireSuperadmin();
   const { action = '' } = await searchParams;
   const admin = createSupabaseAdmin();
 

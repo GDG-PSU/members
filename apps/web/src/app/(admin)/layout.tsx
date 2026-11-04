@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <main id="main">
       <div className="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-6 lg:px-8">
-        <AdminNav />
+        <AdminNav isSuperadmin={viewer.isSuperadmin} />
       </div>
       {children}
     </main>

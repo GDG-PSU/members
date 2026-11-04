@@ -90,11 +90,22 @@ test.describe('admin invitation and member setup', () => {
       await test.step('admin generates and copies an invitation link', async () => {
         await page.goto('/admin');
         await expect(page.getByRole('link', { name: 'Devices', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Users', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Audit', exact: true })).toHaveCount(0);
+
+        await page.goto('/admin/users');
+        await expect(page).toHaveURL(/\/admin\?notice=superadmin-required$/);
+        await page.goto('/admin/audit');
+        await expect(page).toHaveURL(/\/admin\?notice=superadmin-required$/);
+
         await page.goto('/admin/devices');
-        await expect(page).toHaveURL(/\/admin\/usb$/);
-        await expect(page.getByRole('heading', { name: 'USB devices' })).toBeVisible();
+        await expect(page).toHaveURL(/\/admin\/cards$/);
+        await expect(page.getByRole('heading', { name: 'Cards', exact: true })).toBeVisible();
 
         await page.goto('/admin/invitations');
+        await expect(
+          page.getByRole('heading', { name: 'Invite an admin or superadmin' }),
+        ).toHaveCount(0);
         const memberForm = page
           .locator('form')
           .filter({ has: page.getByLabel('Member since (paid date)') })
@@ -236,8 +247,8 @@ test.describe('admin invitation and member setup', () => {
 
         await test.step('admin prepares, activates and records a USB card', async () => {
           expect(memberId).toBeTruthy();
-          await page.goto('/admin/usb');
-          await expect(page.getByRole('heading', { name: 'USB devices' })).toBeVisible();
+          await page.goto('/admin/cards');
+          await expect(page.getByRole('heading', { name: 'Cards', exact: true })).toBeVisible();
 
           const memberSelect = page.locator('#usb-member');
           const option = memberSelect.locator('option', { hasText: displayName }).first();
@@ -387,8 +398,8 @@ test.describe('admin invitation and member setup', () => {
             { cardUrl },
           );
 
-          await page.goto('/admin/usb');
-          await expect(page.getByRole('heading', { name: 'USB devices' })).toBeVisible();
+          await page.goto('/admin/cards');
+          await expect(page.getByRole('heading', { name: 'Cards', exact: true })).toBeVisible();
           await page.getByRole('button', { name: 'Connect lane' }).click();
           await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
 
@@ -488,6 +499,80 @@ test.describe('admin invitation and member setup', () => {
       if (adminUserId) {
         await deleteAdminFixture(supabase, adminUserId).catch((error) => {
           console.warn('Could not delete the admin fixture:', error);
+        });
+      }
+    }
+  });
+
+  test('superadmin sees the staff controls and full audit log', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop-chromium', 'Authenticated flow runs once.');
+    test.setTimeout(120_000);
+
+    const origin = new URL(baseURL ?? baseUrl()).origin;
+    test.skip(
+      origin !== siteOrigin(),
+      `Invitation links are issued for ${siteOrigin()}; start the app there or set E2E_BASE_URL to match.`,
+    );
+
+    const supabase = serviceClient();
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const superEmail = `e2e-super-${stamp}@example.com`;
+    const superPassword = `E2e-Super-${stamp}-4k`;
+    let superUserId: string | null = null;
+
+    try {
+      await test.step('create a disposable superadmin account', async () => {
+        const created = await createDisposableAdmin(supabase, {
+          email: superEmail,
+          password: superPassword,
+          role: 'superadmin',
+        });
+        superUserId = created.user.id;
+      });
+
+      await test.step('superadmin signs in and enrolls TOTP', async () => {
+        await page.goto('/login');
+        await page.getByLabel('Email').fill(superEmail);
+        await page.getByLabel('Password').fill(superPassword);
+        await page.getByRole('button', { name: 'Sign in' }).click();
+
+        await expect(page).toHaveURL(/\/admin-mfa/, { timeout: 20_000 });
+        await page.getByRole('button', { name: 'Set up authenticator' }).click();
+        const secret = page.locator('code');
+        await expect(secret).toBeVisible();
+        const totpSecret = (await secret.textContent())?.trim().toUpperCase() ?? '';
+        await page.getByLabel('Six-digit code').fill(totp(totpSecret));
+        await page.getByRole('button', { name: 'Verify and open admin' }).click();
+        await expect(page).toHaveURL(/\/admin$/, { timeout: 20_000 });
+      });
+
+      await test.step('superadmin-only navigation and pages', async () => {
+        await page.goto('/admin');
+        await expect(page.getByRole('link', { name: 'Users', exact: true })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Audit', exact: true })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Devices', exact: true })).toHaveCount(0);
+
+        await page.goto('/admin/users');
+        await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
+        await expect(page.getByText(superEmail).first()).toBeVisible();
+        await expect(page.getByText('Superadmin', { exact: true }).first()).toBeVisible();
+
+        await page.goto('/admin/invitations');
+        await expect(
+          page.getByRole('heading', { name: 'Invite an admin or superadmin' }),
+        ).toBeVisible();
+        await expect(page.getByLabel('Role')).toBeVisible();
+
+        await page.goto('/admin/audit');
+        await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
+      });
+    } finally {
+      if (superUserId) {
+        await deleteAdminFixture(supabase, superUserId).catch((error) => {
+          console.warn('Could not delete the superadmin fixture:', error);
         });
       }
     }

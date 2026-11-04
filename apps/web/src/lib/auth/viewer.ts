@@ -13,11 +13,15 @@ export interface MemberSession {
   authUserId: string;
 }
 
+export type StaffRole = 'admin' | 'superadmin';
+
 export interface Viewer {
   supabase: SupabaseClient;
   user: User | null;
   member: MemberSession | null;
   isAdmin: boolean;
+  isSuperadmin: boolean;
+  role: StaffRole | null;
 }
 
 export async function getViewer(): Promise<Viewer> {
@@ -27,10 +31,17 @@ export async function getViewer(): Promise<Viewer> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { supabase, user: null, member: null, isAdmin: false };
+    return {
+      supabase,
+      user: null,
+      member: null,
+      isAdmin: false,
+      isSuperadmin: false,
+      role: null,
+    };
   }
 
-  const [{ data: memberRow }, { data: roleRow }] = await Promise.all([
+  const [{ data: memberRow }, { data: roleRows }] = await Promise.all([
     supabase
       .from('members')
       .select(
@@ -42,8 +53,8 @@ export async function getViewer(): Promise<Viewer> {
       .from('user_roles')
       .select('role')
       .eq('auth_user_id', user.id)
-      .is('revoked_at', null)
-      .maybeSingle(),
+      .in('role', ['admin', 'superadmin'])
+      .is('revoked_at', null),
   ]);
 
   const profile = Array.isArray(memberRow?.member_profiles)
@@ -64,7 +75,21 @@ export async function getViewer(): Promise<Viewer> {
         }
       : null;
 
-  return { supabase, user, member, isAdmin: roleRow?.role === 'admin' };
+  const roles = (roleRows ?? []).map((row) => row.role as StaffRole);
+  const role: StaffRole | null = roles.includes('superadmin')
+    ? 'superadmin'
+    : roles.includes('admin')
+      ? 'admin'
+      : null;
+
+  return {
+    supabase,
+    user,
+    member,
+    isAdmin: role !== null,
+    isSuperadmin: role === 'superadmin',
+    role,
+  };
 }
 
 export async function requireUser(): Promise<Viewer & { user: User }> {
@@ -80,12 +105,29 @@ export async function requireMember(): Promise<Viewer & { user: User; member: Me
   return viewer as Viewer & { user: User; member: MemberSession };
 }
 
-export async function requireAdmin(): Promise<Viewer & { user: User; isAdmin: true }> {
+export async function requireAdmin(): Promise<
+  Viewer & { user: User; isAdmin: true; role: StaffRole }
+> {
   const viewer = await requireUser();
   if (!viewer.isAdmin) {
     redirect('/?notice=admin-required');
   }
   const { data: assurance } = await viewer.supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (assurance?.currentLevel !== 'aal2') redirect('/admin-mfa');
-  return viewer as Viewer & { user: User; isAdmin: true };
+  return viewer as Viewer & { user: User; isAdmin: true; role: StaffRole };
+}
+
+export async function requireSuperadmin(): Promise<
+  Viewer & { user: User; isAdmin: true; isSuperadmin: true; role: 'superadmin' }
+> {
+  const viewer = await requireAdmin();
+  if (!viewer.isSuperadmin) {
+    redirect('/admin?notice=superadmin-required');
+  }
+  return viewer as Viewer & {
+    user: User;
+    isAdmin: true;
+    isSuperadmin: true;
+    role: 'superadmin';
+  };
 }

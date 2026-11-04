@@ -5,6 +5,7 @@ import { buttonVariants, Card, CardContent, MetricCard, PageShell } from '@gdg/u
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
+import { Flash } from '@/components/admin/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,32 +14,48 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AdminOverviewPage() {
-  await requireAdmin();
+export default async function AdminOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string; error?: string }>;
+}) {
+  const viewer = await requireAdmin();
+  const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
+
+  let invitesQuery = admin
+    .from('member_invitations')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+  if (!viewer.isSuperadmin) {
+    invitesQuery = invitesQuery.eq('created_by', viewer.user.id);
+  }
+
+  let auditQuery = admin
+    .from('audit_log')
+    .select('id, action, target_type, target_id, reason, created_at')
+    .order('created_at', { ascending: false })
+    .limit(8);
+  if (!viewer.isSuperadmin) {
+    auditQuery = auditQuery.eq('actor_auth_id', viewer.user.id);
+  }
 
   const [members, invites, redemptions, rewards, recentAudit] = await Promise.all([
     admin.from('members').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-    admin
-      .from('member_invitations')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending'),
+    invitesQuery,
     admin
       .from('redemptions')
       .select('id', { count: 'exact', head: true })
       .in('status', ['requested', 'approved']),
     admin.from('rewards').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    admin
-      .from('audit_log')
-      .select('id, action, target_type, target_id, reason, created_at')
-      .order('created_at', { ascending: false })
-      .limit(8),
+    auditQuery,
   ]);
 
   const readiness = [{ label: 'Active rewards', value: rewards.count ?? 0 }];
 
   return (
     <PageShell>
+      <Flash notice={notice} error={error} />
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="type-overline text-primary">Organizer console</p>
@@ -68,18 +85,24 @@ export default async function AdminOverviewPage() {
         <Card className="lg:col-span-2">
           <CardContent className="pt-5">
             <div className="mb-1 flex items-baseline justify-between">
-              <h2 className="type-h3">Recent actions</h2>
-              <Link
-                href="/admin/audit"
-                className={buttonVariants({ variant: 'ghost', size: 'sm', className: '-mr-2' })}
-              >
-                Full audit log
-                <ArrowRight className="size-3.5" aria-hidden />
-              </Link>
+              <h2 className="type-h3">
+                {viewer.isSuperadmin ? 'Recent actions' : 'Your recent actions'}
+              </h2>
+              {viewer.isSuperadmin ? (
+                <Link
+                  href="/admin/audit"
+                  className={buttonVariants({ variant: 'ghost', size: 'sm', className: '-mr-2' })}
+                >
+                  Full audit log
+                  <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
+              ) : null}
             </div>
 
             {(recentAudit.data ?? []).length === 0 ? (
-              <p className="py-6 text-sm text-muted-foreground">No admin actions recorded yet.</p>
+              <p className="py-6 text-sm text-muted-foreground">
+                No actions recorded from your account yet.
+              </p>
             ) : (
               <ul className="divide-y divide-border">
                 {(recentAudit.data ?? []).map((row) => (
@@ -121,10 +144,10 @@ export default async function AdminOverviewPage() {
               Points are granted only after a human confirmation.
             </p>
             <Link
-              href="/admin/usb"
+              href="/admin/cards"
               className={buttonVariants({ variant: 'soft', size: 'sm', className: 'mt-3' })}
             >
-              USB card writer
+              Card writer
               <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           </CardContent>

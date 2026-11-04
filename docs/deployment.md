@@ -81,7 +81,7 @@ hosted admin dashboard. Do not send the link through this repository or chat.
 2. Build and flash from `firmware/kiosk-reader`; disconnect the PN532 only if
    esptool loses the serial port during reset.
 3. In Chrome or Edge on the hosted admin origin, sign in with AAL2 and open
-   `/admin/usb`.
+   `/admin/cards`.
 4. Prepare a card URL, connect the lane with Web Serial, write it, verify the
    read-back, and activate it.
 5. There is no device registration, WiFi onboarding, certificate, or PSU network
@@ -97,15 +97,18 @@ the serial bus.
 ## 6. Post-deploy verification
 
 1. `/`, `/leaderboard`, `/events`, `/privacy` and `/login` return 200.
-2. `/admin` and `/admin/usb` redirect anonymous visitors to `/login`.
+2. `/admin` and `/admin/cards` redirect anonymous visitors to `/login`.
 3. The invited admin can set a password and complete TOTP at `/admin-mfa`.
 4. Admin → Invitations generates a link whose origin is
    `https://members-bay-eight.vercel.app` and whose path is `/auth/confirm`.
-5. `/admin/usb` lists active members; preparing a card returns a `/c/<43-char>`
+5. `/admin/cards` lists active members; preparing a card returns a `/c/<43-char>`
    URL and activation changes the card to active.
 6. A physical tag writes and reads back the same URL in Chrome/Edge.
 7. `/c/<active-token>` redirects to the member profile; revoked/unknown tokens
    land on the neutral unavailable page.
+8. A superadmin sees **Users** and **Audit** and can choose Admin or Superadmin
+   in the staff invite form. A normal admin sees neither tab and gets no staff
+   invite form.
 
 ## 7. Rollback
 

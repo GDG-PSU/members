@@ -6,7 +6,7 @@ Google Developer Group at Penn State.
 - **Hosted app:** <https://members-bay-eight.vercel.app>
 - **Reader:** ESP32 + PN532 over **USB serial only**. No WiFi, server device API,
   registration, heartbeat, HMAC secret, kiosk polling, or writer-job polling.
-- **Card writing:** sign in as an admin, open `/admin/usb`, prepare a pending
+- **Card writing:** sign in as an admin, open `/admin/cards`, prepare a pending
   card URL, connect the lane with Chrome/Edge Web Serial, write and read back the
   URL, then activate the card. If the reader is empty, the writer waits for a
   card before writing.
@@ -14,17 +14,20 @@ Google Developer Group at Penn State.
   same local lane, select an event session, choose **Read card**, and confirm
   check-in or check-out after checking the member's photo and identity. The
   kiosk keeps waiting until a card is placed; select **Cancel** to stop. The
-  retired device registry is gone; `/admin/devices` redirects to `/admin/usb`.
+  retired device registry is gone; `/admin/devices` redirects to `/admin/cards`.
 - **No SMTP:** invitation and recovery links are generated in the admin UI and
   delivered manually.
+- **Staff roles:** normal admins run member operations and see only their own
+  invitation/activity history. Superadmins additionally manage Users and read
+  the full Audit log; only superadmins can invite admins or superadmins.
 
 ## Current state
 
-The production database was reset on **2026-11-04**. A one-time administrator
+The production database was reset on **2026-11-04**. A one-time superadmin
 setup link for `sainaman@psu.edu` was written to
 `.local/sainaman-admin-link.txt` (gitignored); it is not committed or printed.
-The admin must set a password, then enroll TOTP at `/admin-mfa` before `/admin`
-opens.
+The account has the `superadmin` role and must set a password, then enroll TOTP
+at `/admin-mfa` before `/admin` opens.
 
 The browser build was verified against the hosted Supabase project with the
 production build (`next start`) and the checks listed below. The latest code is
@@ -42,7 +45,7 @@ ready.
 - Immutable points/stars ledger, staff-validated attendance records, audit log,
   private profile photos, and RLS-backed public projections.
 - Admin card preparation/activation and attendance confirmation through the
-  local USB lane at `/admin/usb` and `/admin/kiosk`.
+  local USB lane at `/admin/cards` and `/admin/kiosk`.
 - Legacy signed device routes and the old pending-scan endpoint remain for
   historical data only. They are not used by the USB firmware or the current
   kiosk UI. Do not register new WiFi lanes.

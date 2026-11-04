@@ -96,7 +96,7 @@ the USB API itself still works.
 
 ## 6. USB API smoke test
 
-Use the admin page at `/admin/usb` in Chrome or Edge, or a serial terminal. Send
+Use the admin page at `/admin/cards` in Chrome or Edge, or a serial terminal. Send
 one JSON object per line:
 
 ```json
@@ -144,7 +144,7 @@ Do not infer capacity from the product listing. Measure it.
 
 ## 9. USB functional checklist
 
-- [ ] Admin opens `/admin/usb` in Chrome/Edge on HTTPS or localhost.
+- [ ] Admin opens `/admin/cards` in Chrome/Edge on HTTPS or localhost.
 - [ ] Admin selects COM3 and connects; `info` renders.
 - [ ] A blank NTAG215 read returns a stable error such as `ndef_record_missing`.
 - [ ] Writing a test URL to a non-production card succeeds and reads back.

@@ -30,14 +30,14 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: member }, { data: role }] = await Promise.all([
+  const [{ data: member }, { data: roleRows }] = await Promise.all([
     admin.from('members').select('id, status').eq('auth_user_id', data.user.id).maybeSingle(),
     admin
       .from('user_roles')
       .select('role')
       .eq('auth_user_id', data.user.id)
-      .is('revoked_at', null)
-      .maybeSingle(),
+      .in('role', ['admin', 'superadmin'])
+      .is('revoked_at', null),
   ]);
 
   if (member && member.status !== 'active') {
@@ -45,6 +45,6 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
     return { error: 'This membership is not active. Contact GDG@PSU.' };
   }
   if (member) redirect('/member');
-  if (role?.role === 'admin') redirect('/admin');
+  if (roleRows?.length) redirect('/admin');
   redirect('/invite/accept');
 }

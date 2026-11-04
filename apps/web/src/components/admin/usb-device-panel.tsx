@@ -116,7 +116,7 @@ export function UsbDevicePanel() {
     <div className="space-y-4">
       <Alert variant="success" role="status">
         This connects directly to a lane over USB. It does not use the device registry, WiFi, or the
-        server. An admin session is still required to open this page.
+        server. An admin session is still required to use this page.
       </Alert>
 
       <Card>
@@ -155,39 +155,20 @@ export function UsbDevicePanel() {
             </p>
           ) : null}
 
-          <dl className="mt-5 grid gap-x-6 gap-y-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="type-overline text-muted-foreground">Device</dt>
-              <dd className="mt-0.5 font-mono text-xs">{info?.deviceId ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="type-overline text-muted-foreground">Chip</dt>
-              <dd className="mt-0.5 font-mono text-xs">{info?.chipId ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="type-overline text-muted-foreground">Firmware</dt>
-              <dd className="mt-0.5">{info?.firmware ?? '—'}</dd>
-            </div>
-            <div>
-              <dt className="type-overline text-muted-foreground">NFC</dt>
-              <dd className="mt-0.5">{info?.nfcReady ? `ready (${nfcFirmware})` : 'not ready'}</dd>
-            </div>
-            <div>
-              <dt className="type-overline text-muted-foreground">Uptime</dt>
-              <dd className="mt-0.5">{uptime}</dd>
-            </div>
-            <div>
-              <dt className="type-overline text-muted-foreground">Transport</dt>
-              <dd className="mt-0.5">USB serial · 115200</dd>
-            </div>
-          </dl>
+          <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
+            {connected
+              ? `Firmware ${info?.firmware ?? '—'} · ${
+                  info?.nfcReady ? `NFC ready (${nfcFirmware})` : 'NFC not ready'
+                }`
+              : 'Connect a lane to read or write a card.'}
+          </p>
         </CardContent>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardContent className="p-5">
-            <h2 className="type-h3">Read a card</h2>
+            <h3 className="type-h3">Read a card</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
               Reads the NTAG URI. When the reader is empty, it keeps waiting until a card is placed;
               select Cancel to stop.
@@ -215,7 +196,7 @@ export function UsbDevicePanel() {
 
         <Card>
           <CardContent className="p-5">
-            <h2 className="type-h3">Write a card</h2>
+            <h3 className="type-h3">Write a card</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
               Writes and verifies one NDEF URI. If the reader is empty, it waits for a card before
               writing; select Cancel to stop waiting. Use a valid member card URL for a production
@@ -248,15 +229,55 @@ export function UsbDevicePanel() {
       </div>
 
       <Card>
-        <CardContent className="p-5">
-          <h2 className="type-h3">Device log</h2>
-          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-            Raw serial lines are shown here; JSON responses are consumed by the controls above.
-          </p>
-          <pre className="mt-3 max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[0.7rem] leading-relaxed">
-            {log.length > 0 ? log.join('\n') : 'No serial output yet.'}
-          </pre>
-        </CardContent>
+        <details>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+            <span>
+              <span className="block text-sm font-semibold">Advanced hardware details</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Device information and raw serial log
+              </span>
+            </span>
+            <span className="text-xs text-muted-foreground">Expand</span>
+          </summary>
+          <div className="border-t border-border px-5 py-5">
+            <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="type-overline text-muted-foreground">Device</dt>
+                <dd className="mt-0.5 font-mono text-xs">{info?.deviceId ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="type-overline text-muted-foreground">Chip</dt>
+                <dd className="mt-0.5 font-mono text-xs">{info?.chipId ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="type-overline text-muted-foreground">Firmware</dt>
+                <dd className="mt-0.5">{info?.firmware ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="type-overline text-muted-foreground">NFC</dt>
+                <dd className="mt-0.5">
+                  {info?.nfcReady ? `ready (${nfcFirmware})` : 'not ready'}
+                </dd>
+              </div>
+              <div>
+                <dt className="type-overline text-muted-foreground">Uptime</dt>
+                <dd className="mt-0.5">{uptime}</dd>
+              </div>
+              <div>
+                <dt className="type-overline text-muted-foreground">Transport</dt>
+                <dd className="mt-0.5">USB serial · 115200</dd>
+              </div>
+            </dl>
+
+            <h3 className="type-h3 mt-6">Raw serial log</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              Raw serial lines are shown here; JSON responses are consumed by the controls above.
+            </p>
+            <pre className="mt-3 max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[0.7rem] leading-relaxed">
+              {log.length > 0 ? log.join('\n') : 'No serial output yet.'}
+            </pre>
+          </div>
+        </details>
       </Card>
     </div>
   );

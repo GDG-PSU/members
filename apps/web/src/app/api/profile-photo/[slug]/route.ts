@@ -28,17 +28,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     if (user?.id === member.auth_user_id && member.status === 'active') {
       allowed = true;
     } else if (user) {
-      const [{ data: role }, { data: assurance }] = await Promise.all([
+      const [{ data: roles }, { data: assurance }] = await Promise.all([
         admin
           .from('user_roles')
           .select('role')
           .eq('auth_user_id', user.id)
-          .eq('role', 'admin')
-          .is('revoked_at', null)
-          .maybeSingle(),
+          .in('role', ['admin', 'superadmin'])
+          .is('revoked_at', null),
         supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
       ]);
-      allowed = role?.role === 'admin' && assurance?.currentLevel === 'aal2';
+      allowed = Boolean(roles?.length) && assurance?.currentLevel === 'aal2';
     }
   }
   if (!allowed) return missing();

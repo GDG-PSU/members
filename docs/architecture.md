@@ -1,12 +1,22 @@
 # Architecture
 
 > **Current hardware path (2026-11-04):** The reader is a USB-only ESP32 +
-> PN532 controlled by an admin browser over Web Serial at `/admin/usb` and
+> PN532 controlled by an admin browser over Web Serial at `/admin/cards` and
 > `/admin/kiosk`. It has no WiFi, server device client, registration, HMAC
 > secret, heartbeat, or kiosk polling. The signed device API, kiosk queue, and
 > writer-job sections below are legacy history; do not use them for the current
 > hardware. The old Devices tab is removed; `/admin/devices` redirects to
-> `/admin/usb`.
+> `/admin/cards`.
+
+## Staff roles
+
+- **Admin** — member invitations, Cards/USB writer, events, kiosk, and rewards.
+  The admin overview and invitation history show only actions/records created by
+  that admin; there is no full audit or staff management.
+- **Superadmin** — inherits all admin operations and additionally sees the
+  combined Users tab and the full Audit tab, can invite admins or superadmins,
+  and can revoke staff access. The last active superadmin and self-revocation
+  are blocked.
 
 ## System shape
 
@@ -19,7 +29,7 @@ Member / Admin browser
                 └── Admin copies one-time auth links (no SMTP; email is manual)
 
 Admin browser (AAL2) ── USB serial ── ESP32 + PN532 (no WiFi, no server client)
-  ├── /admin/usb   → prepare / write / read back / activate cards
+  ├── /admin/cards   → prepare / write / read back / activate cards
   ├── /admin/kiosk → select session → read card → confirm check-in/check-out
   └── Server Actions / API → Next.js → Supabase
 ```

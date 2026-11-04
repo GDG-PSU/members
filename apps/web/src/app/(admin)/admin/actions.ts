@@ -114,6 +114,7 @@ export type LinkState = {
   error?: string;
   link?: string;
   email?: string;
+  role?: 'admin' | 'superadmin';
 };
 
 /**
@@ -230,9 +231,18 @@ export async function inviteAdministratorAction(
   _prev: LinkState,
   formData: FormData,
 ): Promise<LinkState> {
-  const { user } = await requireAdminActor();
+  const viewer = await requireAdminActor();
+  const { user } = viewer;
+  if (!viewer.isSuperadmin) {
+    return { error: 'Only superadmins can invite administrators.' };
+  }
   const parsed = z.email().safeParse(readString(formData, 'email').trim().toLowerCase());
   if (!parsed.success) return { error: 'Enter a valid email address.' };
+  const parsedRole = z
+    .enum(['admin', 'superadmin'])
+    .safeParse(readString(formData, 'role') || 'admin');
+  if (!parsedRole.success) return { error: 'Choose a valid staff role.' };
+  const role = parsedRole.data;
   const email = parsed.data;
 
   const admin = createSupabaseAdmin();
@@ -259,10 +269,21 @@ export async function inviteAdministratorAction(
     };
   }
 
+  const { data: existingRoles } = await admin
+    .from('user_roles')
+    .select('role')
+    .eq('auth_user_id', authUserId)
+    .in('role', ['admin', 'superadmin'])
+    .is('revoked_at', null);
+  if (role === 'admin' && existingRoles?.some((existing) => existing.role === 'superadmin')) {
+    if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
+    return { error: 'That email already has superadmin access.' };
+  }
+
   const { error: roleError } = await admin.from('user_roles').upsert(
     {
       auth_user_id: authUserId,
-      role: 'admin',
+      role,
       granted_by: user.id,
       granted_at: new Date().toISOString(),
       revoked_at: null,
@@ -276,13 +297,77 @@ export async function inviteAdministratorAction(
     return { error: 'The administrator role could not be granted. Nothing was changed.' };
   }
 
+  if (role === 'superadmin') {
+    const { error: revokeError } = await admin
+      .from('user_roles')
+      .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+      .eq('auth_user_id', authUserId)
+      .eq('role', 'admin')
+      .is('revoked_at', null);
+    if (revokeError) {
+      console.error(`[admin-invite] could not revoke the old admin role: ${revokeError.message}`);
+    }
+  }
+
   await audit(user.id, 'admin.invited', 'user', authUserId, null, null, {
     email,
-    role: 'admin',
+    role,
     delivery: 'manual',
   });
   revalidatePath('/admin/invitations');
-  return { ok: true, email, link };
+  revalidatePath('/admin/users');
+  return { ok: true, email, link, role };
+}
+
+export async function revokeStaffAccessAction(formData: FormData) {
+  const viewer = await requireAdminActor();
+  const { user } = viewer;
+  const returnTo = readReturnTo(formData);
+  if (!viewer.isSuperadmin) {
+    fail(returnTo, 'Only superadmins can revoke staff access.');
+  }
+  const authUserId = z.uuid().safeParse(formData.get('authUserId'));
+  if (!authUserId.success) fail(returnTo, 'Invalid user.');
+  if (authUserId.data === user.id) {
+    fail(returnTo, 'You cannot revoke your own staff access.');
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: roles } = await admin
+    .from('user_roles')
+    .select('role')
+    .eq('auth_user_id', authUserId.data)
+    .in('role', ['admin', 'superadmin'])
+    .is('revoked_at', null);
+  if (!roles || roles.length === 0) fail(returnTo, 'That user has no active staff access.');
+
+  if (roles.some((role) => role.role === 'superadmin')) {
+    const { count } = await admin
+      .from('user_roles')
+      .select('auth_user_id', { count: 'exact', head: true })
+      .eq('role', 'superadmin')
+      .is('revoked_at', null);
+    if ((count ?? 0) <= 1) fail(returnTo, 'The last active superadmin cannot be removed.');
+  }
+
+  const { error } = await admin
+    .from('user_roles')
+    .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+    .eq('auth_user_id', authUserId.data)
+    .in('role', ['admin', 'superadmin'])
+    .is('revoked_at', null);
+  if (error) fail(returnTo, 'Staff access could not be revoked.');
+
+  await audit(
+    user.id,
+    'admin.access_revoked',
+    'user',
+    authUserId.data,
+    null,
+    { roles },
+    { roles: [] },
+  );
+  succeed(returnTo, 'Staff access revoked.', ['/admin']);
 }
 
 export async function regenerateInvitationLinkAction(
@@ -623,7 +708,7 @@ export async function previewUsbKioskAction(input: {
 /**
  * Prepares a pending card for the local Web Serial writer. Unlike the legacy
  * writer-job path, this returns the one-time card URL to the authenticated
- * admin so it can be written by /admin/usb; the card is activated only after
+ * admin so it can be written from /admin/cards; the card is activated only after
  * the browser has verified the write/read-back.
  */
 export async function prepareUsbCardAction(
@@ -662,7 +747,6 @@ export async function prepareUsbCardAction(
     card_id: cardId,
   });
   revalidatePath('/admin/cards');
-  revalidatePath('/admin/usb');
   return {
     ok: true,
     cardId,
@@ -701,7 +785,6 @@ export async function activateUsbCardAction(
     card_id: cardId.data,
   });
   revalidatePath('/admin/cards');
-  revalidatePath('/admin/usb');
   return { ok: true, activated: true };
 }
 

@@ -24,7 +24,7 @@ export interface DisposableAdmin {
  */
 export async function createDisposableAdmin(
   client: SupabaseClient,
-  input: { email: string; password: string },
+  input: { email: string; password: string; role?: 'admin' | 'superadmin' },
 ): Promise<DisposableAdmin> {
   const { data, error } = await client.auth.admin.createUser({
     email: input.email,
@@ -38,7 +38,7 @@ export async function createDisposableAdmin(
 
   const { error: roleError } = await client.from('user_roles').insert({
     auth_user_id: data.user.id,
-    role: 'admin',
+    role: input.role ?? 'admin',
     note: 'Disposable account created by the authenticated E2E suite.',
   });
   if (roleError) {

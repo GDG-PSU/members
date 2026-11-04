@@ -1,19 +1,12 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import {
-  buttonVariants,
-  Card,
-  CardContent,
-  DataTable,
-  EmptyState,
-  PageShell,
-  StatusChip,
-} from '@gdg/ui';
+import { Card, CardContent, DataTable, EmptyState, PageShell, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
 import { revokeCardAction } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { UsbCardPreparation } from '@/components/admin/usb-card-preparation';
+import { UsbDevicePanel } from '@/components/admin/usb-device-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,38 +25,59 @@ export default async function CardsPage({
   const admin = createSupabaseAdmin();
   const returnTo = '/admin/cards';
 
-  const { data: cards } = await admin
-    .from('card_credentials')
-    .select(
-      'id, member_id, status, issued_at, revoked_at, revoke_reason, created_at, members(public_number, member_profiles(display_name))',
-    )
-    .order('created_at', { ascending: false })
-    .limit(100);
+  const [{ data: cards }, { data: members }] = await Promise.all([
+    admin
+      .from('card_credentials')
+      .select(
+        'id, member_id, status, issued_at, revoked_at, revoke_reason, created_at, members(public_number, member_profiles(display_name))',
+      )
+      .order('created_at', { ascending: false })
+      .limit(100),
+    admin
+      .from('members')
+      .select('id, public_number, member_profiles(display_name)')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(300),
+  ]);
+
+  const memberOptions = (members ?? []).map((row) => {
+    const profile = Array.isArray(row.member_profiles)
+      ? row.member_profiles[0]
+      : row.member_profiles;
+    return {
+      id: row.id as string,
+      label: `${(profile?.display_name as string) ?? 'Member'} · ${row.public_number as string}`,
+    };
+  });
 
   return (
     <PageShell className="pb-10">
       <Flash notice={notice} error={error} />
       <Card className="mb-6">
-        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
-          <div>
-            <p className="type-overline text-primary">USB card lane</p>
-            <h1 className="type-h3 mt-1.5">Cards</h1>
-            <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Prepare a pending URL on the USB page, write it with the local reader, then activate
-              it after a matching read-back.
-            </p>
-          </div>
-          <Link href="/admin/usb" className={buttonVariants()}>
-            Open USB writer
-          </Link>
+        <CardContent className="p-5 sm:p-6">
+          <p className="type-overline text-primary">USB card lane</p>
+          <h1 className="type-h3 mt-1.5">Cards</h1>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Prepare, write, read back, and activate cards here. Connect the local reader over USB
+            for the full operation; hardware diagnostics are kept under advanced details.
+          </p>
         </CardContent>
       </Card>
+
+      <div className="mb-8 space-y-5">
+        <UsbCardPreparation members={memberOptions} />
+        <div>
+          <h2 className="type-h3 mb-3">Read and write a card</h2>
+          <UsbDevicePanel />
+        </div>
+      </div>
 
       <h2 className="type-h3 mb-3">Card credentials</h2>
       {!cards || cards.length === 0 ? (
         <EmptyState
           title="No cards prepared"
-          description="Prepare one for an active member on the USB page."
+          description="Prepare one above for an active member."
         />
       ) : (
         <DataTable

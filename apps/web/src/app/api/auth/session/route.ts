@@ -41,17 +41,17 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (user) {
-    const [{ data: member }, { data: role }] = await Promise.all([
+    const [{ data: member }, { data: roleRows }] = await Promise.all([
       supabase.from('members').select('id').eq('auth_user_id', user.id).maybeSingle(),
       supabase
         .from('user_roles')
         .select('role')
         .eq('auth_user_id', user.id)
-        .is('revoked_at', null)
-        .maybeSingle(),
+        .in('role', ['admin', 'superadmin'])
+        .is('revoked_at', null),
     ]);
     if (member) redirectTo = '/member';
-    else if (role?.role === 'admin') redirectTo = '/admin';
+    else if (roleRows?.length) redirectTo = '/admin';
   }
 
   const cookieStore = await cookies();

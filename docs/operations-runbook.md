@@ -1,12 +1,12 @@
 # Operations runbook
 
 > **Current hardware note (2026-11-04):** The supported lane is USB-only.
-> Prepare a card URL at `/admin/usb`, write it with the PN532 through Web Serial,
+> Prepare a card URL at `/admin/cards`, write it with the PN532 through Web Serial,
 > verify the read-back, then activate it. There is no device registration,
 > WiFi, heartbeat, HMAC secret, kiosk scan queue, or writer-job operation for
 > this lane. The same lane powers `/admin/kiosk`; select a session, read a card,
 > verify the member, and confirm attendance. The retired `/admin/devices` URL
-> redirects to `/admin/usb`.
+> redirects to `/admin/cards`.
 
 Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**.
 
@@ -31,7 +31,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ## Preflight (day before / morning of)
 
 1. **Event and sessions:** publish the event with exactly one main session; add bonus sessions only if they need their own check-in/out. Confirm windows, minimum duration and reward points.
-2. **USB lane:** connect the reader at `/admin/usb` and confirm `info` reports NFC ready. There is no server registration or lane label. **[pending hardware]**
+2. **USB lane:** connect the reader at `/admin/cards` and confirm `info` reports NFC ready. There is no server registration or lane label. **[pending hardware]**
 3. **Pages:** admin and kiosk pages load with AAL2, server time is sane, and the HTTPS certificate is valid. The reader itself does not use the network.
 4. **Test card:** perform a write test only on a non-production test card. **[pending writer + hardware]**
 5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, and photos load. **[target-project enrollment unverified]**
@@ -49,7 +49,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 
 ### Writing or replacing a card
 
-1. Open `/admin/usb`, select the member, and prepare one pending card URL.
+1. Open `/admin/cards`, select the member, and prepare one pending card URL.
 2. Connect the lane, insert a blank/eligible NFC tag, and write the URL. The firmware writes exactly one NDEF HTTPS URL and reads it back. Success requires an exact read-back match; failure yields a clear code. **[pending hardware]**
 3. Verify the browser read-back matches the prepared URL, then activate the card. The previous card (if any) is revoked and the member can use the digital ID.
 4. Never write a card for a member whose identity/photo you have not verified. Do not leave a prepared URL active overnight.

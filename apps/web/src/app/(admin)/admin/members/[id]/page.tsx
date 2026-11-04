@@ -16,7 +16,7 @@ import {
   StatusChip,
   buttonVariants,
 } from '@gdg/ui';
-import { requireAdmin } from '@/lib/auth/viewer';
+import { requireSuperadmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
 import { photoChangedWithin } from '@/lib/profile/identity';
@@ -44,7 +44,7 @@ export default async function AdminMemberDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ notice?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  await requireSuperadmin();
   const { id } = await params;
   const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
@@ -94,11 +94,11 @@ export default async function AdminMemberDetailPage({
       <Flash notice={notice} error={error} />
 
       <Link
-        href="/admin/members"
+        href="/admin/users"
         className={buttonVariants({ variant: 'ghost', size: 'sm', className: '-ml-2 mb-4' })}
       >
         <ArrowLeft className="size-4" aria-hidden />
-        All members
+        All users
       </Link>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
@@ -384,14 +384,14 @@ export default async function AdminMemberDetailPage({
               </div>
 
               <Link
-                href="/admin/usb"
+                href="/admin/cards"
                 className={buttonVariants({
                   variant: 'secondary',
                   size: 'sm',
                   className: 'w-full',
                 })}
               >
-                Open USB card writer
+                Open card writer
               </Link>
 
               {activeCard ? (

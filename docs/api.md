@@ -5,7 +5,7 @@
 > firmware or the current kiosk UI. `POST /api/admin/kiosk/confirm` is still the
 > confirmation transaction used by `/admin/kiosk`; the preview is the
 > `previewUsbKioskAction` Server Action. Card operations are Server Actions used
-> by `/admin/usb`: prepare a pending card, display its one-time `/c/<token>` URL,
+> by `/admin/cards`: prepare a pending card, display its one-time `/c/<token>` URL,
 > then activate it after the admin attests to a matching USB read-back.
 
 This repository has three kinds of server surface:
@@ -105,7 +105,7 @@ All other admin mutations are Server Actions (below). They require `getViewer().
 | Events      | `saveEventAction` (event + exactly one main session + optional bonus), `setEventStatusAction`.                                                                                                                                                                          |
 | Kiosk       | `previewUsbKioskAction` (USB read preview, transient scan), `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions.                                                                                                               |
 | Rewards     | `saveRewardAction`, `decideRedemptionAction` (approve/fulfil/reject/cancel with refund).                                                                                                                                                                                |
-| Devices     | Legacy `createDeviceAction`, `updateDeviceAction` remain server-side only. There is no Devices tab; `/admin/devices` redirects to `/admin/usb`.                                                                                                                         |
+| Devices     | Legacy `createDeviceAction`, `updateDeviceAction` remain server-side only. There is no Devices tab; `/admin/devices` redirects to `/admin/cards`.                                                                                                                       |
 | MFA         | `/admin-mfa` actions `enrollMfaAction`, `verifyMfaAction` (Supabase TOTP, AAL2 required for `/admin/*`).                                                                                                                                                                |
 
 ## Server Actions

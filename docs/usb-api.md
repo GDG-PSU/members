@@ -7,7 +7,7 @@ or kiosk/writer path in the firmware.
 ## Browser transport
 
 The ESP32 DevKit uses a **CP210x USB-to-UART bridge**. Browsers expose that as
-**Web Serial**, not raw WebUSB. The admin page is `/admin/usb` and uses
+**Web Serial**, not raw WebUSB. The admin page is `/admin/cards` and uses
 `navigator.serial`; it must run in Chrome or Edge on HTTPS or localhost.
 
 WebUSB would require a native-USB ESP32 (for example ESP32-S2/S3) with a custom
