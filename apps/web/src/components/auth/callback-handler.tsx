@@ -36,7 +36,7 @@ export function CallbackHandler() {
         };
         if (!response.ok) throw new Error(body.error ?? 'Could not complete sign in.');
         window.history.replaceState(null, '', window.location.pathname);
-        router.replace(body.redirectTo ?? next);
+        router.replace(body.redirectTo ?? '/invite/accept');
       })
       .catch(() => {
         router.replace('/login?notice=invalid-link');

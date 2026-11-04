@@ -1,15 +1,27 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { SITE_URL } from '@/lib/env';
+import { isSameOriginRequest, safeAuthNextPath } from '@/lib/security/request';
 import { createSupabaseServer } from '@/lib/supabase/server';
 
 const bodySchema = z.object({
   accessToken: z.string().min(20),
   refreshToken: z.string().min(10),
-  next: z.string().startsWith('/').max(200).default('/invite/accept'),
+  next: z.string().max(200).optional(),
 });
 
+const noStore = { 'Cache-Control': 'no-store' };
+
 export async function POST(request: Request) {
+  // Without this, a cross-site form post could sign the visitor in to an
+  // attacker's account, and whatever they enter next would land there.
+  if (!isSameOriginRequest(request, SITE_URL)) {
+    return NextResponse.json(
+      { error: 'Invalid request origin.' },
+      { status: 403, headers: noStore },
+    );
+  }
+
   let parsed: z.infer<typeof bodySchema>;
   try {
     const raw = await request.json();
@@ -17,10 +29,12 @@ export async function POST(request: Request) {
     if (!result.success) throw new Error('invalid');
     parsed = result.data;
   } catch {
-    return NextResponse.json({ error: 'Invalid session payload.' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid session payload.' },
+      { status: 400, headers: noStore },
+    );
   }
 
-  const safeNext = parsed.next.startsWith('//') ? '/invite/accept' : parsed.next;
   const supabase = await createSupabaseServer();
   const { error } = await supabase.auth.setSession({
     access_token: parsed.accessToken,
@@ -30,13 +44,13 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json(
       { error: 'That sign-in link is invalid or expired.' },
-      { status: 401 },
+      { status: 401, headers: noStore },
     );
   }
 
   // Send existing members/admins to their home instead of the setup screen when
   // they used a generic invitation/recovery callback.
-  let redirectTo = safeNext;
+  let redirectTo = safeAuthNextPath(parsed.next);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -54,11 +68,7 @@ export async function POST(request: Request) {
     else if (roleRows?.length) redirectTo = '/admin';
   }
 
-  const cookieStore = await cookies();
-  const response = NextResponse.json({ redirectTo });
-  for (const cookie of cookieStore.getAll()) {
-    response.cookies.set(cookie);
-  }
-  response.headers.set('Cache-Control', 'no-store');
-  return response;
+  // The session cookies written through cookies() are attached to this response
+  // by Next, with the options the Supabase client set.
+  return NextResponse.json({ redirectTo }, { headers: noStore });
 }

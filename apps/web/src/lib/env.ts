@@ -50,3 +50,16 @@ export const SITE_URL =
   configuredSiteUrl && !configuredSiteUrl.includes('member.gdgpsu.dev')
     ? configuredSiteUrl
     : 'https://members-bay-eight.vercel.app';
+
+/**
+ * Every Supabase call runs on the server, so page scripts never need the session
+ * cookie. @supabase/ssr defaults to a script-readable cookie.
+ */
+export function supabaseCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: SITE_URL.startsWith('https://'),
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+}

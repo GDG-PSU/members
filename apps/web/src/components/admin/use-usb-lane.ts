@@ -92,14 +92,18 @@ export function useUsbLane() {
         return;
       }
 
+      // Only the outcome: a late nfc.read reply contains the card URL, which must
+      // not be written to the on-screen log.
       if (typeof message.id !== 'number') {
-        appendLog(line);
+        appendLog(`[usb] unmatched reply ok=${message.ok} ${message.error ?? ''}`.trim());
         return;
       }
 
       const pending = pendingRef.current.get(message.id);
       if (!pending) {
-        appendLog(line);
+        appendLog(
+          `[usb] late reply id=${message.id} ok=${message.ok} ${message.error ?? ''}`.trim(),
+        );
         return;
       }
 
@@ -130,6 +134,8 @@ export function useUsbLane() {
           const { value, done } = await reader.read();
           if (done) break;
           if (value) buffer += decoder.decode(value, { stream: true });
+          // The firmware's own line limit is 1 KB; anything longer is line noise.
+          if (buffer.length > 16_384) buffer = '';
 
           let newline = buffer.indexOf('\n');
           while (newline >= 0) {

@@ -42,10 +42,12 @@ export async function getViewer(): Promise<Viewer> {
   }
 
   const [{ data: memberRow }, { data: roleRows }] = await Promise.all([
+    // Not an inner join: RLS hides the profile of a suspended member, and that
+    // member must still resolve so requireMember can send them to the right page.
     supabase
       .from('members')
       .select(
-        'id, status, public_number, member_since, member_profiles!inner(profile_slug, display_name, photo_path)',
+        'id, status, public_number, member_since, member_profiles(profile_slug, display_name, photo_path)',
       )
       .eq('auth_user_id', user.id)
       .maybeSingle(),
@@ -62,15 +64,15 @@ export async function getViewer(): Promise<Viewer> {
     : memberRow?.member_profiles;
 
   const member =
-    memberRow && profile
+    memberRow && (profile || memberRow.status !== 'active')
       ? {
           id: memberRow.id as string,
           status: memberRow.status as MemberSession['status'],
           publicNumber: memberRow.public_number as string,
           memberSince: memberRow.member_since as string,
-          slug: profile.profile_slug as string,
-          displayName: profile.display_name as string,
-          photoPath: profile.photo_path as string,
+          slug: (profile?.profile_slug as string | undefined) ?? '',
+          displayName: (profile?.display_name as string | undefined) ?? 'Member',
+          photoPath: (profile?.photo_path as string | undefined) ?? '',
           authUserId: user.id,
         }
       : null;
@@ -100,7 +102,7 @@ export async function requireUser(): Promise<Viewer & { user: User }> {
 
 export async function requireMember(): Promise<Viewer & { user: User; member: MemberSession }> {
   const viewer = await requireUser();
-  if (!viewer.member) redirect('/invite/accept');
+  if (!viewer.member) redirect(viewer.isAdmin ? '/admin' : '/invite/accept');
   if (viewer.member.status !== 'active') redirect('/account-suspended');
   return viewer as Viewer & { user: User; member: MemberSession };
 }

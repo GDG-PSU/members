@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { getEnv, supabasePublicKey } from '@/lib/env';
+import { getEnv, supabaseCookieOptions, supabasePublicKey } from '@/lib/env';
 
 /**
  * Cookie-bound Supabase client used for all interactive/user-scoped requests.
@@ -14,6 +14,7 @@ export async function createSupabaseServer() {
   const env = getEnv();
 
   return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, supabasePublicKey(), {
+    cookieOptions: supabaseCookieOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll();

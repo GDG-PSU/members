@@ -17,7 +17,8 @@ export class ApiError extends Error {
 
 export function requestId(request?: Request): string {
   const header = request?.headers.get('x-request-id');
-  if (header && header.length >= 8 && header.length <= 64) return header;
+  // Echoed into logs and responses, so only an opaque shape is accepted.
+  if (header && /^[A-Za-z0-9_-]{8,64}$/.test(header)) return header;
   return randomUUID();
 }
 
@@ -92,6 +93,9 @@ export function handleApiError(error: unknown, id: string) {
     outside_check_out_window: [409, 'conflict', 'Check-out is closed for this session.'],
     scan_expired: [410, 'expired', 'This scan has expired. Ask the member to tap again.'],
     scan_already_handled: [409, 'conflict', 'This scan was already handled.'],
+    scan_not_found: [404, 'not_found', 'This scan no longer exists. Ask the member to tap again.'],
+    session_unavailable: [409, 'conflict', 'This event session is no longer available.'],
+    card_not_active: [409, 'conflict', 'This card is no longer active.'],
     invitation_not_found: [403, 'forbidden', 'No pending invitation matches this account.'],
     invitation_expired: [410, 'expired', 'This invitation has expired. Contact GDG@PSU.'],
     member_not_active: [403, 'forbidden', 'This membership is not active.'],

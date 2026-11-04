@@ -72,43 +72,52 @@ export async function updateProfileAction(
     .select('photo_path, display_name, about, links')
     .eq('member_id', member.id)
     .maybeSingle();
-  let photoPath = (current?.photo_path as string | undefined) ?? member.photoPath;
-  if (!photoPath) {
+  const previousPhotoPath = (current?.photo_path as string | undefined) ?? member.photoPath;
+  if (!previousPhotoPath) {
     return { error: 'Add a clear photo of your face before saving.' };
   }
 
-  let photoChanged = false;
+  let newPhotoPath: string | null = null;
   const photo = formData.get('photo');
   if (photo instanceof File && photo.size > 0) {
     try {
-      const nextPath = await storeProfilePhoto(photo, user.id);
-      if (current?.photo_path && current.photo_path !== nextPath) {
-        await admin.storage
-          .from('avatars')
-          .remove([current.photo_path as string])
-          .catch(() => {});
-      }
-      photoPath = nextPath;
-      photoChanged = true;
+      newPhotoPath = await storeProfilePhoto(photo, user.id);
     } catch (error) {
       return { error: error instanceof PhotoError ? error.message : 'Photo upload failed.' };
     }
   }
 
+  const about = parsed.data.about?.trim() ? parsed.data.about : null;
   const { error } = await admin
     .from('member_profiles')
     .update({
       display_name: parsed.data.displayName,
-      about: parsed.data.about?.trim() ? parsed.data.about : null,
+      about,
       links: parsed.data.links,
-      photo_path: photoPath,
+      photo_path: newPhotoPath ?? previousPhotoPath,
     })
     .eq('member_id', member.id);
+
+  // Only one photo may survive, and the profile must never point at a missing one.
+  const obsoletePhoto = error ? newPhotoPath : newPhotoPath ? previousPhotoPath : null;
+  if (obsoletePhoto) {
+    const { error: removeError } = await admin.storage.from('avatars').remove([obsoletePhoto]);
+    if (removeError) console.error('[profile] photo cleanup failed', removeError.message);
+  }
 
   if (error) {
     console.error('[profile] update failed', error.message);
     return { error: 'Your profile could not be saved.' };
   }
+
+  // Field names only: audit rows outlive account erasure, so they must not keep
+  // a member's bio and links.
+  const changedFields = [
+    parsed.data.displayName !== current?.display_name && 'display_name',
+    about !== (current?.about ?? null) && 'about',
+    JSON.stringify(parsed.data.links) !== JSON.stringify(current?.links ?? []) && 'links',
+    newPhotoPath !== null && 'photo',
+  ].filter(Boolean);
 
   await admin.rpc('log_audit', {
     p_actor: user.id,
@@ -116,13 +125,8 @@ export async function updateProfileAction(
     p_target_type: 'member',
     p_target_id: member.id,
     p_reason: null,
-    p_before: { display_name: current?.display_name, about: current?.about, links: current?.links },
-    p_after: {
-      display_name: parsed.data.displayName,
-      about: parsed.data.about,
-      links: parsed.data.links,
-      photo_changed: photoChanged,
-    },
+    p_before: null,
+    p_after: { changed: changedFields },
     p_request_id: null,
   });
 

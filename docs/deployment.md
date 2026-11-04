@@ -5,11 +5,10 @@ Target: Next.js on **Vercel** at
 USB-only ESP32 + PN532 reader. No custom domain, DNS change, campus WiFi, or
 firmware server endpoint is required.
 
-The hosted Supabase project is `potjjlmgnrqxseeendmx`; migrations 0001–0011 are
-applied. The database was reset on 2026-11-04 and one administrator setup link
-was generated for `sainaman@psu.edu`. Hosting is live and the latest source has
-been pushed; verify the Vercel deployment after the push before treating this
-checkout as the running release.
+The hosted Supabase project is `potjjlmgnrqxseeendmx`. Compare its applied
+migrations with `supabase/migrations/` before a release: the application expects
+every migration in that folder, through `0014_security_hardening.sql`. Verify the
+Vercel deployment after a push before treating a checkout as the running release.
 
 ## 1. Vercel project
 
@@ -48,11 +47,17 @@ a staging database or stay read-only; do not expose production member data.
 
 ## 3. Supabase Auth
 
+These are dashboard settings on the hosted project. `supabase/config.toml` only
+configures the local stack, so check them here; the Auth settings endpoint reports
+the sign-up state as `disable_signup`.
+
 - Site URL: `https://members-bay-eight.vercel.app`; keep it in sync with
   `NEXT_PUBLIC_SITE_URL`.
 - Optional callback fallback: `https://members-bay-eight.vercel.app/auth/callback`.
-- Keep public signup disabled. Accounts are created by Admin API invitation or
-  recovery links.
+- **Allow new users to sign up: off.** Accounts are created by Admin API invitation
+  or recovery links, which keep working with sign-ups off.
+- Minimum password length 12, requiring letters and digits, matching the app.
+- Leaked password protection on, where the plan offers it.
 - Admin routes require AAL2. The invited administrator must set a password and
   enroll TOTP at `/admin-mfa`.
 - No SMTP is configured. Admin → Invitations generates a one-time link; the

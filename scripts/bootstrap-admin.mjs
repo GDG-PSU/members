@@ -92,6 +92,17 @@ const client = new Client({
   ssl: env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
 });
 await client.connect();
+const { rows: memberRows } = await client.query(
+  `select 1 from public.members where auth_user_id = $1`,
+  [user.id],
+);
+if (memberRows.length > 0) {
+  // User types are exclusive, and converting a member deletes their data. That
+  // is a deliberate superadmin decision in Users, never a side effect of this.
+  console.error('That account is a member. Change its user type from Users in the admin panel.');
+  await client.end();
+  process.exit(1);
+}
 await client.query(
   `insert into public.user_roles (auth_user_id, role, note)
    values ($1, 'admin', 'bootstrap script')

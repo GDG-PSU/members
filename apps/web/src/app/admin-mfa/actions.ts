@@ -1,7 +1,9 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { z } from 'zod';
 import { getViewer } from '@/lib/auth/viewer';
+import { withinRateLimit } from '@/lib/security/rate-limit';
 
 export interface MfaState {
   error?: string;
@@ -42,8 +44,14 @@ export async function verifyMfaAction(_prev: MfaState, formData: FormData): Prom
   const viewer = await requireAdminViewer();
   const factorId = String(formData.get('factorId') ?? '');
   const code = String(formData.get('code') ?? '').replace(/\s+/g, '');
-  if (!factorId || !/^\d{6}$/.test(code)) {
+  if (!z.uuid().safeParse(factorId).success || !/^\d{6}$/.test(code)) {
     return { error: 'Enter the six-digit code from your authenticator.', factorId };
+  }
+
+  // A stolen password reaches this step, and six digits are guessable without a
+  // per-account limit.
+  if (!(await withinRateLimit(`mfa-verify:${viewer.user?.id}`, 10, 300))) {
+    return { error: 'Too many attempts. Wait a few minutes and try again.', factorId };
   }
 
   const challenge = await viewer.supabase.auth.mfa.challenge({ factorId });

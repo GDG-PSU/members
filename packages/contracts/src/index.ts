@@ -97,15 +97,17 @@ export const profileUpdateSchema = z.object({
 
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 
+export const newPasswordSchema = z
+  .string()
+  .min(12, 'Use at least 12 characters')
+  .max(128, 'Use 128 characters or fewer')
+  .refine((value) => /[a-zA-Z]/.test(value) && /\d/.test(value), {
+    message: 'Include at least one letter and one number',
+  });
+
 export const setupCompletionSchema = z.object({
   displayName: z.string().trim().min(2, 'Use at least 2 characters').max(60),
-  password: z
-    .string()
-    .min(12, 'Use at least 12 characters')
-    .max(128)
-    .refine((value) => /[a-zA-Z]/.test(value) && /\d/.test(value), {
-      message: 'Include at least one letter and one number',
-    }),
+  password: newPasswordSchema,
   about: aboutSchema.optional().or(z.literal('')),
   photoPath: z.string().trim().min(3).max(300),
   acceptTerms: z.literal(true),

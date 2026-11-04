@@ -18,7 +18,7 @@ const PHOTO = Buffer.from(
 test.describe('admin invitation and member setup', () => {
   test.skip(
     !hasSupabaseAdminCredentials(),
-    'Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) to run the authenticated suite.',
+    'Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) to run the authenticated suite. A hosted test project also needs E2E_ALLOW_HOSTED_SUPABASE=yes.',
   );
 
   test('invitation link is generated, copied, accepted, and completes member setup', async ({

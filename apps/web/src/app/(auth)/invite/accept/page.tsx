@@ -24,6 +24,9 @@ export default async function InviteAcceptPage() {
     .select('id, email, status, paid_since, expires_at, requires_password')
     .eq('email', (viewer.user.email ?? '').toLowerCase())
     .order('created_at', { ascending: false })
+    // An email can have older revoked or accepted rows; maybeSingle() returns
+    // nothing at all when more than one row matches.
+    .limit(1)
     .maybeSingle();
 
   const expired = invitation?.expires_at ? new Date(invitation.expires_at) < new Date() : false;

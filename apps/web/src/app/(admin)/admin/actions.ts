@@ -6,28 +6,19 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   attendanceCorrectionSchema,
-  deviceCreateSchema,
-  deviceUpdateSchema,
   eventInputSchema,
   interactionRewardSchema,
   invitationCreateSchema,
   memberStatusSchema,
   redemptionDecisionSchema,
   rewardInputSchema,
-  scanConfirmSchema,
   cardRevokeSchema,
-  cardPrepareSchema,
 } from '@gdg/contracts';
 import { getViewer } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { photoChangedWithin } from '@/lib/profile/identity';
 import { profilePhotoUrl } from '@/lib/profile/photo';
-import {
-  encryptSecret,
-  generateCardToken,
-  generateDeviceSecret,
-  hashToken,
-} from '@/lib/security/tokens';
+import { encryptSecret, generateCardToken, hashToken } from '@/lib/security/tokens';
 import { newYorkInputToIso } from '@/lib/format';
 import { SITE_URL } from '@/lib/env';
 
@@ -39,6 +30,34 @@ async function requireAdminActor() {
   const { data: assurance } = await viewer.supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (assurance?.currentLevel !== 'aal2') throw new Error('forbidden');
   return { ...viewer, user: viewer.user };
+}
+
+/** For the actions behind /admin/members/[id], which is a superadmin-only page. */
+async function requireSuperadminActor() {
+  const viewer = await requireAdminActor();
+  if (!viewer.isSuperadmin) throw new Error('forbidden');
+  return viewer;
+}
+
+const DOMAIN_ERRORS: Record<string, string> = {
+  already_qualified: 'This attendance is already qualified.',
+  card_not_activatable: 'This card can no longer be activated. Prepare a new one.',
+  card_not_revocable: 'That card is no longer active.',
+  checkout_before_check_in: 'Check-out must be after check-in.',
+  checkout_required_before_qualifying: 'Set a check-out time before qualifying this attendance.',
+  checkout_time_required: 'Enter a check-out time.',
+  insufficient_balance_for_reversal:
+    'The member has already spent these points, so the award cannot be reversed.',
+  invalid_transition: 'That request has already been handled.',
+  reason_required: 'Enter a reason for this action.',
+};
+
+/** Domain errors are stable codes; anything else may expose database details. */
+function domainErrorMessage(message: string): string {
+  const known = DOMAIN_ERRORS[message];
+  if (known) return known;
+  console.error('[admin-action]', message);
+  return 'That change could not be saved. Try again.';
 }
 
 function fail(returnTo: string, message: string): never {
@@ -83,7 +102,7 @@ function confirmLink(
   return url.toString();
 }
 
-function audit(
+async function audit(
   actor: string,
   action: string,
   targetType: string,
@@ -93,7 +112,7 @@ function audit(
   after: unknown,
 ) {
   const admin = createSupabaseAdmin();
-  return admin.rpc('log_audit', {
+  const { error } = await admin.rpc('log_audit', {
     p_actor: actor,
     p_action: action,
     p_target_type: targetType,
@@ -103,6 +122,8 @@ function audit(
     p_after: after,
     p_request_id: null,
   });
+  // The change has already happened, so a missed entry must at least be visible.
+  if (error) console.error(`[audit] ${action} was not recorded: ${error.message}`);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -137,6 +158,15 @@ export async function createInvitationAction(
   }
 
   const admin = createSupabaseAdmin();
+  // Setup refuses an expired invitation but cannot record that from the
+  // transaction it aborts, so the row stays pending and would block a new invite.
+  await admin
+    .from('member_invitations')
+    .update({ status: 'expired' })
+    .eq('email', parsed.data.email)
+    .eq('status', 'pending')
+    .lt('expires_at', new Date().toISOString());
+
   const { data: existing } = await admin
     .from('member_invitations')
     .select('id')
@@ -347,57 +377,6 @@ export async function inviteAdministratorAction(
   return { ok: true, email, link, role };
 }
 
-export async function revokeStaffAccessAction(formData: FormData) {
-  const viewer = await requireAdminActor();
-  const { user } = viewer;
-  const returnTo = readReturnTo(formData);
-  if (!viewer.isSuperadmin) {
-    fail(returnTo, 'Only superadmins can revoke staff access.');
-  }
-  const authUserId = z.uuid().safeParse(formData.get('authUserId'));
-  if (!authUserId.success) fail(returnTo, 'Invalid user.');
-  if (authUserId.data === user.id) {
-    fail(returnTo, 'You cannot revoke your own staff access.');
-  }
-
-  const admin = createSupabaseAdmin();
-  const { data: roles } = await admin
-    .from('user_roles')
-    .select('role')
-    .eq('auth_user_id', authUserId.data)
-    .in('role', ['admin', 'superadmin'])
-    .is('revoked_at', null);
-  if (!roles || roles.length === 0) fail(returnTo, 'That user has no active staff access.');
-
-  if (roles.some((role) => role.role === 'superadmin')) {
-    const { count } = await admin
-      .from('user_roles')
-      .select('auth_user_id', { count: 'exact', head: true })
-      .eq('role', 'superadmin')
-      .is('revoked_at', null);
-    if ((count ?? 0) <= 1) fail(returnTo, 'The last active superadmin cannot be removed.');
-  }
-
-  const { error } = await admin
-    .from('user_roles')
-    .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
-    .eq('auth_user_id', authUserId.data)
-    .in('role', ['admin', 'superadmin'])
-    .is('revoked_at', null);
-  if (error) fail(returnTo, 'Staff access could not be revoked.');
-
-  await audit(
-    user.id,
-    'admin.access_revoked',
-    'user',
-    authUserId.data,
-    null,
-    { roles },
-    { roles: [] },
-  );
-  succeed(returnTo, 'Staff access revoked.', ['/admin', '/admin/users']);
-}
-
 /**
  * Changes a user's exclusive type. Superadmin-only. The database function is
  * transactional: member data is deleted before a staff role is granted, and a
@@ -514,14 +493,6 @@ export async function revokeUserAccessAction(formData: FormData) {
   if (roles?.length && !viewer.isSuperadmin) {
     fail(returnTo, 'Only superadmins can revoke staff access.');
   }
-  if (roles?.some((row) => row.role === 'superadmin')) {
-    const { count } = await admin
-      .from('user_roles')
-      .select('auth_user_id', { count: 'exact', head: true })
-      .eq('role', 'superadmin')
-      .is('revoked_at', null);
-    if ((count ?? 0) <= 1) fail(returnTo, 'The last active superadmin cannot be revoked.');
-  }
   if (member && member.status === 'archived' && !roles?.length) {
     fail(returnTo, 'That member is already archived.');
   }
@@ -540,7 +511,14 @@ export async function revokeUserAccessAction(formData: FormData) {
       .eq('auth_user_id', authUserId.data)
       .in('role', ['admin', 'superadmin'])
       .is('revoked_at', null);
-    if (error) fail(returnTo, 'Staff access could not be revoked.');
+    if (error) {
+      fail(
+        returnTo,
+        error.message.includes('last_superadmin')
+          ? 'The last active superadmin cannot be revoked.'
+          : 'Staff access could not be revoked.',
+      );
+    }
   }
 
   await audit(
@@ -658,7 +636,7 @@ export async function revokeInvitationAction(formData: FormData) {
 /* -------------------------------------------------------------------------- */
 
 export async function setMemberStatusAction(formData: FormData) {
-  const { user } = await requireAdminActor();
+  const { user } = await requireSuperadminActor();
   const returnTo = readReturnTo(formData);
   const parsed = memberStatusSchema.safeParse({
     memberId: formData.get('memberId'),
@@ -695,7 +673,7 @@ export async function setMemberStatusAction(formData: FormData) {
 }
 
 export async function adjustMemberPointsAction(formData: FormData) {
-  const { user } = await requireAdminActor();
+  const { user } = await requireSuperadminActor();
   const returnTo = readReturnTo(formData);
   const parsed = interactionRewardSchema.safeParse({
     memberId: formData.get('memberId'),
@@ -716,7 +694,7 @@ export async function adjustMemberPointsAction(formData: FormData) {
     p_session_id: null,
     p_rule_snapshot: { source: 'admin_interaction' },
   });
-  if (error) fail(returnTo, `Award failed: ${error.message}`);
+  if (error) fail(returnTo, domainErrorMessage(error.message));
 
   await audit(
     user.id,
@@ -733,25 +711,30 @@ export async function adjustMemberPointsAction(formData: FormData) {
   succeed(returnTo, `Awarded ${parsed.data.points} points and stars.`, ['/member']);
 }
 
+/**
+ * A recovery link is a password reset for whoever holds it, and this accepts any
+ * email. In a normal admin's hands it would take over a member, or a staff
+ * account that has not enrolled TOTP yet, which includes new superadmins.
+ */
 export async function sendRecoveryAction(_prev: LinkState, formData: FormData): Promise<LinkState> {
-  const { user } = await requireAdminActor();
-  const email = z.email().safeParse(readString(formData, 'email'));
+  const { user } = await requireSuperadminActor();
+  const email = z.email().safeParse(readString(formData, 'email').trim().toLowerCase());
   if (!email.success) return { error: 'Invalid email.' };
 
   const admin = createSupabaseAdmin();
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'recovery',
     email: email.data,
-    options: { redirectTo: `${SITE_URL}/auth/callback?next=/invite/accept` },
+    options: { redirectTo: `${SITE_URL}/auth/callback?next=/account/password` },
   });
   const link = confirmLink(data?.properties, '/account/password');
-
-  await audit(user.id, 'member.recovery_link_generated', 'member_email', email.data, null, null, {
-    delivery: 'manual',
-  });
-  if (error || !link) {
+  if (error || !link || !data.user) {
     return { error: `Could not generate a recovery link: ${error?.message ?? 'unknown error'}` };
   }
+
+  await audit(user.id, 'member.recovery_link_generated', 'user', data.user.id, null, null, {
+    delivery: 'manual',
+  });
   return { ok: true, email: email.data, link };
 }
 
@@ -928,6 +911,7 @@ export async function prepareUsbCardAction(
   const memberId = z.uuid().safeParse(formData.get('memberId'));
   if (!memberId.success) return { error: 'Select an active member.' };
   const reason = readString(formData, 'reason').trim();
+  if (reason.length > 200) return { error: 'Keep the reason to 200 characters.' };
 
   const admin = createSupabaseAdmin();
   const { data: member } = await admin
@@ -950,7 +934,9 @@ export async function prepareUsbCardAction(
     p_token_ciphertext: encryptSecret(token),
     p_actor: user.id,
   });
-  if (error || !cardId) return { error: `Card preparation failed: ${error?.message ?? 'unknown'}` };
+  if (error || !cardId) {
+    return { error: domainErrorMessage(error?.message ?? 'prepare_card returned no card') };
+  }
 
   await audit(user.id, 'card.usb_prepared', 'member', member.id, reason || null, null, {
     card_id: cardId,
@@ -988,72 +974,13 @@ export async function activateUsbCardAction(
     p_card_id: cardId.data,
     p_actor: user.id,
   });
-  if (error) return { error: `Activation failed: ${error.message}` };
+  if (error) return { error: domainErrorMessage(error.message) };
 
   await audit(user.id, 'card.usb_activated', 'member', card.member_id, null, null, {
     card_id: cardId.data,
   });
   revalidatePath('/admin/cards');
   return { ok: true, activated: true };
-}
-
-export async function prepareCardAction(formData: FormData) {
-  const { user } = await requireAdminActor();
-  const returnTo = readReturnTo(formData);
-  const parsed = cardPrepareSchema.safeParse({
-    memberId: formData.get('memberId'),
-    deviceId: formData.get('deviceId'),
-    reason: readString(formData, 'reason'),
-  });
-  if (!parsed.success) fail(returnTo, parsed.error.issues[0]?.message ?? 'Invalid card request.');
-
-  const admin = createSupabaseAdmin();
-  const { data: member } = await admin
-    .from('members')
-    .select('id, status, member_profiles(profile_slug)')
-    .eq('id', parsed.data.memberId)
-    .maybeSingle();
-  const profile = Array.isArray(member?.member_profiles)
-    ? member?.member_profiles[0]
-    : member?.member_profiles;
-  if (!member || member.status !== 'active' || !profile?.profile_slug) {
-    fail(returnTo, 'That member is not active or has no profile.');
-  }
-
-  const token = generateCardToken();
-  const cardUrl = `${SITE_URL}/c/${token}`;
-
-  const { data: cardId, error: cardError } = await admin.rpc('prepare_card', {
-    p_member_id: member.id,
-    p_token_hash: hashToken(token),
-    p_token_ciphertext: encryptSecret(token),
-    p_actor: user.id,
-  });
-  if (cardError) fail(returnTo, `Card preparation failed: ${cardError.message}`);
-
-  const { error: jobError } = await admin.rpc('queue_write_job', {
-    p_card_id: cardId,
-    p_device_uuid: parsed.data.deviceId,
-    p_payload_ciphertext: encryptSecret(cardUrl),
-    p_nonce: randomUUID(),
-    p_ttl_seconds: 600,
-    p_actor: user.id,
-  });
-
-  if (jobError) {
-    await admin.rpc('revoke_card', {
-      p_card_id: cardId,
-      p_actor: user.id,
-      p_reason: 'Write job could not be queued',
-    });
-    fail(returnTo, `Write job failed: ${jobError.message}`);
-  }
-
-  await audit(user.id, 'card.prepared', 'member', member.id, parsed.data.reason ?? null, null, {
-    card_id: cardId,
-    device_id: parsed.data.deviceId,
-  });
-  succeed(returnTo, 'Card queued for the writer. Token is never shown here.');
 }
 
 export async function revokeCardAction(formData: FormData) {
@@ -1078,7 +1005,7 @@ export async function revokeCardAction(formData: FormData) {
     p_actor: user.id,
     p_reason: parsed.data.reason,
   });
-  if (error) fail(returnTo, error.message);
+  if (error) fail(returnTo, domainErrorMessage(error.message));
 
   await audit(
     user.id,
@@ -1090,32 +1017,6 @@ export async function revokeCardAction(formData: FormData) {
     { status: 'lost' },
   );
   succeed(returnTo, 'Card revoked. The member profile URL is unchanged.', ['/member']);
-}
-
-export async function completeWriteJobAction(formData: FormData) {
-  const { user } = await requireAdminActor();
-  const returnTo = readReturnTo(formData);
-  const jobId = z.uuid().safeParse(formData.get('jobId'));
-  if (!jobId.success) fail(returnTo, 'Invalid job.');
-  const admin = createSupabaseAdmin();
-  const { data: job } = await admin
-    .from('card_write_jobs')
-    .select('id, device_id')
-    .eq('id', jobId.data)
-    .maybeSingle();
-  if (!job) fail(returnTo, 'Job not found.');
-  const { error } = await admin.rpc('complete_write_job', {
-    p_job_id: jobId.data,
-    p_device_uuid: job.device_id,
-    p_status: 'failed',
-    p_read_back_matches: false,
-    p_failure_code: 'admin_cancelled',
-    p_ndef_length: null,
-    p_actor: user.id,
-  });
-  if (error) fail(returnTo, error.message);
-  await audit(user.id, 'card.write_cancelled', 'card_write_job', jobId.data, null, null, null);
-  succeed(returnTo, 'Write job cancelled.');
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1163,6 +1064,7 @@ export async function saveEventAction(formData: FormData) {
   const { user } = await requireAdminActor();
   const returnTo = readReturnTo(formData);
   const eventId = readString(formData, 'eventId') || undefined;
+  if (eventId && !z.uuid().safeParse(eventId).success) fail(returnTo, 'Invalid event.');
   const sessions = [normalizeSession(readSession(formData, 'main', 'main'))];
   if (readString(formData, 'bonusName')) {
     const bonus = normalizeSession(readSession(formData, 'bonus', 'bonus'));
@@ -1241,7 +1143,13 @@ export async function saveEventAction(formData: FormData) {
       },
     };
     if (session.id) {
-      const { error } = await admin.from('event_sessions').update(payload).eq('id', session.id);
+      // Scoped to this event: the id comes from the form, and an unscoped update
+      // would move another event's session here.
+      const { error } = await admin
+        .from('event_sessions')
+        .update(payload)
+        .eq('id', session.id)
+        .eq('event_id', id);
       if (error) fail(returnTo, `Session update failed: ${error.message}`);
     } else {
       const { data: existing } = await admin
@@ -1300,7 +1208,7 @@ export async function setEventStatusAction(formData: FormData) {
     .from('events')
     .update({ status: status.data })
     .eq('id', eventId.data);
-  if (error) fail(returnTo, error.message);
+  if (error) fail(returnTo, domainErrorMessage(error.message));
   await audit(
     user.id,
     'event.status_changed',
@@ -1314,41 +1222,11 @@ export async function setEventStatusAction(formData: FormData) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Kiosk                                                                      */
+/* Attendance                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export async function confirmScanAction(formData: FormData) {
-  const { user } = await requireAdminActor();
-  const returnTo = readReturnTo(formData);
-  const parsed = scanConfirmSchema.safeParse({
-    scanId: formData.get('scanId'),
-    action: formData.get('action'),
-    reason: readString(formData, 'reason') || undefined,
-  });
-  if (!parsed.success) fail(returnTo, 'Invalid scan confirmation.');
-
-  const admin = createSupabaseAdmin();
-  const { error } = await admin.rpc('confirm_scan', {
-    p_scan_id: parsed.data.scanId,
-    p_action: parsed.data.action,
-    p_actor: user.id,
-    p_reason: parsed.data.reason ?? null,
-    p_request_id: null,
-  });
-  if (error) fail(returnTo, error.message);
-  succeed(
-    returnTo,
-    parsed.data.action === 'check_in'
-      ? 'Check-in confirmed.'
-      : parsed.data.action === 'check_out'
-        ? 'Check-out confirmed.'
-        : 'Scan rejected.',
-    ['/member', '/admin'],
-  );
-}
-
 export async function correctAttendanceAction(formData: FormData) {
-  const { user } = await requireAdminActor();
+  const { user } = await requireSuperadminActor();
   const returnTo = readReturnTo(formData);
   const checkedOutRaw = readString(formData, 'checkedOutAt');
   const parsed = attendanceCorrectionSchema.safeParse({
@@ -1367,7 +1245,7 @@ export async function correctAttendanceAction(formData: FormData) {
     p_reason: parsed.data.reason,
     p_actor: user.id,
   });
-  if (error) fail(returnTo, error.message);
+  if (error) fail(returnTo, domainErrorMessage(error.message));
   succeed(returnTo, 'Attendance corrected and audited.', ['/member', '/admin/audit']);
 }
 
@@ -1439,7 +1317,7 @@ export async function decideRedemptionAction(formData: FormData) {
     p_actor: user.id,
     p_reason: parsed.data.reason ?? null,
   });
-  if (error) fail(returnTo, error.message);
+  if (error) fail(returnTo, domainErrorMessage(error.message));
   await audit(
     user.id,
     `redemption.${parsed.data.action}`,
@@ -1450,122 +1328,4 @@ export async function decideRedemptionAction(formData: FormData) {
     { status: parsed.data.action },
   );
   succeed(returnTo, `Redemption ${parsed.data.action}.`, ['/member/rewards']);
-}
-
-/* -------------------------------------------------------------------------- */
-/* Devices                                                                    */
-/* -------------------------------------------------------------------------- */
-
-export interface DeviceFormState {
-  error?: string;
-  secret?: string;
-  deviceId?: string;
-}
-
-export async function createDeviceAction(
-  _prev: DeviceFormState,
-  formData: FormData,
-): Promise<DeviceFormState> {
-  const { user } = await requireAdminActor();
-  const parsed = deviceCreateSchema.safeParse({
-    deviceId: readString(formData, 'deviceId'),
-    laneLabel: readString(formData, 'laneLabel'),
-    mode: readString(formData, 'mode') || 'kiosk',
-    eventId: readString(formData, 'eventId') || null,
-    sessionId: readString(formData, 'sessionId') || null,
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Check the device details.' };
-  }
-
-  const secret = generateDeviceSecret();
-  const admin = createSupabaseAdmin();
-  const { data, error } = await admin
-    .from('devices')
-    .insert({
-      device_id: parsed.data.deviceId,
-      lane_label: parsed.data.laneLabel,
-      secret_hash: hashToken(secret),
-      secret_ciphertext: encryptSecret(secret),
-      mode: parsed.data.mode,
-      event_id: parsed.data.eventId || null,
-      session_id: parsed.data.sessionId || null,
-      created_by: user.id,
-    })
-    .select('id')
-    .single();
-
-  if (error || !data) {
-    return { error: `Device creation failed: ${error?.message ?? 'unknown'}` };
-  }
-
-  await audit(user.id, 'device.created', 'device', data.id, null, null, {
-    device_id: parsed.data.deviceId,
-    mode: parsed.data.mode,
-  });
-  revalidatePath('/admin/devices');
-  return { secret, deviceId: parsed.data.deviceId };
-}
-
-export async function updateDeviceAction(
-  _prev: DeviceFormState,
-  formData: FormData,
-): Promise<DeviceFormState> {
-  const { user } = await requireAdminActor();
-  const parsed = deviceUpdateSchema.safeParse({
-    deviceId: formData.get('deviceUuid'),
-    laneLabel: readString(formData, 'laneLabel') || undefined,
-    mode: (readString(formData, 'mode') || undefined) as 'kiosk' | 'writer' | undefined,
-    eventId: readString(formData, 'eventId') || null,
-    sessionId: readString(formData, 'sessionId') || null,
-    enabled: formData.get('enabled') === 'on',
-    rotateSecret: formData.get('rotateSecret') === 'on',
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Check the device details.' };
-  }
-
-  const admin = createSupabaseAdmin();
-  const { data: device } = await admin
-    .from('devices')
-    .select('id, device_id, status')
-    .eq('id', parsed.data.deviceId)
-    .maybeSingle();
-  if (!device) return { error: 'Device not found.' };
-
-  const update: Record<string, unknown> = {
-    event_id: parsed.data.eventId || null,
-    session_id: parsed.data.sessionId || null,
-  };
-  if (parsed.data.laneLabel !== undefined) update.lane_label = parsed.data.laneLabel;
-  if (parsed.data.mode !== undefined) update.mode = parsed.data.mode;
-  if (parsed.data.enabled !== undefined) {
-    update.status = parsed.data.enabled ? 'active' : 'disabled';
-  }
-  let secret: string | undefined;
-  if (parsed.data.rotateSecret) {
-    secret = generateDeviceSecret();
-    update.secret_hash = hashToken(secret);
-    update.secret_ciphertext = encryptSecret(secret);
-    update.rotated_at = new Date().toISOString();
-  }
-
-  const { error } = await admin.from('devices').update(update).eq('id', parsed.data.deviceId);
-  if (error) return { error: `Update failed: ${error.message}` };
-
-  await audit(
-    user.id,
-    'device.updated',
-    'device',
-    parsed.data.deviceId,
-    null,
-    { status: device.status },
-    {
-      mode: parsed.data.mode,
-      enabled: parsed.data.enabled,
-      rotated: Boolean(parsed.data.rotateSecret),
-    },
-  );
-  revalidatePath('/admin/devices');
-  return { secret, deviceId: device.device_id };
 }
