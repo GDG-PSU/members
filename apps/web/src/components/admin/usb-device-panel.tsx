@@ -52,6 +52,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export function UsbDevicePanel() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -68,6 +72,7 @@ export function UsbDevicePanel() {
   const pendingRef = useRef(new Map<number, Pending>());
   const nextIdRef = useRef(0);
   const closingRef = useRef(false);
+  const readFailureRef = useRef<string | null>(null);
 
   function appendLog(line: string) {
     setLog((previous) => [...previous.slice(-49), line]);
@@ -75,6 +80,8 @@ export function UsbDevicePanel() {
 
   function handleLine(line: string) {
     if (!line.startsWith('{')) {
+      // Boot/status lines are useful when diagnosing a reset or a dead port.
+      console.debug('[usb-serial]', line);
       appendLog(line);
       return;
     }
@@ -132,7 +139,11 @@ export function UsbDevicePanel() {
         }
       }
     } catch (readError) {
-      if (!closingRef.current) setError(errorMessage(readError));
+      if (!closingRef.current) {
+        readFailureRef.current = errorMessage(readError);
+        console.error('[usb-serial] read loop failed', readError);
+        setError(readFailureRef.current);
+      }
     } finally {
       try {
         reader.releaseLock();
@@ -147,6 +158,7 @@ export function UsbDevicePanel() {
   async function sendCommand(
     cmd: string,
     extra: Record<string, unknown> = {},
+    timeoutMs = 6000,
   ): Promise<ApiResponse> {
     const writer = writerRef.current;
     if (!writer) throw new Error('Connect a lane first.');
@@ -157,7 +169,7 @@ export function UsbDevicePanel() {
       const timer = window.setTimeout(() => {
         pendingRef.current.delete(id);
         reject(new Error('The device did not answer in time.'));
-      }, 6000);
+      }, timeoutMs);
       pendingRef.current.set(id, { resolve, reject, timer });
     });
 
@@ -219,10 +231,16 @@ export function UsbDevicePanel() {
     setCardUri(null);
     setLog([]);
     closingRef.current = false;
+    readFailureRef.current = null;
 
     try {
       const port = await serial.requestPort();
+      setStatus('Opening serial port…');
       await port.open({ baudRate: 115200 });
+      // Opening a CP210x toggles the ESP32 reset lines. Give the firmware time
+      // to boot and initialize the PN532 before the first JSON command.
+      setStatus('Waiting for the lane to boot…');
+      await sleep(2200);
       const writer = port.writable?.getWriter();
       if (!writer) throw new Error('The serial port is not writable.');
 
@@ -231,7 +249,26 @@ export function UsbDevicePanel() {
       setConnected(true);
       void readLoop(port);
 
-      const response = await sendCommand('info');
+      let response: ApiResponse | null = null;
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          response = await sendCommand('info', {}, 8000);
+          break;
+        } catch (handshakeError) {
+          lastError = handshakeError;
+          if (attempt < 2) {
+            setStatus(`Lane is still booting; retrying (${attempt + 2}/3)…`);
+            await sleep(1000);
+          }
+        }
+      }
+      if (!response) {
+        throw new Error(
+          readFailureRef.current ??
+            errorMessage(lastError ?? new Error('The device did not answer in time.')),
+        );
+      }
       setInfo(response.result ?? null);
       setStatus('Connected.');
     } catch (connectError) {
