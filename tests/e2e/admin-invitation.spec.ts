@@ -90,11 +90,12 @@ test.describe('admin invitation and member setup', () => {
       await test.step('admin generates and copies an invitation link', async () => {
         await page.goto('/admin');
         await expect(page.getByRole('link', { name: 'Devices', exact: true })).toHaveCount(0);
-        await expect(page.getByRole('link', { name: 'Users', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'Users', exact: true })).toBeVisible();
         await expect(page.getByRole('link', { name: 'Audit', exact: true })).toHaveCount(0);
 
         await page.goto('/admin/users');
-        await expect(page).toHaveURL(/\/admin\?notice=superadmin-required$/);
+        await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
+        await expect(page.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
         await page.goto('/admin/audit');
         await expect(page).toHaveURL(/\/admin\?notice=superadmin-required$/);
 
@@ -132,6 +133,11 @@ test.describe('admin invitation and member setup', () => {
         expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(invitationLink);
 
         await expect(page.getByText(memberEmail).first()).toBeVisible();
+
+        await page.goto('/admin/users');
+        await expect(page.getByText(memberEmail).first()).toBeVisible();
+        await expect(page.getByText('Invite stage').first()).toBeVisible();
+        await expect(page.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
       });
       const memberContext = await browser.newContext({ baseURL: origin });
       const memberPage = await memberContext.newPage();

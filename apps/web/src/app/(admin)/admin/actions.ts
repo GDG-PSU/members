@@ -196,6 +196,19 @@ export async function createInvitationAction(
     return { error: 'Supabase did not return an invitation link.' };
   }
 
+  const { data: activeStaffRoles } = await admin
+    .from('user_roles')
+    .select('role')
+    .eq('auth_user_id', authUser.id)
+    .in('role', ['admin', 'superadmin'])
+    .is('revoked_at', null);
+  if (activeStaffRoles?.length) {
+    if (createdUser) await admin.auth.admin.deleteUser(authUser.id).catch(() => {});
+    return {
+      error: 'That email already has staff access. Change their user type from Users instead.',
+    };
+  }
+
   const { data: invitation, error } = await admin
     .from('member_invitations')
     .insert({
@@ -204,6 +217,7 @@ export async function createInvitationAction(
       note: parsed.data.note?.trim() ? parsed.data.note.trim() : null,
       auth_user_id: authUser.id,
       created_by: user.id,
+      requires_password: true,
     })
     .select('id')
     .single();
@@ -219,6 +233,7 @@ export async function createInvitationAction(
     delivery: 'manual',
   });
   revalidatePath('/admin/invitations');
+  revalidatePath('/admin/users');
   return { ok: true, email: parsed.data.email, link };
 }
 
@@ -269,12 +284,19 @@ export async function inviteAdministratorAction(
     };
   }
 
-  const { data: existingRoles } = await admin
-    .from('user_roles')
-    .select('role')
-    .eq('auth_user_id', authUserId)
-    .in('role', ['admin', 'superadmin'])
-    .is('revoked_at', null);
+  const [{ data: existingRoles }, { data: existingMember }] = await Promise.all([
+    admin
+      .from('user_roles')
+      .select('role')
+      .eq('auth_user_id', authUserId)
+      .in('role', ['admin', 'superadmin'])
+      .is('revoked_at', null),
+    admin.from('members').select('id').eq('auth_user_id', authUserId).maybeSingle(),
+  ]);
+  if (existingMember) {
+    if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
+    return { error: 'That email is already a member. Change their user type from Users instead.' };
+  }
   if (role === 'admin' && existingRoles?.some((existing) => existing.role === 'superadmin')) {
     if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
     return { error: 'That email already has superadmin access.' };
@@ -308,6 +330,12 @@ export async function inviteAdministratorAction(
       console.error(`[admin-invite] could not revoke the old admin role: ${revokeError.message}`);
     }
   }
+
+  await admin
+    .from('member_invitations')
+    .update({ status: 'revoked' })
+    .eq('email', email)
+    .eq('status', 'pending');
 
   await audit(user.id, 'admin.invited', 'user', authUserId, null, null, {
     email,
@@ -367,24 +395,200 @@ export async function revokeStaffAccessAction(formData: FormData) {
     { roles },
     { roles: [] },
   );
-  succeed(returnTo, 'Staff access revoked.', ['/admin']);
+  succeed(returnTo, 'Staff access revoked.', ['/admin', '/admin/users']);
+}
+
+/**
+ * Changes a user's exclusive type. Superadmin-only. The database function is
+ * transactional: member data is deleted before a staff role is granted, and a
+ * staff demotion revokes roles before creating the member invitation.
+ */
+export async function changeUserRoleAction(formData: FormData) {
+  const viewer = await requireAdminActor();
+  const { user } = viewer;
+  const returnTo = readReturnTo(formData);
+  if (!viewer.isSuperadmin) fail(returnTo, 'Only superadmins can change user types.');
+
+  const authUserId = z.uuid().safeParse(formData.get('authUserId'));
+  const role = z.enum(['member', 'admin', 'superadmin']).safeParse(formData.get('role'));
+  if (!authUserId.success || !role.success) fail(returnTo, 'Invalid user type change.');
+  if (authUserId.data === user.id) fail(returnTo, 'You cannot change your own user type.');
+
+  const admin = createSupabaseAdmin();
+  const [{ data: beforeRoles }, { data: beforeMember }] = await Promise.all([
+    admin
+      .from('user_roles')
+      .select('role')
+      .eq('auth_user_id', authUserId.data)
+      .in('role', ['admin', 'superadmin'])
+      .is('revoked_at', null),
+    admin.from('members').select('id, status').eq('auth_user_id', authUserId.data).maybeSingle(),
+  ]);
+  let beforePhotoPath: string | null = null;
+  if (beforeMember) {
+    const { data: beforeProfile } = await admin
+      .from('member_profiles')
+      .select('photo_path')
+      .eq('member_id', beforeMember.id)
+      .maybeSingle();
+    beforePhotoPath = (beforeProfile?.photo_path as string | null) ?? null;
+  }
+
+  const { data, error } = await admin.rpc('set_user_type', {
+    p_auth_user_id: authUserId.data,
+    p_role: role.data,
+    p_actor: user.id,
+    p_paid_since: null,
+  });
+  if (error) {
+    if (error.message.includes('last_superadmin')) {
+      fail(returnTo, 'The last active superadmin cannot be demoted.');
+    }
+    if (error.message.includes('auth_user_not_found')) fail(returnTo, 'User not found.');
+    fail(returnTo, `User type change failed: ${error.message}`);
+  }
+
+  const result = (data ?? {}) as {
+    role?: string;
+    member_removed?: boolean;
+    invitation_id?: string | null;
+  };
+  if (result.member_removed && beforePhotoPath) {
+    const { error: photoError } = await admin.storage.from('avatars').remove([beforePhotoPath]);
+    if (photoError) {
+      console.error(`[user-role] member photo cleanup failed: ${photoError.message}`);
+    }
+  }
+  const label =
+    role.data === 'superadmin' ? 'superadmin' : role.data === 'admin' ? 'admin' : 'member';
+  const message =
+    role.data === 'member'
+      ? result.invitation_id
+        ? 'Changed to member. They can finish member setup on their next sign-in.'
+        : 'Changed to member.'
+      : result.member_removed
+        ? `Changed to ${label}. Their member profile was deleted.`
+        : `Changed to ${label}.`;
+
+  await audit(
+    user.id,
+    'user.type_changed',
+    'user',
+    authUserId.data,
+    null,
+    {
+      roles: (beforeRoles ?? []).map((row) => row.role),
+      member_id: beforeMember?.id ?? null,
+      member_status: beforeMember?.status ?? null,
+    },
+    {
+      role: role.data,
+      member_removed: Boolean(result.member_removed),
+      invitation_id: result.invitation_id ?? null,
+    },
+  );
+  succeed(returnTo, message, ['/admin', '/admin/invitations', '/admin/users']);
+}
+
+/** Revokes member access, staff access, or both. Staff access is superadmin-only. */
+export async function revokeUserAccessAction(formData: FormData) {
+  const viewer = await requireAdminActor();
+  const { user } = viewer;
+  const returnTo = readReturnTo(formData);
+  const authUserId = z.uuid().safeParse(formData.get('authUserId'));
+  if (!authUserId.success) fail(returnTo, 'Invalid user.');
+  if (authUserId.data === user.id) fail(returnTo, 'You cannot revoke your own access.');
+
+  const admin = createSupabaseAdmin();
+  const [{ data: roles }, { data: member }] = await Promise.all([
+    admin
+      .from('user_roles')
+      .select('role')
+      .eq('auth_user_id', authUserId.data)
+      .in('role', ['admin', 'superadmin'])
+      .is('revoked_at', null),
+    admin.from('members').select('id, status').eq('auth_user_id', authUserId.data).maybeSingle(),
+  ]);
+
+  if (!roles?.length && !member) fail(returnTo, 'That user has no active access.');
+  if (roles?.length && !viewer.isSuperadmin) {
+    fail(returnTo, 'Only superadmins can revoke staff access.');
+  }
+  if (roles?.some((row) => row.role === 'superadmin')) {
+    const { count } = await admin
+      .from('user_roles')
+      .select('auth_user_id', { count: 'exact', head: true })
+      .eq('role', 'superadmin')
+      .is('revoked_at', null);
+    if ((count ?? 0) <= 1) fail(returnTo, 'The last active superadmin cannot be revoked.');
+  }
+  if (member && member.status === 'archived' && !roles?.length) {
+    fail(returnTo, 'That member is already archived.');
+  }
+
+  if (member) {
+    const { error } = await admin
+      .from('members')
+      .update({ status: 'archived' })
+      .eq('id', member.id);
+    if (error) fail(returnTo, 'Member access could not be revoked.');
+  }
+  if (roles?.length) {
+    const { error } = await admin
+      .from('user_roles')
+      .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+      .eq('auth_user_id', authUserId.data)
+      .in('role', ['admin', 'superadmin'])
+      .is('revoked_at', null);
+    if (error) fail(returnTo, 'Staff access could not be revoked.');
+  }
+
+  await audit(
+    user.id,
+    'user.access_revoked',
+    'user',
+    authUserId.data,
+    null,
+    {
+      roles: (roles ?? []).map((row) => row.role),
+      member_id: member?.id ?? null,
+      member_status: member?.status ?? null,
+    },
+    {
+      roles: [],
+      member_status: member ? 'archived' : null,
+    },
+  );
+  succeed(
+    returnTo,
+    member && roles?.length
+      ? 'Member and staff access revoked.'
+      : member
+        ? 'Member access revoked.'
+        : 'Staff access revoked.',
+    ['/admin', '/admin/users', '/member'],
+  );
 }
 
 export async function regenerateInvitationLinkAction(
   _prev: LinkState,
   formData: FormData,
 ): Promise<LinkState> {
-  const { user } = await requireAdminActor();
+  const viewer = await requireAdminActor();
+  const { user } = viewer;
   const invitationId = z.uuid().safeParse(formData.get('invitationId'));
   if (!invitationId.success) return { error: 'Invalid invitation.' };
 
   const admin = createSupabaseAdmin();
   const { data: invitation } = await admin
     .from('member_invitations')
-    .select('id, email, status')
+    .select('id, email, status, created_by')
     .eq('id', invitationId.data)
     .maybeSingle();
   if (!invitation) return { error: 'Invitation not found.' };
+  if (!viewer.isSuperadmin && invitation.created_by !== user.id) {
+    return { error: 'You can only regenerate invitations you created.' };
+  }
   if (invitation.status !== 'pending') {
     return { error: 'Only pending invitations can get a new link.' };
   }
@@ -413,11 +617,13 @@ export async function regenerateInvitationLinkAction(
     },
   );
   revalidatePath('/admin/invitations');
+  revalidatePath('/admin/users');
   return { ok: true, email: invitation.email, link };
 }
 
 export async function revokeInvitationAction(formData: FormData) {
-  const { user } = await requireAdminActor();
+  const viewer = await requireAdminActor();
+  const { user } = viewer;
   const returnTo = readReturnTo(formData);
   const invitationId = z.uuid().safeParse(formData.get('invitationId'));
   if (!invitationId.success) fail(returnTo, 'Invalid invitation.');
@@ -425,10 +631,13 @@ export async function revokeInvitationAction(formData: FormData) {
   const admin = createSupabaseAdmin();
   const { data: invitation } = await admin
     .from('member_invitations')
-    .select('id, status')
+    .select('id, status, created_by')
     .eq('id', invitationId.data)
     .maybeSingle();
   if (!invitation) fail(returnTo, 'Invitation not found.');
+  if (!viewer.isSuperadmin && invitation.created_by !== user.id) {
+    fail(returnTo, 'You can only revoke invitations you created.');
+  }
   if (invitation.status !== 'pending') fail(returnTo, 'Only pending invitations can be revoked.');
 
   await admin.from('member_invitations').update({ status: 'revoked' }).eq('id', invitation.id);
@@ -441,7 +650,7 @@ export async function revokeInvitationAction(formData: FormData) {
     { status: 'pending' },
     { status: 'revoked' },
   );
-  succeed(returnTo, 'Invitation revoked.');
+  succeed(returnTo, 'Invitation revoked.', ['/admin/invitations', '/admin/users']);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -7,23 +7,21 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { storeProfilePhoto, PhotoError } from '@/lib/profile/photo';
 import { generateMemberNumber, generateProfileSlug } from '@/lib/security/tokens';
 
-const setupSchema = z
-  .object({
-    displayName: z.string().trim().min(2, 'Use at least 2 characters').max(60),
-    about: z.string().trim().max(280).optional().default(''),
-    password: z
-      .string()
-      .min(12, 'Use at least 12 characters')
-      .max(128)
-      .refine((value) => /[a-zA-Z]/.test(value) && /\d/.test(value), {
-        message: 'Include at least one letter and one number',
-      }),
-    confirmPassword: z.string(),
-  })
-  .refine((value) => value.password === value.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  });
+const setupSchema = z.object({
+  displayName: z.string().trim().min(2, 'Use at least 2 characters').max(60),
+  about: z.string().trim().max(280).optional().default(''),
+  password: z.string().max(128).optional().default(''),
+  confirmPassword: z.string().optional().default(''),
+});
+
+function passwordProblem(password: string, confirmPassword: string): string | null {
+  if (password.length < 12) return 'Use at least 12 characters';
+  if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+    return 'Include at least one letter and one number';
+  }
+  if (password !== confirmPassword) return 'Passwords do not match';
+  return null;
+}
 
 export interface SetupState {
   error?: string;
@@ -36,14 +34,35 @@ export async function completeSetupAction(
   const viewer = await requireUser();
   if (viewer.member) redirect('/member');
 
+  const email = (viewer.user.email ?? '').toLowerCase();
+  const admin = createSupabaseAdmin();
+  const { data: invitation } = await admin
+    .from('member_invitations')
+    .select('requires_password')
+    .eq('email', email)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .maybeSingle();
+  // Staff demoted to member already have a password. Their invitation skips
+  // the password fields; a missing invitation is handled by the RPC below.
+  const requiresPassword = invitation?.requires_password !== false;
+
   const parsed = setupSchema.safeParse({
     displayName: formData.get('displayName'),
     about: formData.get('about') ?? '',
-    password: formData.get('password'),
-    confirmPassword: formData.get('confirmPassword'),
+    password: formData.get('password') ?? '',
+    confirmPassword: formData.get('confirmPassword') ?? '',
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' };
+  }
+
+  if (requiresPassword && !parsed.data.password) {
+    return { error: 'Set a password for your account.' };
+  }
+  if (parsed.data.password || parsed.data.confirmPassword) {
+    const problem = passwordProblem(parsed.data.password, parsed.data.confirmPassword);
+    if (problem) return { error: problem };
   }
 
   if (formData.get('acceptTerms') !== 'on') {
@@ -66,15 +85,15 @@ export async function completeSetupAction(
     return { error: error instanceof PhotoError ? error.message : 'Photo upload failed.' };
   }
 
-  const { error: passwordError } = await viewer.supabase.auth.updateUser({
-    password: parsed.data.password,
-  });
-  if (passwordError) {
-    return { error: 'Your password could not be set. The invitation may have expired.' };
+  if (parsed.data.password) {
+    const { error: passwordError } = await viewer.supabase.auth.updateUser({
+      password: parsed.data.password,
+    });
+    if (passwordError) {
+      return { error: 'Your password could not be set. The invitation may have expired.' };
+    }
   }
 
-  const email = (viewer.user.email ?? '').toLowerCase();
-  const admin = createSupabaseAdmin();
   let memberId: string | null = null;
   let lastError = 'Could not complete membership setup.';
 

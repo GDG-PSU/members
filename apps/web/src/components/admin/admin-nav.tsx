@@ -4,9 +4,7 @@ export function AdminNav({ isSuperadmin }: { isSuperadmin: boolean }) {
   const links = [
     { href: '/admin', label: 'Overview' },
     { href: '/admin/invitations', label: 'Invitations' },
-    ...(isSuperadmin
-      ? [{ href: '/admin/users', label: 'Users', activePrefixes: ['/admin/members'] }]
-      : []),
+    { href: '/admin/users', label: 'Users', activePrefixes: ['/admin/members'] },
     { href: '/admin/cards', label: 'Cards' },
     { href: '/admin/events', label: 'Events' },
     { href: '/admin/kiosk', label: 'Kiosk' },

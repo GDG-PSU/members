@@ -21,7 +21,7 @@ export default async function InviteAcceptPage() {
   const admin = createSupabaseAdmin();
   const { data: invitation } = await admin
     .from('member_invitations')
-    .select('id, email, status, paid_since, expires_at')
+    .select('id, email, status, paid_since, expires_at, requires_password')
     .eq('email', (viewer.user.email ?? '').toLowerCase())
     .order('created_at', { ascending: false })
     .maybeSingle();
@@ -30,17 +30,20 @@ export default async function InviteAcceptPage() {
   const usable = invitation?.status === 'pending' && !expired;
 
   if (usable) {
+    const requirePassword = invitation.requires_password !== false;
     return (
       <div className="space-y-5">
         <div>
           <p className="type-overline text-primary">One-time setup</p>
           <h1 className="type-h2 mt-2">Make it yours</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Set a password, add your name and a face photo. Membership since{' '}
-            {formatDate(invitation.paid_since)}.
+            {requirePassword
+              ? 'Set a password, add your name and a face photo.'
+              : 'Your password stays the same. Add your name and a face photo.'}{' '}
+            Membership since {formatDate(invitation.paid_since)}.
           </p>
         </div>
-        <SetupForm email={viewer.user.email ?? ''} />
+        <SetupForm email={viewer.user.email ?? ''} requirePassword={requirePassword} />
       </div>
     );
   }

@@ -7,7 +7,13 @@ import { completeSetupAction, type SetupState } from '@/app/(auth)/invite/accept
 
 const initial: SetupState = {};
 
-export function SetupForm({ email }: { email: string }) {
+export function SetupForm({
+  email,
+  requirePassword = true,
+}: {
+  email: string;
+  requirePassword?: boolean;
+}) {
   const [state, action, pending] = useActionState(completeSetupAction, initial);
   const [photoName, setPhotoName] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -16,6 +22,7 @@ export function SetupForm({ email }: { email: string }) {
     <form action={action} className="space-y-5" noValidate encType="multipart/form-data">
       <Alert variant="info">
         {email} is invited. Add your name and a face photo.{' '}
+        {requirePassword ? null : 'Your existing password will stay the same. '}
         <a
           href="#privacy-settings"
           className="font-semibold text-primary underline underline-offset-2"
@@ -101,30 +108,34 @@ export function SetupForm({ email }: { email: string }) {
         </label>
       </div>
 
-      <Field
-        label="Password"
-        htmlFor="setup-password"
-        hint="At least 12 characters with a number."
-        required
-      >
-        <Input
-          id="setup-password"
-          name="password"
-          type="password"
-          required
-          autoComplete="new-password"
-        />
-      </Field>
+      {requirePassword ? (
+        <>
+          <Field
+            label="Password"
+            htmlFor="setup-password"
+            hint="At least 12 characters with a number."
+            required
+          >
+            <Input
+              id="setup-password"
+              name="password"
+              type="password"
+              required
+              autoComplete="new-password"
+            />
+          </Field>
 
-      <Field label="Confirm password" htmlFor="setup-confirm-password" required>
-        <Input
-          id="setup-confirm-password"
-          name="confirmPassword"
-          type="password"
-          required
-          autoComplete="new-password"
-        />
-      </Field>
+          <Field label="Confirm password" htmlFor="setup-confirm-password" required>
+            <Input
+              id="setup-confirm-password"
+              name="confirmPassword"
+              type="password"
+              required
+              autoComplete="new-password"
+            />
+          </Field>
+        </>
+      ) : null}
 
       <div id="privacy-settings" className="rounded-2xl border border-border bg-subtle/70 p-4">
         <h2 className="text-base font-bold">Privacy before you join</h2>
