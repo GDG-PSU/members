@@ -10,9 +10,10 @@ Google Developer Group at Penn State.
   card URL, connect the lane with Chrome/Edge Web Serial, write and read back the
   URL, then activate the card.
 - **Attendance kiosk:** sign in as an admin, open `/admin/kiosk`, connect the
-  same local lane, select an event session, read a card, and confirm check-in or
-  check-out after checking the member's photo and identity. The retired device
-  registry is gone; `/admin/devices` redirects to `/admin/usb`.
+  same local lane, select an event session, choose **Read card**, and confirm
+  check-in or check-out after checking the member's photo and identity. The
+  kiosk waits up to 10 seconds for a card before reporting that none was found.
+  The retired device registry is gone; `/admin/devices` redirects to `/admin/usb`.
 - **No SMTP:** invitation and recovery links are generated in the admin UI and
   delivered manually.
 

@@ -322,6 +322,7 @@ test.describe('admin invitation and member setup', () => {
             ({ cardUrl: fixtureCardUrl }) => {
               const encoder = new TextEncoder();
               const decoder = new TextDecoder();
+              let readAttempts = 0;
               class FakeSerialPort {
                 readable: ReadableStream<Uint8Array>;
                 writable: WritableStream<Uint8Array>;
@@ -339,25 +340,28 @@ test.describe('admin invitation and member setup', () => {
                       for (const line of text.split('\n')) {
                         if (!line.trim()) continue;
                         const command = JSON.parse(line) as { id: number; cmd: string };
-                        const result =
+                        if (command.cmd === 'nfc.read') readAttempts += 1;
+                        const payload =
                           command.cmd === 'info'
                             ? {
-                                protocol: 2,
-                                firmware: 'test',
-                                deviceId: 'esp32-test',
-                                chipId: 'test',
-                                nfcReady: true,
-                                nfcFirmware: 0x32010607,
-                                uptimeMs: 1,
+                                id: command.id,
+                                ok: true,
+                                result: {
+                                  protocol: 2,
+                                  firmware: 'test',
+                                  deviceId: 'esp32-test',
+                                  chipId: 'test',
+                                  nfcReady: true,
+                                  nfcFirmware: 0x32010607,
+                                  uptimeMs: 1,
+                                },
                               }
-                            : command.cmd === 'nfc.read'
-                              ? { uri: fixtureCardUrl }
-                              : {};
-                        this.controller.enqueue(
-                          encoder.encode(
-                            JSON.stringify({ id: command.id, ok: true, result }) + '\n',
-                          ),
-                        );
+                            : command.cmd === 'nfc.read' && readAttempts === 1
+                              ? { id: command.id, ok: false, error: 'no_card' }
+                              : command.cmd === 'nfc.read'
+                                ? { id: command.id, ok: true, result: { uri: fixtureCardUrl } }
+                                : { id: command.id, ok: true, result: {} };
+                        this.controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
                       }
                     },
                   });
