@@ -45,4 +45,8 @@ export function supabaseAdminKey(): string {
 }
 
 export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'gdg@psu.edu';
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
+export const SITE_URL =
+  configuredSiteUrl && !configuredSiteUrl.includes('member.gdgpsu.dev')
+    ? configuredSiteUrl
+    : 'https://members-bay-eight.vercel.app';
