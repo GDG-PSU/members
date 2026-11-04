@@ -7,9 +7,9 @@ firmware server endpoint is required.
 
 The hosted Supabase project is `potjjlmgnrqxseeendmx`; migrations 0001–0010 are
 applied. The database was reset on 2026-11-04 and one administrator setup link
-was generated for `sainaman@psu.edu`. Hosting is live, but the latest source
-still needs to be pushed and deployed before this checkout is the running
-release.
+was generated for `sainaman@psu.edu`. Hosting is live and the latest source has
+been pushed; verify the Vercel deployment after the push before treating this
+checkout as the running release.
 
 ## 1. Vercel project
 

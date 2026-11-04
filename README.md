@@ -22,8 +22,8 @@ opens.
 
 The browser build was verified against the hosted Supabase project with the
 production build (`next start`) and the checks listed below. The latest code is
-ready to push; a Vercel deployment is not complete until the push finishes and
-the hosted deployment reports ready.
+pushed; a Vercel deployment is not complete until the hosting deployment reports
+ready.
 
 ## What the app includes
 
