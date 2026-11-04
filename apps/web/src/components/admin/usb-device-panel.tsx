@@ -114,9 +114,12 @@ export function UsbDevicePanel() {
 
   return (
     <div className="space-y-4">
-      <Alert variant="success" role="status">
-        This connects directly to a lane over USB. It does not use the device registry, WiFi, or the
-        server. An admin session is still required to use this page.
+      <Alert variant={connected ? 'success' : connecting ? 'info' : 'neutral'} role="status">
+        {connected
+          ? `USB lane connected${info?.deviceId ? ` · ${info.deviceId}` : ''}.`
+          : connecting
+            ? 'Connecting to USB lane…'
+            : 'USB lane disconnected. Connect a lane to read or write a card.'}
       </Alert>
 
       <Card>
@@ -139,9 +142,6 @@ export function UsbDevicePanel() {
             >
               Refresh
             </Button>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {connected ? 'USB connected' : 'No lane connected'}
-            </span>
           </div>
 
           {error ? (

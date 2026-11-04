@@ -47,6 +47,7 @@ type UserRow = {
   memberStatus: string | null;
   staffRole: StaffRole | null;
   staffSince: string | null;
+  staffInvited: boolean;
   invitedAt: string | null;
   inviteExpiresAt: string | null;
 };
@@ -140,6 +141,7 @@ export default async function UsersPage({
         memberStatus: null,
         staffRole: staff?.role ?? null,
         staffSince: staff?.grantedAt ?? null,
+        staffInvited: Boolean(authUser && !authUser.last_sign_in_at),
         invitedAt: null,
         inviteExpiresAt: null,
       };
@@ -167,6 +169,7 @@ export default async function UsersPage({
       memberStatus: row.status as string,
       staffRole: staff?.role ?? null,
       staffSince: staff?.grantedAt ?? null,
+      staffInvited: false,
       invitedAt: null,
       inviteExpiresAt: null,
     };
@@ -186,6 +189,7 @@ export default async function UsersPage({
     memberStatus: null,
     staffRole: null,
     staffSince: null,
+    staffInvited: false,
     invitedAt: row.created_at as string,
     inviteExpiresAt: row.expires_at as string,
   }));
@@ -199,6 +203,7 @@ export default async function UsersPage({
             row.email,
             row.memberNumber ?? '',
             row.staffRole ?? '',
+            row.staffInvited ? 'invited' : '',
             row.kind === 'invite' ? 'invite pending' : '',
           ].some((value) => value.toLowerCase().includes(needle))
         : true,
@@ -284,6 +289,7 @@ export default async function UsersPage({
                         <Badge variant="outline">Admin</Badge>
                       ) : null}
                       {row.kind === 'member' ? <Badge variant="neutral">Member</Badge> : null}
+                      {row.staffInvited ? <Badge variant="warning">Invited</Badge> : null}
                       {row.kind === 'invite' ? (
                         <Badge variant="warning">Invite pending</Badge>
                       ) : null}
@@ -335,6 +341,8 @@ export default async function UsersPage({
               render: (row) =>
                 row.kind === 'invite' ? (
                   <Badge variant="outline">Invite stage</Badge>
+                ) : row.staffInvited ? (
+                  <Badge variant="warning">Invite pending</Badge>
                 ) : row.memberStatus ? (
                   <StatusChip status={row.memberStatus} />
                 ) : (
@@ -446,7 +454,7 @@ export default async function UsersPage({
 
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
         {isSuperadmin
-          ? 'Superadmins can change any user type. Promoting a member deletes their member profile, cards, attendance, points and rewards. Demoting staff to member keeps their password and creates an invitation for member setup. Normal admins can invite and revoke members only.'
+          ? 'Invited staff have a role but have not signed in yet. Superadmins can change any user type. Promoting a member deletes their member profile, cards, attendance, points and rewards. Demoting staff to member keeps their password and creates an invitation for member setup. Normal admins can invite and revoke members only.'
           : 'You can invite members and revoke member access. Staff accounts, user-type changes and the audit log are superadmin-only.'}
       </p>
     </PageShell>
