@@ -1,5 +1,11 @@
 # API and server actions
 
+> **Current hardware note (2026-11-04):** `/api/device/v1/*` and the kiosk
+> endpoints are legacy and are not called by the USB firmware. Current card
+> operations are server actions used by `/admin/usb`: prepare a pending card,
+> display its one-time `/c/<token>` URL, then activate it after the admin attests
+> to a matching USB read-back.
+
 This repository has three kinds of server surface:
 
 1. Route handlers under `apps/web/src/app/api/` and `/c/[cardToken]`.

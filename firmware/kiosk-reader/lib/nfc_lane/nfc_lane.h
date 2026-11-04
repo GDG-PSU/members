@@ -22,6 +22,7 @@ class NfcLane {
 
   bool Begin();
   bool IsReady() const { return ready_; }
+  uint32_t FirmwareVersion() const { return firmware_version_; }
 
   /**
    * Reads a URI from the tag. Returns false with a stable error code when no
@@ -45,6 +46,7 @@ class NfcLane {
 
   Adafruit_PN532 nfc_;
   bool ready_ = false;
+  uint32_t firmware_version_ = 0;
   uint16_t capacity_ = 0;
   uint8_t buffer_[GDG_MAX_NDEF_BYTES];
 };

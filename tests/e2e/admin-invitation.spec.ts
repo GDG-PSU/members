@@ -45,6 +45,7 @@ test.describe('admin invitation and member setup', () => {
     const paidSince = '2026-01-15';
 
     let adminUserId: string | null = null;
+    let memberId: string | null = null;
     let invitationLink = '';
     let totpSecret = '';
 
@@ -168,6 +169,7 @@ test.describe('admin invitation and member setup', () => {
             .eq('auth_user_id', memberUserId)
             .single();
           expect(memberError).toBeNull();
+          memberId = member?.id as string;
           expect(member?.status).toBe('active');
           expect(member?.member_since).toBe(paidSince);
 
@@ -221,6 +223,45 @@ test.describe('admin invitation and member setup', () => {
           } finally {
             await anonymous.close();
           }
+        });
+
+        await test.step('admin prepares, activates and records a USB card', async () => {
+          expect(memberId).toBeTruthy();
+          await page.goto('/admin/usb');
+          await expect(page.getByRole('heading', { name: 'USB devices' })).toBeVisible();
+
+          const memberSelect = page.locator('#usb-member');
+          const option = memberSelect.locator('option', { hasText: displayName }).first();
+          const optionValue = await option.getAttribute('value');
+          expect(optionValue).toBeTruthy();
+          await memberSelect.selectOption(optionValue as string);
+          await page.getByRole('button', { name: 'Prepare card' }).click();
+
+          await expect(page.getByText(`Pending card for ${displayName}`)).toBeVisible({
+            timeout: 20_000,
+          });
+          const cardUrl = await page.getByLabel('Card URL').inputValue();
+          expect(new URL(cardUrl).origin).toBe(origin);
+          expect(new URL(cardUrl).pathname).toMatch(/^\/c\/[A-Za-z0-9_-]{43}$/);
+
+          const activation = page.getByText(
+            'I verified the URL was written and the read-back matches.',
+          );
+          await activation.click();
+          await page.getByRole('button', { name: 'Activate written card' }).click();
+          await expect(page.getByRole('button', { name: 'Card activated' })).toBeVisible({
+            timeout: 20_000,
+          });
+
+          const { data: card } = await supabase
+            .from('card_credentials')
+            .select('status, issued_at')
+            .eq('member_id', memberId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          expect(card?.status).toBe('active');
+          expect(card?.issued_at).toBeTruthy();
         });
       } finally {
         await memberContext.close();

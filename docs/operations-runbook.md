@@ -1,5 +1,12 @@
 # Operations runbook
 
+> **Current hardware note (2026-11-04):** The supported lane is USB-only.
+> Prepare a card URL at `/admin/usb`, write it with the PN532 through Web Serial,
+> verify the read-back, then activate it. There is no device registration,
+> WiFi, heartbeat, HMAC secret, kiosk scan queue, or writer-job operation for
+> this lane. The older two-lane/device procedures below are retained only as
+> legacy history and must not be used for new hardware.
+
 Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**.
 
 ## Current availability (read first)

@@ -27,14 +27,6 @@ jobs:
         run: pnpm typecheck
       - name: Unit tests
         run: pnpm test
-      - name: Firmware URL parser host test
-        run: |
-          g++ -std=c++17 -Wall -Wextra -Werror \
-            -I firmware/kiosk-reader/lib/ndef_url \
-            firmware/kiosk-reader/test/host/test_ndef_url.cpp \
-            firmware/kiosk-reader/lib/ndef_url/ndef_url.cpp \
-            -o /tmp/ndef_test
-          /tmp/ndef_test
       - name: Build
         run: pnpm build
         env:

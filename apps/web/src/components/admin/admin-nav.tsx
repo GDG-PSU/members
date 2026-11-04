@@ -9,6 +9,7 @@ const links = [
   { href: '/admin/kiosk', label: 'Kiosk' },
   { href: '/admin/rewards', label: 'Rewards' },
   { href: '/admin/devices', label: 'Devices' },
+  { href: '/admin/usb', label: 'USB devices' },
   { href: '/admin/audit', label: 'Audit' },
 ];
 

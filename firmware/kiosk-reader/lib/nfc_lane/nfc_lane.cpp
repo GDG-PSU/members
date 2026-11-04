@@ -1,6 +1,6 @@
 #include "nfc_lane.h"
 
-#include <Wire.h>
+#include <SPI.h>
 
 #include <cstring>
 
@@ -15,21 +15,55 @@ constexpr uint8_t kNdefTerminatorTlv = 0xFE;
 
 }  // namespace
 
-NfcLane::NfcLane() : nfc_(GDG_PN532_IRQ, GDG_PN532_RESET) {}
+NfcLane::NfcLane() : nfc_(GDG_NFC_SPI_SS) {}
 
 bool NfcLane::Begin() {
-  Wire.begin(GDG_NFC_I2C_SDA, GDG_NFC_I2C_SCL);
-  nfc_.begin();
-  const uint32_t version = nfc_.getFirmwareVersion();
+  ready_ = false;
+  firmware_version_ = 0;
+
+#if GDG_NFC_RESET >= 0
+  pinMode(GDG_NFC_RESET, OUTPUT);
+  digitalWrite(GDG_NFC_RESET, HIGH);
+  delay(5);
+  digitalWrite(GDG_NFC_RESET, LOW);
+  delay(10);
+  digitalWrite(GDG_NFC_RESET, HIGH);
+  delay(100);
+#endif
+
+#if GDG_NFC_IRQ >= 0
+  pinMode(GDG_NFC_IRQ, INPUT);
+#endif
+
+  uint32_t version = 0;
+  for (uint8_t attempt = 0; attempt < 3 && version == 0; ++attempt) {
+    if (!nfc_.begin()) {
+      Serial.println("[nfc] PN532 SPI bus init failed");
+      delay(100);
+      continue;
+    }
+    version = nfc_.getFirmwareVersion();
+    if (version == 0) {
+      delay(150);
+#if GDG_NFC_RESET >= 0
+      digitalWrite(GDG_NFC_RESET, LOW);
+      delay(10);
+      digitalWrite(GDG_NFC_RESET, HIGH);
+      delay(100);
+#endif
+    }
+  }
   if (version == 0) {
-    ready_ = false;
-    Serial.println("[nfc] PN532 did not respond; check wiring, DIP switches and power");
+    Serial.println("[nfc] PN532 SPI did not respond; check SCK/MISO/MOSI/SS, DIP switch, VCC/GND");
     return false;
   }
   nfc_.SAMConfig();
   nfc_.setPassiveActivationRetries(1);
   ready_ = true;
-  Serial.printf("[nfc] PN532 firmware 0x%08lx ready\n", static_cast<unsigned long>(version));
+  firmware_version_ = version;
+  Serial.print("[nfc] PN532 SPI firmware 0x");
+  Serial.print(static_cast<unsigned long>(version), HEX);
+  Serial.println(" ready");
   return true;
 }
 

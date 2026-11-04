@@ -54,7 +54,8 @@ describe('profile and card tokens', () => {
 
 describe('AES-256-GCM secret envelope', () => {
   it('round-trips and hides plaintext', () => {
-    const plaintext = 'https://member.gdgpsu.dev/c/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG';
+    const plaintext =
+      'https://members-bay-eight.vercel.app/c/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG';
     const payload = encryptSecret(plaintext);
     expect(payload).not.toContain(plaintext);
     expect(payload.startsWith('v1.')).toBe(true);

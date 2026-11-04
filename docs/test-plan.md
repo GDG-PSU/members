@@ -1,32 +1,56 @@
 # Test plan and results
 
-## Verified against the hosted project, 2026-10-29
+## Verified on 2026-11-04
 
-The project `potjjlmgnrqxseeendmx` has all ten migrations recorded in `supabase_migrations.schema_migrations` and a private `avatars` bucket. Test fixtures are erased after each run; only real accounts remain: two activated administrators (`sainaman@psu.edu`, `gdg@psu.edu`) and one member. No real email is sent; administrators copy and deliver links themselves.
+Environment: production build (`next start`) on `http://localhost:3000`, hosted
+Supabase project, real PN532 on COM3 with a writable NTAG215. No test fixture is
+left behind; the production reset removes any residue.
 
-| Check                | Command                                                                                          | Result                                                                                                                                                                                                                           |
-| -------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Formatting           | `pnpm format:check`                                                                              | Pass                                                                                                                                                                                                                             |
-| Lint / types / units | `pnpm lint`, `pnpm typecheck`, `pnpm test`                                                       | Pass; 29 unit tests                                                                                                                                                                                                              |
-| Production build     | `pnpm build`                                                                                     | Pass                                                                                                                                                                                                                             |
-| Database checks      | `pnpm db:verify`                                                                                 | 46 assertions passed: ledger, concurrency, attendance, privacy, RLS, MFA, erasure and private bucket                                                                                                                             |
-| Browser tests        | `pnpm e2e`                                                                                       | 19 passed, 1 skipped (the mobile admin spec skips by design)                                                                                                                                                                     |
-| Full-surface run     | `.local/full-test.mjs` (manual harness, not committed)                                           | 34/34: every admin page, member and admin invitations, password setup, TOTP gate, points, events, cards, kiosk confirmation including the 48h photo-change PSU ID gate, rewards, suspension, privacy, devices, audit and cleanup |
-| Recovery password    | Disposable user followed a `/auth/confirm` recovery link, set a password, then signed in with it | Pass                                                                                                                                                                                                                             |
-| Firmware parser      | `g++ ... test_ndef_url.cpp ... && .local/ndef_test`                                              | Pass                                                                                                                                                                                                                             |
-| Dependency audit     | `pnpm audit`                                                                                     | No known vulnerabilities reported                                                                                                                                                                                                |
+| Check               | Command                         | Result                                                           |
+| ------------------- | ------------------------------- | ---------------------------------------------------------------- |
+| Formatting          | `pnpm format:check`             | Pass after formatting the changed files                          |
+| Lint / types        | `pnpm lint`, `pnpm typecheck`   | Pass                                                             |
+| Unit tests          | `pnpm test`                     | 29/29 pass                                                       |
+| Production build    | `pnpm build`                    | Pass; all routes including `/admin/usb` compile                  |
+| Browser E2E         | `pnpm e2e`                      | 19 pass, 1 intentionally skipped mobile admin spec               |
+| Database/RLS/ledger | `pnpm db:verify`                | 46/46 pass against hosted Supabase                               |
+| Firmware compile    | `pio run`                       | Pass; 304,129 bytes flash (23.2%), 23,552 bytes RAM (7.2%)       |
+| Physical NFC        | USB JSON API on COM3            | Read/write/read-back pass; firmware 2.0.0, protocol 2            |
+| Route smoke         | `curl` against production build | Public pages 200; `/admin` and `/admin/usb` redirect to `/login` |
 
-Generated invite and recovery links now confirm at `/auth/confirm` on the app's own origin. This removes the previous dependency on Supabase's redirect allowlist, which rewrote custom-domain links to the project's Site URL (localhost during this run). `NEXT_PUBLIC_SITE_URL` must still be the final public origin when new links are generated.
+The authenticated E2E suite now includes: disposable admin sign-in and TOTP,
+invitation creation, member setup, privacy/photo checks, USB card preparation,
+URL shape/origin checks, activation, and database status `active` with an
+issuance timestamp.
 
-Run `pnpm verify` to attempt available release checks. It reports missing prerequisites and unimplemented release gates as failures rather than treating them as passes. Use a disposable local/staging database; `db:verify` commits temporary fixtures and removes them through `erase_member`. Browser tests require a running app, Supabase keys, `E2E_BASE_URL`, and the same `CARD_WRITE_ENCRYPTION_KEY` as the app.
+## Hardware coverage
 
-## Not yet verified or incomplete
+Verified on the physical unit:
 
-- axe-core/WCAG automation and manual screen-reader review; responsive screenshots at every requested breakpoint.
-- pgTAP policy/grant matrix (the equivalent 46-assertion `db:verify` suite passes).
-- A shared firmware/server HMAC signature vector executed on the firmware target, plus physical ESP32/PN532/tag and PSU network validation.
-- Comprehensive secret scanning and a backup/restore rehearsal.
-- Vercel production deploy, DNS for `member.gdgpsu.dev`, and the final Supabase Email OTP expiry decision.
-- Administrator sign-in: password plus TOTP at `/admin-mfa` (verified for both admins locally; repeat on the production origin after deploy).
+- PN532 detected over SPI; firmware reports `nfcReady: true`.
+- NTAG215 read and write operations; exact read-back verification.
+- Card write of a valid NDEF URI and independent read-back.
+- Firmware `info` shows `deviceId: esp32-3c1c6cc92df4`, protocol 2 and
+  `transport: usb-serial`.
+- No WiFi or `mode` key is exposed; the old `mode` command returns
+  `unknown_cmd`.
 
-Static NFC tags can be cloned and never authorize points or attendance without staff confirmation.
+Not verified by the agent:
+
+- A real Chrome/Edge Web Serial session against the hosted admin page. The
+  page requires an admin/MFA session and a human serial-port selection.
+- The final hosted-URI rewrite attempt returned `no_card` because no NTAG was on
+  the antenna at the time; the earlier read/write/read-back test passed.
+- A card written for a live member with a real active `/c/` token.
+- Full TOTP sign-in on the hosted origin after the reset.
+- Vercel deployment completion after the push.
+
+## Known gaps
+
+- No axe-core/manual screen-reader audit.
+- No load test or backup/restore rehearsal.
+- Legacy server device/kiosk paths remain for historical data but are not part
+  of the supported USB flow.
+- pnpm verify still reports its intentionally unimplemented release gates as
+  blocked; CI runs format/lint/typecheck/unit/build, and the commands above were
+  run separately.

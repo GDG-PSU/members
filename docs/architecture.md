@@ -1,5 +1,11 @@
 # Architecture
 
+> **Current hardware path (2026-11-04):** The reader is a USB-only ESP32 +
+> PN532 controlled by an admin browser over Web Serial at `/admin/usb`. It has
+> no WiFi, server device client, registration, HMAC secret, heartbeat, or kiosk
+> polling. The signed device API, kiosk queue, and writer-job sections below are
+> legacy history; do not use them for the current hardware.
+
 ## System shape
 
 ```text

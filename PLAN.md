@@ -1,5 +1,18 @@
 # GDG@PSU Member Points & NFC System — Implementation Plan
 
+> **Superseding hardware decision (2026-11-04):** The supported reader is now
+> **USB-only**. The ESP32 + PN532 exposes a local newline-delimited JSON API
+> over Web Serial; it has no WiFi, HTTPS device client, device registration,
+> heartbeat, HMAC secret, kiosk polling, or writer-job polling. An authenticated
+> admin at `/admin/usb` reads and writes cards directly from Chrome/Edge. A
+> blank or malformed tag is a card-format error, not an authentication error.
+>
+> The public origin for generated links is **https://members-bay-eight.vercel.app**.
+> Sections that describe the former WiFi device API, server-side scan queue,
+> device registration, or writer lanes are retained only as legacy history and
+> must not be re-enabled for the USB reader. The USB protocol is documented in
+> `docs/usb-api.md` and the wiring procedure in `docs/hardware-bringup.md`.
+
 > **Purpose:** This is the product, architecture, security, implementation, and acceptance specification for a coding agent building the production-minded first version of the GDG@PSU member portal and NFC attendance system.
 >
 > **Execution rule:** Implement this plan, do not merely summarize it. If a decision is already made here, do not ask the user to make it again. Use safe local mocks and documented placeholders for work that can be completed without production credentials. Stop and ask the user when a real external dependency, credential, physical-hardware fact, policy decision, or irreversible production action is genuinely required. Never claim a test passed unless it was actually run and passed.
@@ -28,7 +41,7 @@ These decisions resolve ambiguity in the initial brief and should be followed un
 
 ### 2.1 URLs and NFC revocation
 
-Use the following public origin, configured by `NEXT_PUBLIC_SITE_URL` and defaulted to `https://member.gdgpsu.dev` in production documentation:
+Use the following public origin, configured by `NEXT_PUBLIC_SITE_URL` and defaulted to `https://members-bay-eight.vercel.app` in production documentation:
 
 - `/` — public GDG@PSU member hub with leaderboard, current/upcoming public events, and a concise explanation of the system.
 - `/m/<public_profile_id>` — stable member profile URL, created **only after the member accepts the invitation and completes required setup**. There are no usernames in v1. The ID is a randomly generated opaque URL-safe identifier; it is not an internal database ID and is not an authentication credential.
@@ -207,6 +220,11 @@ Photos must be validated, size-limited, and stored in a private Supabase Storage
 
 ### 5.4 Kiosk attendance flow
 
+> **Legacy path (2026-11-04):** This server-scan kiosk flow describes the
+> retired WiFi device client. The supported USB firmware does not submit scans.
+> Attendance remains a staff-confirmed operation; do not re-enable device
+> requests for the USB reader.
+
 1. An admin configures the active event/session and which lane devices are available.
 2. The PN532 reads one NDEF URI and the ESP32 sends the card locator to the server with its signed device request.
 3. The server validates the device identity, request signature, timestamp, nonce/idempotency ID, input size, and token format. It records a pending scan; it changes no attendance or points.
@@ -232,6 +250,14 @@ Admins can configure reward name, image, description, point cost, availability/i
 
 ### 5.7 Card issuance, replacement, and revocation
 
+> **Current USB path (2026-11-04):** An admin signs in with AAL2, opens
+> `/admin/usb`, selects an active member, and prepares a pending card. The page
+> displays the one-time `/c/<token>` URL. The admin writes that exact URL with
+> the PN532 through Chrome/Edge Web Serial, confirms the read-back, and clicks
+> **Activate written card**. `prepare_card` revokes the previous active/pending
+> card; `activate_card` records issuance. There is no writer job, registered
+> lane, secret, or server device call in this flow.
+
 1. Admin selects an active member and requests card issuance.
 2. Server generates a cryptographically random card locator/token, binds it to that member in the database, and creates a one-time, short-lived write job for the chosen registered lane. Do not encode a database ID or the member's information.
 3. The operator presents a compatible blank NFC tag. The ESP32 writes one HTTPS NDEF URI (`/c/<card_token>`), reads it back, parses it, and reports a result. The web UI confirms success only after the server receives the verified result; otherwise it shows a clear failed/retry state.
@@ -243,7 +269,7 @@ The NFC URI itself must never authorize point awards or login. If an attacker cl
 
 ### 5.8 Event-info and activity cards
 
-Event-info NFC cards, when used, encode only `https://member.gdgpsu.dev/e/<public_event_id>` and open public event information. They are not attendance credentials. If a user actually intends event tags to have a different job, ask before building a less secure or semantically different mechanism. For v1, member-point activity awards are administered in the authenticated kiosk rather than being granted by simply reading a static activity tag.
+Event-info NFC cards, when used, encode only `https://members-bay-eight.vercel.app/e/<public_event_id>` and open public event information. They are not attendance credentials. If a user actually intends event tags to have a different job, ask before building a less secure or semantically different mechanism. For v1, member-point activity awards are administered in the authenticated kiosk rather than being granted by simply reading a static activity tag.
 
 ### 5.9 Password support
 
@@ -283,6 +309,7 @@ Use a coherent, mobile-first navigation. Route names can be adjusted if document
 - `/admin/invites` — invite, resend/cancel where supported, status, safe error states.
 - `/admin/members` and `/admin/members/[id]` — search/filter, status, profile visibility preview, member activity, suspend/reactivate with reason.
 - `/admin/cards` — issue, write, verify, revoke, replace, show card status and write-job history.
+- `/admin/usb` — prepare a pending card URL, connect a local lane over Web Serial, read/write/read-back, activate the card.
 - `/admin/events` and `/admin/events/[id]` — create/edit main events and bonus sessions, configure duration/points, activity options, event public visibility.
 - `/admin/kiosk` — pending scan queue, active event/session, two lane statuses, photo validation, check-in/out/deny, recent confirmations.
 - `/admin/points` — ledger search, manual award/adjustment with reason, no destructive edits.
@@ -370,6 +397,11 @@ Use `supabase test db`/pgTAP and application integration tests for both allowed 
 
 ### 8.3 Device request signing
 
+> **Retired for the USB reader (2026-11-04):** HMAC signing belongs to the old
+> WiFi device API. The USB firmware has no network client and no secret. Its
+> trust boundary is physical USB access plus the authenticated admin page;
+> activation requires an explicit browser read-back attestation.
+
 Use per-device HMAC-SHA-256 signatures over a canonical request string that includes at least HTTP method, normalized path, timestamp, unique request ID/nonce, and SHA-256 of the exact request body. Send device ID, timestamp, request ID, and signature in explicit headers. The API must:
 
 - require HTTPS and validate the request signature in constant time;
@@ -453,6 +485,20 @@ Use a single canonical implementation of point, stars, attendance, privacy, and 
 
 ## 11. Firmware requirements
 
+> **Superseding implementation (2026-11-04).** Sections 11.1–11.4 below describe
+> the retired WiFi firmware and are retained as legacy history. The current
+> firmware is USB-only:
+>
+> - one ESP32 + PN532 per local lane, connected through the CP210x USB-UART
+>   bridge; browser transport is Web Serial, not raw WebUSB;
+> - newline-delimited JSON at 115200 baud with commands `info`, `nfc.status`,
+>   `nfc.read`, `nfc.write`, and `reboot`;
+> - the device ID is derived from the ESP32 chip (`esp32-<chip-id>`); there is
+>   no registration, secret, HMAC, heartbeat, TLS, WiFi, or queue;
+> - the browser writes and verifies one NDEF URI; the firmware treats the URI as
+>   opaque bytes and never fetches it;
+> - the admin page is `/admin/usb`; protocol details are in `docs/usb-api.md`.
+
 ### 11.1 Device identity and provisioned configuration
 
 Each ESP32 is built/configured with a non-secret device ID plus a unique secret. The raw secret is provisioned from an ignored local header or secure build environment and is never committed. Provide `secrets.example.h` with nonfunctional placeholders and `.gitignore` entries for actual secrets/build artifacts. The API administrator can enroll/revoke a device and label the two lanes.
@@ -461,8 +507,8 @@ If a secret is compiled into firmware, acknowledge that physical access can extr
 
 ### 11.2 NFC format
 
-- Member card: one HTTPS NDEF URI: `https://member.gdgpsu.dev/c/<card_token>`.
-- Event-info card (if issued): one HTTPS NDEF URI: `https://member.gdgpsu.dev/e/<public_event_id>`.
+- Member card: one HTTPS NDEF URI: `https://members-bay-eight.vercel.app/c/<card_token>`.
+- Event-info card (if issued): one HTTPS NDEF URI: `https://members-bay-eight.vercel.app/e/<public_event_id>`.
 - No raw UID as account identifier, no member data, no points, no Wi-Fi credentials, no password, no device ID/secret, and no bearer session tokens in NDEF.
 - Use supported URI records and validate the exact tag's capacity/protocol. Write flow must read back the record and compare the expected URI byte-for-byte before reporting success.
 - Do not depend on NFC UID uniqueness or anti-cloning.
@@ -552,6 +598,11 @@ Capture and inspect representative screenshots at minimum 320, 375, 768, 1024, a
 
 ### 13.6 Firmware and hardware validation
 
+> **Current gates (2026-11-04):** PlatformIO compile; physical PN532 detection;
+> read/write/read-back on a writable NTAG; browser Web Serial smoke test on the
+> hosted origin; blank/malformed-card error handling. No HMAC vectors, TLS,
+> WiFi, queue recovery, or campus-network tests apply to the USB build.
+
 - Run PlatformIO compile for every documented target/environment.
 - Run supported host/native unit tests and mock API protocol tests.
 - Verify TLS/HMAC canonical request behavior against shared test vectors used by server and firmware.
@@ -599,10 +650,11 @@ The agent should do all local work it can, using placeholders or mocks. It must 
 
 1. **Supabase project:** project URL and publishable key, server-only secret/service key, production Auth settings, allowed redirect URLs, migrations, storage, and initial-admin bootstrap. Ask the user to provide/enter secrets through a secure environment rather than putting them into chat or source files.
 2. **Production email:** Supabase custom SMTP/email provider credentials and verified sending domain, invitation/recovery/card-ready templates, delivery testing. Without this, local invitation tests can use local email capture; production invitation delivery is blocked.
-3. **Vercel/domain:** access to the right Vercel team/project, DNS control for `member.gdgpsu.dev`, environment variables, and production deployment approval. The agent may prepare the config but must ask before making production changes or spending money.
+3. **Vercel/domain:** access to the right Vercel team/project, DNS control for `members-bay-eight.vercel.app`, environment variables, and production deployment approval. The agent may prepare the config but must ask before making production changes or spending money.
+   **Resolved for the hosted release:** the app is live at `https://members-bay-eight.vercel.app`; no custom-domain DNS step is required. Set `NEXT_PUBLIC_SITE_URL` to that origin and confirm the deployment after the push.
 4. **First admin:** the user must identify the actual intended admin email and run/authorize the explicit bootstrap; the agent must not guess a personal email or hardcode it.
 5. **Real hardware:** exact ESP32 board revision, PN532 breakout/interface (I2C/SPI/UART), wiring/pins, and the actual NFC tag model/capacity. The agent can make the interface configurable and write tests, but must ask before asserting a physical wiring recipe for unknown boards/tags.
-6. **Penn State network:** confirm through PSU IT whether the planned board is authorized on eduroam/another approved network, the allowed EAP method/identity format, and the correct CA/certificate verification configuration. The linked Seneca tutorial is not a PSU-specific configuration authority.
+6. **Penn State network:** **not applicable to the current USB reader.** It has no WiFi client and needs no eduroam/EAP/CA approval. Retain this item only if a future network-connected lane is proposed.
 7. **Club operations:** confirm or use documented safe defaults for membership-fee verification, point values/duration thresholds, reward catalog/inventory, public event details, privacy language, retention/support procedures. Keep these configurable; do not make up real club policies or real award values. Include test fixture defaults only in seed/demo data.
 8. **Brand assets:** official club logo, approved colors, event photos, and any image rights. If absent, use a polished text/abstract visual language without fabricating official marks.
 

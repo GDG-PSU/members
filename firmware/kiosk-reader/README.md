@@ -1,65 +1,49 @@
-# GDG@PSU kiosk reader/writer firmware
+# GDG@PSU USB NFC lane firmware
 
-ESP32 + PN532 lane firmware for the GDG@PSU member system. The unit reads an NDEF
-HTTPS card URL, reports a **pending** scan to the device middleware API, and (in
-writer mode) writes exactly one card URL and verifies it by read-back. It never
-awards attendance or points itself and never talks to Supabase.
+ESP32 + PN532 USB-only firmware for the GDG@PSU member system. A lane is a
+local serial device: an admin browser connects to it over Web Serial and uses a
+small JSON API to read and write NDEF card URLs. The firmware has no WiFi,
+server, registration, heartbeat, kiosk, or writer-job path.
 
-**Hardware status: not tested.** See [docs/hardware-bringup.md](../../docs/hardware-bringup.md)
-and [docs/psu-network-validation.md](../../docs/psu-network-validation.md) before
-connecting a board.
+**Hardware status: read/write/read-back tested on 2026-11-04** with a PN532 over
+SPI and a writable NTAG215. See
+[docs/hardware-bringup.md](../../docs/hardware-bringup.md) for wiring and
+[docs/usb-api.md](../../docs/usb-api.md) for the protocol.
 
 ## Layout
 
 ```text
 platformio.ini                 pinned platform + libraries
-include/gdg_config.h           pins, timeouts, state constants (safe to commit)
-include/secrets.example.h      template for credentials/CA (copy → secrets.h)
-include/secrets.h              untracked; never commit
-src/main.cpp                   boot + loop, mode dispatch, feedback
-lib/api_client/                narrow HTTPS device API client
-lib/wifi_link/                 bounded station connection
+include/gdg_config.h           pins and NFC limits (safe to commit)
+src/main.cpp                   boot, PN532 retry, USB API pump
+src/usb_api.cpp                newline-delimited JSON control API
 lib/nfc_lane/                  PN532 NTAG read/write + NDEF TLV parsing
-lib/lane_state/                explicit state machine + kiosk/writer guard
-lib/ndef_url/                  pure C++ URL contract (host-testable)
-test/host/test_ndef_url.cpp    g++-runnable parser test
 ```
 
-## Build
+No `secrets.h` is needed or read. The device ID reported by the API is derived
+from the ESP32 chip (`esp32-<chip-id>`); there is no device registration step.
+
+## Build and flash
 
 ```bash
-cp include/secrets.example.h include/secrets.h   # fill in real values locally
 pio run
-pio run --target upload
+pio run --target upload --upload-port COM3
 pio device monitor -b 115200
 ```
 
-The API contract is:
+If esptool loses the port while resetting the board, unplug the PN532 during
+the flash and reconnect it afterward.
 
-- `POST /api/device/v1/heartbeat`
-- `POST /api/device/v1/scans`
-- `POST /api/device/v1/write-jobs/claim`
-- `POST /api/device/v1/write-jobs/complete`
+## USB API
 
-with `x-device-id`, `x-device-timestamp`, `x-device-signature`, `x-request-id` and JSON bodies.
-The signature is lowercase HMAC-SHA-256 over `METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(body)`;
-timestamps are Unix seconds and the nonce is a fresh 128-bit hex value. TLS validates the
-configured CA. Requests fail closed until NTP synchronizes the clock. Existing devices must
-have their secret rotated after migration 0007 and firmware updated together. The card token
-is exactly 43 base64url characters; see `lib/ndef_url`.
+The protocol is newline-delimited JSON at 115200 baud; plain boot/status lines
+are ignored by clients. Commands are `info`, `nfc.status`, `nfc.read`,
+`nfc.write`, and `reboot`. See [docs/usb-api.md](../../docs/usb-api.md).
 
-Scans are not persisted offline: a failed report requires the member to tap again. Do not
-use this firmware for an event until offline behavior and physical read/write are verified.
+A browser must use Chrome or Edge over HTTPS or localhost and Web Serial
+(`navigator.serial`). The CP210x is a USB-UART bridge; raw WebUSB would require
+an ESP32-S2/S3 with native USB.
 
-## Host parser test
-
-```bash
-g++ -std=c++17 -Wall -Wextra -Werror \
-  -I lib/ndef_url \
-  test/host/test_ndef_url.cpp \
-  lib/ndef_url/ndef_url.cpp \
-  -o /tmp/ndef_test && /tmp/ndef_test
-```
-
-No hardware is required for this test. The firmware compile and all PN532/card
-behavior remain hardware-in-the-loop gates.
+The browser verifies the read-back before the admin activates the pending card.
+There is no firmware-side URL host parser or server call; the firmware treats
+the URI as opaque NDEF bytes.

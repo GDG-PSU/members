@@ -1,10 +1,20 @@
 # Build Prompt — GDG@PSU Points, Member Portal, NFC Kiosk
 
+> **Superseding hardware decision (2026-11-04):** The supported reader is
+> **USB-only**. Build the ESP32 + PN532 firmware as a local Web Serial device
+> with newline-delimited JSON (`info`, `nfc.status`, `nfc.read`, `nfc.write`,
+> `reboot`). Do not add WiFi, a server device client, registration, a device
+> secret/HMAC, heartbeat, kiosk polling, or writer jobs. Card URLs are prepared
+> and activated by an AAL2 admin at `/admin/usb`; the browser must verify the
+> read-back before activation. The public origin is
+> **https://members-bay-eight.vercel.app**. Sections below that describe the old
+> WiFi lanes are legacy and must not be re-enabled for this hardware.
+
 You are the senior product engineer, security engineer, UI designer, firmware engineer, test engineer, and repo maintainer responsible for implementing this system. Work in the current repository/workspace. Read `PLAN.md` completely before coding; it is the authoritative specification. Do not merely produce another plan: build the working monorepo, test it, document it, and make honest commits.
 
 ## Mission
 
-Implement the GDG@PSU member points platform described in `PLAN.md`: Next.js + Supabase Auth/Postgres/Storage web app, Vercel-ready deployment, Tailwind CSS + shadcn/ui design system, public/member/admin/kiosk experiences, immutable points-and-stars ledger, invitation-first activation, privacy-aware permanent member profiles, revocable NFC card URLs, staff-validated attendance, rewards, device API, and PlatformIO ESP32 + PN532 firmware for two independently authenticated lanes.
+Implement the GDG@PSU member points platform described in `PLAN.md`: Next.js + Supabase Auth/Postgres/Storage web app, Vercel deployment at the hosted origin, Tailwind CSS + shadcn/ui design system, public/member/admin experiences, immutable points-and-stars ledger, invitation-first activation, privacy-aware permanent member profiles, revocable NFC card URLs, staff-validated attendance, rewards, and PlatformIO ESP32 + PN532 firmware for a USB-only Web Serial card lane.
 
 The design should be exceptionally polished, visual-first, uncluttered, responsive, accessible, and practical at a busy in-person event. This is a working product, not a mockup. Do not ship buttons that are inert, fake “success” notifications, unfinished placeholders in core flows, or fake security.
 
@@ -13,7 +23,7 @@ The design should be exceptionally polished, visual-first, uncluttered, responsi
 1. **Inspect before modifying.** Check the current working directory, existing files, Git status/branch/remotes, installed runtimes, available toolchains, and whether there is an existing repo/worktree. Preserve user work. Never reset, clean, force-push, or rewrite pre-existing history.
 2. Read all of `PLAN.md`. Make a short internal implementation checklist and execute it in dependency order. Avoid asking the user questions already answered by the plan.
 3. Verify current stable compatibility for frameworks/libraries/hardware APIs from official documentation. Use stable releases and a real lockfile; do not guess at retired APIs or use a canary release merely for novelty.
-4. Build the smallest complete vertical slice first: schema/security → invitation and activation → profile privacy → card routing and device API → event attendance/ledger → admin/member UI → firmware integration → tests/docs. Continue through the whole scope rather than stopping after a scaffold.
+4. Build the smallest complete vertical slice first: schema/security → invitation and activation → profile privacy → card routing and USB card preparation → event attendance/ledger → admin/member UI → firmware integration → tests/docs. Continue through the whole scope rather than stopping after a scaffold.
 5. After each meaningful phase, run the checks that apply and fix failures. Do not disable tests, lower thresholds, hide errors, add broad lint suppressions, or claim a command passed when it did not run.
 6. Use local Supabase/test fixtures/mocks for development whenever production credentials or physical hardware are unavailable. Clearly distinguish simulated, locally verified, and physically verified behaviors.
 7. Keep the user informed of blockers, but do not interrupt to ask about things you can safely decide using `PLAN.md`. If a real external dependency is necessary and unavailable, finish all nonblocked work and ask only for the specific missing item.
@@ -30,8 +40,8 @@ The design should be exceptionally polished, visual-first, uncluttered, responsi
 - Points are spendable; stars equal lifetime positive point earnings and never get spent. Awards, attendance, redemptions, refunds, and balance updates must be atomic, idempotent, and auditable.
 - Event attendance requires staff-confirmed check-in AND check-out. No checkout = no automatic points. Use server timestamps; duplicate/replayed requests must not duplicate a transaction.
 - Email follows its member-controlled per-field visibility flag and defaults public as the product brief requests; disclose this clearly during activation. Whole-profile privacy overrides every field. Auth identifiers, internal IDs, QR/card locators, and device secrets are never public. Enforce visibility on the server, not just in the UI.
-- ESP32s call only the central versioned HTTPS API; they do not contact Supabase. Use a unique per-device secret and signed requests, replay protection, revocation, TLS certificate verification, bounded retry/queue behavior, and no personal PSU credential embedded in public source.
-- The two devices must be independently registered and revocable. The API and UI must never trust a device-reported points value, role, member ID, or arbitrary URL.
+- The ESP32 is a **USB-only local device**. It must not contain WiFi credentials, a server API client, a device secret, HMAC signing, heartbeat, kiosk polling, or writer jobs. It exposes only the documented local JSON API over the CP210x USB-UART bridge.
+- Card writes require an authenticated admin/MFA browser session. The admin prepares a pending `/c/<token>`, writes and verifies the NDEF URI, and explicitly activates the card. The firmware never awards points and never resolves a member identity.
 - Tailwind CSS v4 with the shared shadcn/ui-style component system is the single UI design system. Reuse shared tokens/components. Don't blend unrelated design systems.
 
 ## External blockers and intervention rule
@@ -40,13 +50,13 @@ Do not silently replace a needed external capability with an inferior/unsafe alt
 
 - Supabase/Vercel credentials, DNS access, production SMTP/mail configuration, production deployment approval, or a first-admin email;
 - actual ESP32/PN532/tag board models or unknown physical wiring that must be verified before a safe flashing/wiring instruction;
-- Penn State IT approval and the correct eduroam EAP/CA settings;
+- a future network-connected lane's Penn State IT/eduroam approval (not applicable to the current USB reader);
 - real club policy decisions that cannot reasonably be made configurable or are not defined in `PLAN.md`;
 - a destructive action or spend on a paid service.
 
 Do not ask for secrets pasted into chat. Ask the user to add them to a secure local environment or the intended dashboard. Continue all independent local tasks with `.env.example`, test fixtures, mocks, and explicit runbook steps.
 
-If the code harness cannot access real email delivery, domain/DNS, hardware, or PSU Wi-Fi, still write and run relevant unit, integration, mock-contract, firmware-build, and documentation checks. Mark the unavailable physical/production validation clearly in the final report.
+If the code harness cannot access real email delivery, hardware, or a hosted browser session, still write and run relevant unit, integration, firmware-build, and documentation checks. Mark the unavailable physical/browser validation clearly in the final report.
 
 ## Git requirements
 
@@ -72,7 +82,7 @@ Implement and actually run `pnpm verify` (or a documented equivalent) so that it
 - API security/authorization/idempotency tests;
 - Playwright E2E for invitation activation, privacy, leaderboard, event scan confirmation, check-in/out, ledger, redemption, card revoke/redirect, digital ID access, and admin-only recovery links;
 - responsive screenshots/accessibility checks for important pages at 320, 375, 768, 1024, and 1440 CSS px;
-- PlatformIO firmware compile and supported host tests; server/firmware HMAC test vectors must match;
+- PlatformIO firmware compile and USB protocol checks; physical PN532 read/write/read-back where hardware is available;
 - secret/dependency checks.
 
 If a test requires a missing prerequisite, report that gate as blocked with exact reason/instructions and do not label it passed. Fix flakiness and real failures. Don't make the verification command green by skipping required checks.
@@ -81,10 +91,10 @@ If a test requires a missing prerequisite, report that gate as blocked with exac
 
 At the end, the repository should contain the implementation specified in `PLAN.md`, not only docs. At a minimum provide:
 
-- complete app and server routes for visitor, member, admin, kiosk, and device workflows;
+- complete app and server routes for visitor, member, and admin workflows, including USB card preparation/activation; retain legacy kiosk/device code only as documented history;
 - migrations, RLS/grants, database functions, seed/test fixtures;
 - responsive shared Tailwind/shadcn design system;
-- ESP32/PN532 firmware project and non-secret example configuration;
+- USB-only ESP32/PN532 firmware project with no secret header;
 - tests and CI workflows;
 - complete operational/security/deployment/hardware/network runbooks;
 - `.env.example`, clean `.gitignore`, lockfile, meaningful Git history;
@@ -100,7 +110,7 @@ When finished, report:
 2. The key security/privacy guarantees, and the known limitation that static NFC tags can be cloned.
 3. The exact commands run and their actual pass/fail results.
 4. What was verified only with mocks/local environments versus physical hardware/real email/production deployment.
-5. A short list of precise user actions still required (secrets, DNS, email, first admin, hardware details, PSU network approval, policy inputs), only if actually needed.
+5. A short list of precise user actions still required (first admin, hardware/browser details, policy inputs), only if actually needed.
 6. Git commit summary and confirmation that signing configuration was restored.
 7. Known limitations; do not overstate readiness.
 

@@ -1,130 +1,115 @@
 # Deployment
 
-Target: Next.js app on Vercel, Supabase Postgres/Auth/Storage, custom domain `member.gdgpsu.dev`.
+Target: Next.js on **Vercel** at
+**https://members-bay-eight.vercel.app**, Supabase Postgres/Auth/Storage, and a
+USB-only ESP32 + PN532 reader. No custom domain, DNS change, campus WiFi, or
+firmware server endpoint is required.
 
-The backend was verified on 2026-10-29 against `potjjlmgnrqxseeendmx`: all ten migrations applied, history recorded in `supabase_migrations.schema_migrations`, the `avatars` bucket private, `db:verify` passing 46/46, and the authenticated browser suite passing. Test data and storage objects were then erased; two administrators (`sainaman@psu.edu`, `gdg@psu.edu`) remain with passwords and verified TOTP. Nothing in this document is evidence of a Vercel or DNS deployment. Email delivery is manual: administrators copy and send links themselves.
+The hosted Supabase project is `potjjlmgnrqxseeendmx`; migrations 0001–0010 are
+applied. The database was reset on 2026-11-04 and one administrator setup link
+was generated for `sainaman@psu.edu`. Hosting is live, but the latest source
+still needs to be pushed and deployed before this checkout is the running
+release.
 
-## 1. Prerequisites (user/operator action)
+## 1. Vercel project
 
-| Item                                           | Needed for                  | Status                                                                                  |
-| ---------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------- |
-| Vercel account/project with access to the repo | Hosting                     | BLOCKED — CLI has no authenticated session; anonymous temporary deployments are refused |
-| DNS control for `gdgpsu.dev`                   | `member.gdgpsu.dev`         | BLOCKED                                                                                 |
-| Supabase project ownership + a publishable key | Auth/DB; see key note below | Verified — keys accepted, schema applied, RLS and storage checked                       |
-| Invitation/recovery delivery                   | Link delivery               | Manual — an admin copies links into their own mail client; no SMTP                      |
-| PSU IT approval for ESP32 network access       | Hardware lanes              | Unverified — confirm the approved network, device policy, SSID and CA                   |
-| Admin bootstrap identity (real email)          | Admin access                | Activated — `sainaman@psu.edu` and `gdg@psu.edu` have passwords + verified TOTP         |
+| Setting          | Value                                          |
+| ---------------- | ---------------------------------------------- |
+| Root             | repository root                                |
+| Install          | `pnpm install --frozen-lockfile`               |
+| Build            | `pnpm --filter @gdg/web build`                 |
+| Node             | 20.9+ (24 used locally)                        |
+| Framework preset | Next.js                                        |
+| Output           | `apps/web/.next` (configured in `vercel.json`) |
+| Production URL   | `https://members-bay-eight.vercel.app`         |
+
+`NEXT_PUBLIC_SITE_URL` must equal the hosted origin for production. Preview
+deployments should use their own origin and must not point at the production
+database with real member data.
 
 ## 2. Environment variables (names only)
 
-Set these in Vercel → Project → Settings → Environment Variables for **Production** and **Preview** separately. Never commit values.
+Set in Vercel → Project → Settings → Environment Variables for Production and
+Preview separately. Never commit values.
 
-| Name                            | Exposure           | Purpose                                                                                       |
-| ------------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL`          | Public             | Canonical origin for callbacks/links (`https://member.gdgpsu.dev`)                            |
-| `NEXT_PUBLIC_SUPPORT_EMAIL`     | Public             | Support address shown to members (`gdg@psu.edu`)                                              |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Public             | Supabase project URL                                                                          |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public             | Publishable key (`sb_publishable_…`) for the RLS-bound SSR client                             |
-| `SUPABASE_SECRET_KEY`           | **Server only**    | New-format secret key; never `NEXT_PUBLIC_`                                                   |
-| `SUPABASE_SERVICE_ROLE_KEY`     | **Server only**    | Legacy fallback if no secret key                                                              |
-| `CARD_WRITE_ENCRYPTION_KEY`     | **Server only**    | 32-byte base64 key for AES-GCM card payloads; rotating it invalidates stored encrypted tokens |
-| `DATABASE_URL`                  | **Server/CI only** | Direct/pooler Postgres URL for `db:migrate`/`db:verify`; not needed by the running app        |
-| `NODE_ENV`                      | Runtime            | Set automatically by Next/Vercel                                                              |
+| Name                            | Exposure       | Purpose                                                        |
+| ------------------------------- | -------------- | -------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`          | Public         | Canonical origin for `/auth/confirm` links                     |
+| `NEXT_PUBLIC_SUPPORT_EMAIL`     | Public         | Support address (`gdg@psu.edu`)                                |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Public         | Supabase project URL                                           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public         | Publishable key for the RLS-bound client                       |
+| `SUPABASE_SECRET_KEY`           | Server only    | Auth-admin and privileged operations                           |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Server only    | Legacy fallback if no secret key                               |
+| `CARD_WRITE_ENCRYPTION_KEY`     | Server only    | 32-byte base64 AES-GCM key; rotation invalidates stored tokens |
+| `DATABASE_URL`                  | Server/CI only | Migration/verification scripts only                            |
 
-The app validates these at server startup (`apps/web/src/lib/env.ts`) and fails closed if required values are missing.
+The app validates required values at startup and fails closed. Preview must use
+a staging database or stay read-only; do not expose production member data.
 
-### Key note (important)
+## 3. Supabase Auth
 
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` holds the publishable key. `createSupabaseServer()` and the request proxy use it, so all user/anonymous queries are subject to RLS. `SUPABASE_SECRET_KEY` is used only by `createSupabaseAdmin()` for explicitly authorized admin operations (auth-admin link generation, cross-member reads, device jobs). Never expose the secret key to the browser or firmware.
+- Site URL: `https://members-bay-eight.vercel.app`; keep it in sync with
+  `NEXT_PUBLIC_SITE_URL`.
+- Optional callback fallback: `https://members-bay-eight.vercel.app/auth/callback`.
+- Keep public signup disabled. Accounts are created by Admin API invitation or
+  recovery links.
+- Admin routes require AAL2. The invited administrator must set a password and
+  enroll TOTP at `/admin-mfa`.
+- No SMTP is configured. Admin → Invitations generates a one-time link; the
+  admin copies it into their own mailbox. The same applies to recovery links.
+- Generated links confirm at `/auth/confirm` on the app origin, so no Supabase
+  redirect allowlist entry is needed for them.
 
-## 3. Supabase configuration
+## 4. Production reset and admin invite
 
-1. **Apply migrations** from the repository (never hand-edit the hosted schema):
+The reset removes all application rows, Auth users, and profile photos, then
+creates only the `sainaman@psu.edu` Auth user with the admin role. The one-time
+link is written to a gitignored `.local/` file; it is never printed or committed.
 
-   ```bash
-   supabase link --project-ref <project-ref>
-   supabase db push
-   ```
-
-   Use the Supabase CLI/GitHub integration as the single migration authority. On 2026-10-29 the project was reset and every file in `supabase/migrations` (0001–0010) was applied and stamped in `supabase_migrations.schema_migrations`, so `supabase db push` and the GitHub integration both see the current schema as applied. The legacy `pnpm db:migrate` keeps a separate history and must not be mixed in; it now refuses any database that has CLI migration history.
-
-   Migration `0006_profile_privacy.sql` makes the `avatars` bucket private, protects photo delivery and sets public-by-default email for new profiles without changing existing choices. Migration `0007_device_signatures.sql` requires all existing device secrets to be rotated before use; `0008_admin_rls_mfa.sql` enforces MFA in database admin policies; `0009_controlled_erasure.sql` makes documented account closure possible without weakening the append-only guards; `0010_photo_identity.sql` records when the current photo was uploaded and enforces the 48-hour PSU ID check at the kiosk. All five are applied in the hosted project.
-
-2. **Auth settings:**
-   - Site URL: the final public origin (`https://member.gdgpsu.dev`). Keep it in sync with Vercel's `NEXT_PUBLIC_SITE_URL`.
-   - App-generated invitation/recovery links confirm at `/auth/confirm` on that origin, so they do not depend on Supabase's redirect allowlist. Keep `https://member.gdgpsu.dev/auth/callback` and `http://localhost:3000/auth/callback` as optional fallbacks for legacy links.
-   - Disable public signup. Accounts are created by the Admin API through generated invitation links.
-   - Enable TOTP MFA for admin accounts. Admins without AAL2 cannot use `/admin/*` and are redirected to `/admin-mfa`.
-   - **Email:** no SMTP is configured and the app sends no mail. Admin → Invitations generates a one-time link with `generateLink`; the admin copies it into their own mail client. The same applies to member recovery on the member detail page. Generated links expire per the project's **Email OTP Expiration** setting (default 1 hour); raise it to fit your sending workflow, and regenerate a link if it expires. Do not reduce this setting.
-3. **Storage:** bucket `avatars` must be private, with server-side uploads only. Photos are served by a no-store endpoint that checks current profile visibility or the owner's / MFA-verified admin's session.
-4. **Backups:** enable plan-appropriate backups/PITR in the dashboard and record retention. See `docs/backup-restore.md`.
-
-## 4. Admin bootstrap
-
-The administrators (`sainaman@psu.edu` and `gdg@psu.edu`) already hold the `admin` role and have set passwords and verified TOTP; each signs in at `/login` and completes TOTP at `/admin-mfa`. Once signed in with AAL2, they can generate further administrator or member invitations from **Admin → Invitations**; those links are copied and delivered manually.
-
-To recover or regenerate the initial link, run `pnpm db:bootstrap-admin --email sainaman@psu.edu --out .local/admin-link.txt` with `NEXT_PUBLIC_SITE_URL` set to the production origin; it writes an origin-owned `/auth/confirm` link to the output file (gitignored). No email is sent and no password is printed — deliver the link privately, then delete the file. Equivalent reviewed SQL (after creating the Auth user in Supabase):
-
-```sql
-insert into public.user_roles (auth_user_id, role, note)
-select id, 'admin', 'initial bootstrap'
-from auth.users
-where lower(email) = lower('REPLACE_WITH_REAL_ADMIN_EMAIL')
-on conflict (auth_user_id, role) do update set revoked_at = null;
+```bash
+NEXT_PUBLIC_SITE_URL=https://members-bay-eight.vercel.app \
+  pnpm db:bootstrap-admin --email sainaman@psu.edu \
+  --out .local/sainaman-admin-link.txt
 ```
 
-Then enroll TOTP with `pnpm admin:enroll-totp` (it completes the real `/admin-mfa` flow and writes the manual key to a gitignored file without printing it) or manually on `/admin-mfa`. Do not put the admin's email or credentials in this repository.
+Set a password from the link, then enroll TOTP at `/admin-mfa` and confirm the
+hosted admin dashboard. Do not send the link through this repository or chat.
 
-## 5. Vercel
+## 5. USB reader deployment
 
-The repository includes `vercel.json`, which sets the Next.js framework, the frozen-lockfile install, the `@gdg/web` build and the `apps/web/.next` output. Import the project, then confirm these values:
+1. Wire the PN532 to the ESP32 exactly as in `docs/hardware-bringup.md`.
+2. Build and flash from `firmware/kiosk-reader`; disconnect the PN532 only if
+   esptool loses the serial port during reset.
+3. In Chrome or Edge on the hosted admin origin, sign in with AAL2 and open
+   `/admin/usb`.
+4. Prepare a card URL, connect the lane with Web Serial, write it, verify the
+   read-back, and activate it.
+5. There is no device registration, WiFi onboarding, certificate, or PSU network
+   approval step for this reader.
 
-- Import the repository as a monorepo project.
-- Root directory: repository root (`./`).
-- Install command: `pnpm install --frozen-lockfile`.
-- Build command: `pnpm --filter @gdg/web build` (or `pnpm build`, which runs Turborepo). The app uses `transpilePackages` for `@gdg/ui` and `@gdg/contracts`, so no separate package build is required.
-- Node version: 20.9+ (Node 24 used locally).
-- Add the environment variables above for Production and Preview. Preview must not point at the production database or use production member data.
-- Add the custom domain `member.gdgpsu.dev` only after DNS authorization. Enable HSTS at the domain level once HTTPS is confirmed.
-- Function duration/region: default is fine; requests are short and use the Postgres pooler. Do not add a persistent server.
-- Anonymous `vercel deploy --temporary` is disabled for this project; authenticate the CLI (`npx vercel login`) before deploying. A preview must use its own `NEXT_PUBLIC_SITE_URL` (the deployment origin) so invitation/recovery links return to the right host.
+Do not expose the serial port through a network proxy. Physical USB access can
+issue the same local commands; the admin/MFA session protects the web page, not
+the serial bus.
 
 ## 6. Post-deploy verification
 
-1. `GET /` renders (200) and no CSP/console errors.
-2. Sign-in flow works on the real origin; cookies are Secure/HttpOnly; callback redirects to `/invite/accept`.
-3. An admin-generated invitation link works once and lands on `/account/password` (admins) or `/invite/accept` (members); expired/revoked links show a neutral state.
-4. Setup creates a member, `/m/<slug>` loads, leaderboard excludes private profiles.
-5. `/c/<token>` redirects (307) to `/m/<slug>`; a revoked token shows `/card-unavailable`.
-6. Admin routes require MFA (AAL2) and redirect to `/admin-mfa` when unenrolled; member routes reject anonymous requests.
-7. Security headers present; no secret appears in the HTML/JS bundle.
-8. Device API rejects unknown/disabled devices and oversized payloads (`/api/device/v1/heartbeat` without valid credentials returns 401).
+1. `/`, `/leaderboard`, `/events`, `/privacy` and `/login` return 200.
+2. `/admin` and `/admin/usb` redirect anonymous visitors to `/login`.
+3. The invited admin can set a password and complete TOTP at `/admin-mfa`.
+4. Admin → Invitations generates a link whose origin is
+   `https://members-bay-eight.vercel.app` and whose path is `/auth/confirm`.
+5. `/admin/usb` lists active members; preparing a card returns a `/c/<43-char>`
+   URL and activation changes the card to active.
+6. A physical tag writes and reads back the same URL in Chrome/Edge.
+7. `/c/<active-token>` redirects to the member profile; revoked/unknown tokens
+   land on the neutral unavailable page.
 
-## 7. Rollback and recovery
+## 7. Rollback
 
-- **App:** Vercel → Deployments → promote the last known-good deployment. Environment variable changes require a redeploy.
-- **Database:** migrations are forward-only and there are no down migrations. For a bad migration, stop deploys, restore the pre-migration dump into a disposable project to investigate, then write a corrective migration. Do not delete ledger/attendance rows.
-- **Secrets:** if a Supabase secret key or device secret is exposed, rotate in Supabase/Vercel, redeploy, disable affected devices, and review `audit_log`.
-- **Domain/links:** reverting DNS changes auth callbacks; generated invitation/recovery links are one-time, so reissue them after a domain change.
-
-## 8. Exact blockers to resolve before production
-
-1. Sign in to Vercel (`npx vercel login`), create/import the project and set the production environment variables (the publishable key is supplied). Anonymous temporary deployments are not available.
-2. Approve DNS changes for `member.gdgpsu.dev` and set `NEXT_PUBLIC_SITE_URL` to that origin. App-generated links no longer need a Supabase redirect allowlist entry.
-3. Confirm both administrators can complete a TOTP sign-in on the production origin after `NEXT_PUBLIC_SITE_URL` is set. If one needs to be re-invited, regenerate the link with `pnpm db:bootstrap-admin --email <admin> --out .local/admin-link.txt`.
-4. Record PSU IT's approved ESP32 SSID/EAP method and hardware test window; do not use personal credentials or bypass TLS.
-5. Confirm whether preview deployments may use a staging Supabase project (recommended) or must stay offline.
-
-## 9. Database branching for pull requests
-
-The Supabase project is `potjjlmgnrqxseeendmx`. Preview database branching follows [Supabase: Branching with GitHub integration](https://supabase.com/docs/guides/deployment/branching/github-integration). The repository side is ready: `supabase/migrations` holds the full ordered set and the project now records a CLI-compatible history for 0001–0010. Whether the GitHub app itself is installed cannot be confirmed with database credentials alone; if it is not, an organization administrator must install the Supabase GitHub app and authorize the repository.
-
-To enable it:
-
-1. In the Supabase dashboard, open the project → **Branching** → connect GitHub and install the Supabase integration for `GDG-PSU/members`.
-2. Choose `main` as the production branch and enable a preview branch per pull request (or per selected branch).
-3. Apply `supabase/migrations/*.sql` to each branch (the integration can run migrations, or the CI job can call `supabase db push` against `SUPABASE_DB_URL`).
-4. Add the branch's API URL and keys to the Vercel Preview environment; never reuse the production `SUPABASE_SECRET_KEY` in previews.
-5. Seed preview branches only with fictional data (`SEED_CONFIRM=yes SEED_ALLOWED=1 pnpm db:seed`).
-
-Without branching, keep Vercel previews read-only against a dedicated staging project; do not point them at production member data.
+- Promote the previous Vercel deployment.
+- Migrations are forward-only; restore a dump into a disposable project to
+  investigate and write a corrective migration. Do not delete ledger or
+  attendance rows.
+- Rotate Supabase/Vercel secrets if exposed, then redeploy.
+- Generated invitation and recovery links are one-time; reissue them after a
+  domain or origin change.

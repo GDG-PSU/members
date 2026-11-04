@@ -1,5 +1,11 @@
 # Data model
 
+> **Current hardware note (2026-11-04):** The USB reader does not use devices,
+> device secrets, pending scans, or card write jobs. Cards are still stored in
+> `card_credentials`: `prepare_card` creates a pending credential, the admin
+> writes its URL locally, and `activate_card` marks it active. Legacy device
+> tables are retained for historical records only.
+
 The schema source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new migration. Use the Supabase CLI (`supabase db push`) or its GitHub integration as the single migration authority. The legacy `pnpm db:migrate` records a separate history and must never be mixed with the CLI.
 
 Current migration order:

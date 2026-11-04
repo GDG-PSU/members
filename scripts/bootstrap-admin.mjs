@@ -73,7 +73,8 @@ async function createUser() {
     const text = await response.text();
     throw new Error(`create user failed (${response.status}): ${text.slice(0, 200)}`);
   }
-  return (await response.json()).user ?? (await response.json());
+  const body = await response.json();
+  return body.user ?? body;
 }
 
 let user = await findUser();

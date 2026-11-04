@@ -463,6 +463,100 @@ export async function sendRecoveryAction(_prev: LinkState, formData: FormData): 
 /* Cards                                                                      */
 /* -------------------------------------------------------------------------- */
 
+export type UsbCardState = {
+  ok?: boolean;
+  error?: string;
+  cardId?: string;
+  cardUrl?: string;
+  memberLabel?: string;
+  activated?: boolean;
+};
+
+/**
+ * Prepares a pending card for the local Web Serial writer. Unlike the legacy
+ * writer-job path, this returns the one-time card URL to the authenticated
+ * admin so it can be written by /admin/usb; the card is activated only after
+ * the browser has verified the write/read-back.
+ */
+export async function prepareUsbCardAction(
+  _prev: UsbCardState,
+  formData: FormData,
+): Promise<UsbCardState> {
+  const { user } = await requireAdminActor();
+  const memberId = z.uuid().safeParse(formData.get('memberId'));
+  if (!memberId.success) return { error: 'Select an active member.' };
+  const reason = readString(formData, 'reason').trim();
+
+  const admin = createSupabaseAdmin();
+  const { data: member } = await admin
+    .from('members')
+    .select('id, status, member_profiles(display_name, profile_slug)')
+    .eq('id', memberId.data)
+    .maybeSingle();
+  const profile = Array.isArray(member?.member_profiles)
+    ? member.member_profiles[0]
+    : member?.member_profiles;
+  if (!member || member.status !== 'active' || !profile?.profile_slug) {
+    return { error: 'That member is not active or has no profile.' };
+  }
+
+  const token = generateCardToken();
+  const cardUrl = `${SITE_URL}/c/${token}`;
+  const { data: cardId, error } = await admin.rpc('prepare_card', {
+    p_member_id: member.id,
+    p_token_hash: hashToken(token),
+    p_token_ciphertext: encryptSecret(token),
+    p_actor: user.id,
+  });
+  if (error || !cardId) return { error: `Card preparation failed: ${error?.message ?? 'unknown'}` };
+
+  await audit(user.id, 'card.usb_prepared', 'member', member.id, reason || null, null, {
+    card_id: cardId,
+  });
+  revalidatePath('/admin/cards');
+  revalidatePath('/admin/usb');
+  return {
+    ok: true,
+    cardId,
+    cardUrl,
+    memberLabel: (profile.display_name as string | null) ?? 'Member',
+  };
+}
+
+export async function activateUsbCardAction(
+  _prev: UsbCardState,
+  formData: FormData,
+): Promise<UsbCardState> {
+  const { user } = await requireAdminActor();
+  const cardId = z.uuid().safeParse(formData.get('cardId'));
+  if (!cardId.success) return { error: 'Invalid card.' };
+  if (formData.get('readBackVerified') !== 'on') {
+    return { error: 'Write the URL and verify the read-back before activating.' };
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: card } = await admin
+    .from('card_credentials')
+    .select('id, status, member_id')
+    .eq('id', cardId.data)
+    .maybeSingle();
+  if (!card) return { error: 'Card not found.' };
+  if (card.status !== 'pending') return { error: 'This card is not pending activation.' };
+
+  const { error } = await admin.rpc('activate_card', {
+    p_card_id: cardId.data,
+    p_actor: user.id,
+  });
+  if (error) return { error: `Activation failed: ${error.message}` };
+
+  await audit(user.id, 'card.usb_activated', 'member', card.member_id, null, null, {
+    card_id: cardId.data,
+  });
+  revalidatePath('/admin/cards');
+  revalidatePath('/admin/usb');
+  return { ok: true, activated: true };
+}
+
 export async function prepareCardAction(formData: FormData) {
   const { user } = await requireAdminActor();
   const returnTo = readReturnTo(formData);

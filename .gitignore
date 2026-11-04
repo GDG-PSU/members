@@ -38,6 +38,7 @@ Thumbs.db
 !.vscode/extensions.json
 
 # local operator artifacts (one-time links, scratch output)
+.cloud-attachments/
 .local/
 
 # logs
