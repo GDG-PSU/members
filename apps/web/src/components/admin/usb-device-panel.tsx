@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, CardContent, Field, Input } from '@gdg/ui';
 
 type DeviceInfo = {
@@ -177,7 +177,7 @@ export function UsbDevicePanel() {
     return response;
   }
 
-  async function closePort() {
+  const closePort = useCallback(async (updateState = true) => {
     closingRef.current = true;
 
     for (const pending of pendingRef.current.values()) {
@@ -215,8 +215,16 @@ export function UsbDevicePanel() {
       // Already closed.
     }
 
-    setConnected(false);
-  }
+    if (updateState) setConnected(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      // A client-side tab change unmounts this panel. Close the port here so
+      // the next mount does not inherit an already-open SerialPort.
+      void closePort(false);
+    };
+  }, [closePort]);
 
   async function connect() {
     const serial = getSerial();
@@ -235,16 +243,22 @@ export function UsbDevicePanel() {
 
     try {
       const port = await serial.requestPort();
+      if (closingRef.current) return;
       setStatus('Opening serial port…');
       await port.open({ baudRate: 115200 });
+      portRef.current = port;
+      if (closingRef.current) {
+        await closePort(false);
+        return;
+      }
       // Opening a CP210x toggles the ESP32 reset lines. Give the firmware time
       // to boot and initialize the PN532 before the first JSON command.
       setStatus('Waiting for the lane to boot…');
       await sleep(2200);
+      if (closingRef.current) return;
       const writer = port.writable?.getWriter();
       if (!writer) throw new Error('The serial port is not writable.');
 
-      portRef.current = port;
       writerRef.current = writer;
       setConnected(true);
       void readLoop(port);
@@ -272,8 +286,9 @@ export function UsbDevicePanel() {
       setInfo(response.result ?? null);
       setStatus('Connected.');
     } catch (connectError) {
+      const wasClosing = closingRef.current;
       await closePort();
-      setError(errorMessage(connectError));
+      if (!wasClosing) setError(errorMessage(connectError));
     } finally {
       setConnecting(false);
     }
