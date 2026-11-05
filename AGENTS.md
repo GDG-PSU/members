@@ -593,7 +593,7 @@ Last updated 2026-11-05.
   anything. Its schema went ahead in `f187f33` and the app followed in `e18f987`. Since then
   invitation links work for 72 hours and password reset links for 48, an invitation nobody used
   shows as not accepted, and the links are the app's own instead of Supabase tokens. Its schema
-  went ahead in `8bd6160`. See `docs/test-plan.md`.
+  went ahead in `8bd6160` and the app followed in `85f53ef`. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
@@ -658,6 +658,8 @@ On production, read-only, after `8bd6160` was pushed on 2026-11-05:
   `authenticated`, its two functions can be executed by `service_role` only, and a new invitation
   defaults to 72 hours.
 - `anon` can still execute no public function.
+- `85f53ef` passed CI and its Vercel deployment is live. Signed out, a made-up link redirects to
+  `/login?notice=invalid-link`. No real link was made or opened on production.
 
 On production, read-only, after `f187f33` was pushed on 2026-11-05:
 
