@@ -851,6 +851,263 @@ try {
   });
   check('RLS: current_member_id resolves the signed-in member', crossMember === memberA);
 
+  // ---- Permanent delete (migration 0019) ------------------------------------
+  // Only a superadmin deletes, every delete is recorded, points and stars stay,
+  // and nothing can delete the record of it.
+  await expectError(
+    'only a superadmin can delete for good',
+    `select public.delete_record('event', $1, $2)`,
+    [eventId, adminId],
+    'superadmin_required',
+  );
+  await expectError(
+    'the audit log is not a kind of record that can be deleted',
+    `select public.delete_record('audit_log', $1, $2)`,
+    [eventId, superId],
+    'unknown_kind',
+  );
+  await expectError(
+    'a superadmin cannot delete their own account',
+    `select public.delete_record('user', $1, $1)`,
+    [superId],
+    'cannot_delete_self',
+  );
+
+  await client.query(`select set_config('app.member_erasure', 'on', true)`);
+  await expectError(
+    'audit entries cannot be deleted, even during an erasure',
+    `delete from public.audit_log`,
+    [],
+    'audit_log_is_permanent',
+  );
+  await expectError(
+    'audit entries cannot be changed, even during an erasure',
+    `update public.audit_log set reason = 'rewritten'`,
+    [],
+    'audit_log_is_permanent',
+  );
+  await client.query(`select set_config('app.member_erasure', 'off', true)`);
+
+  const deleteCounts = async () =>
+    (
+      await client.query(
+        `select (select count(*)::int from public.point_ledger) as ledger,
+                (select count(*)::int from public.star_ledger) as stars,
+                (select count(*)::int from public.audit_log) as audit,
+                (select points from public.member_balances where member_id = $1) as points`,
+        [memberA],
+      )
+    ).rows[0];
+
+  // An attendance that gave points must be corrected first, not deleted.
+  const { rows: attendanceKinds } = await client.query(
+    `select (select id from public.attendance_records where qualified limit 1) as qualified,
+            (select id from public.attendance_records where not qualified limit 1) as plain`,
+  );
+  await expectError(
+    'an attendance that gave points cannot be deleted',
+    `select public.delete_record('attendance', $1, $2)`,
+    [attendanceKinds[0].qualified, superId],
+    'attendance_has_points',
+  );
+  let before = await deleteCounts();
+  await client.query(`select public.delete_record('attendance', $1, $2)`, [
+    attendanceKinds[0].plain,
+    superId,
+  ]);
+  let after = await deleteCounts();
+  const attendanceGone = await client.query(
+    `select (select count(*)::int from public.attendance_records where id = $1) as record,
+            (select count(*)::int from public.attendance_audit_events where attendance_id = $1) as trail`,
+    [attendanceKinds[0].plain],
+  );
+  check(
+    'deleting an attendance removes it and its trail, and is recorded',
+    Boolean(attendanceKinds[0].plain) &&
+      attendanceGone.rows[0].record === 0 &&
+      attendanceGone.rows[0].trail === 0 &&
+      after.audit === before.audit + 1 &&
+      after.ledger === before.ledger,
+  );
+
+  // A reward: waiting requests are decided first; handled ones go with it.
+  await client.query(
+    `select public.grant_points($1, 50, 'admin_adjustment', 'verify:delete:points', 'Delete setup')`,
+    [memberA],
+  );
+  const { rows: doomedReward } = await client.query(
+    `insert into public.rewards (name, description, cost_points) values ('Delete me', 'Test reward', 5)
+     returning id`,
+  );
+  const doomedRequest = await client.query(
+    `select public.redeem_reward($1, $2, 1, 'verify-delete-1') as id`,
+    [memberA, doomedReward[0].id],
+  );
+  await expectError(
+    'a reward with a waiting request cannot be deleted',
+    `select public.delete_record('reward', $1, $2)`,
+    [doomedReward[0].id, superId],
+    'reward_has_open_requests',
+  );
+  await expectError(
+    'a waiting request cannot be deleted',
+    `select public.delete_record('redemption', $1, $2)`,
+    [doomedRequest.rows[0].id, superId],
+    'redemption_still_open',
+  );
+  await client.query(`select public.decide_redemption($1, 'approve', $2, null)`, [
+    doomedRequest.rows[0].id,
+    superId,
+  ]);
+  await client.query(`select public.decide_redemption($1, 'fulfil', $2, null)`, [
+    doomedRequest.rows[0].id,
+    superId,
+  ]);
+  before = await deleteCounts();
+  const deletedReward = await client.query(
+    `select public.delete_record('reward', $1, $2) as before`,
+    [doomedReward[0].id, superId],
+  );
+  after = await deleteCounts();
+  const rewardGone = await client.query(
+    `select (select count(*)::int from public.rewards where id = $1) as reward,
+            (select count(*)::int from public.redemptions where reward_id = $1) as requests`,
+    [doomedReward[0].id],
+  );
+  check(
+    'deleting a reward removes it and its handled requests',
+    rewardGone.rows[0].reward === 0 &&
+      rewardGone.rows[0].requests === 0 &&
+      deletedReward.rows[0].before.name === 'Delete me',
+  );
+  check(
+    'deleting a reward leaves the points spent on it spent',
+    after.ledger === before.ledger && after.points === before.points,
+    `points ${before.points} -> ${after.points}`,
+  );
+
+  // A card.
+  const { rows: doomedCard } = await client.query(
+    `select id, member_id from public.card_credentials order by created_at desc limit 1`,
+  );
+  await client.query(`select public.delete_record('card', $1, $2)`, [doomedCard[0].id, superId]);
+  const cardGone = await client.query(
+    `select (select count(*)::int from public.card_credentials where id = $1) as card,
+            (select count(*)::int from public.audit_log
+              where action = 'card.deleted' and target_type = 'member' and target_id = $2) as recorded`,
+    [doomedCard[0].id, doomedCard[0].member_id],
+  );
+  check(
+    'deleting a card removes it and records whose it was',
+    cardGone.rows[0].card === 0 && cardGone.rows[0].recorded === 1,
+  );
+
+  // An event: sessions and attendance go, what was earned stays.
+  const linkedBefore = await client.query(
+    `select count(*)::int as n from public.point_ledger where event_id = $1`,
+    [eventId],
+  );
+  before = await deleteCounts();
+  const deletedEvent = await client.query(
+    `select public.delete_record('event', $1, $2) as before`,
+    [eventId, superId],
+  );
+  after = await deleteCounts();
+  const eventGone = await client.query(
+    `select (select count(*)::int from public.events where id = $1) as events,
+            (select count(*)::int from public.event_sessions where event_id = $1) as sessions,
+            (select count(*)::int from public.attendance_records where session_id = $2) as attendance,
+            (select count(*)::int from public.audit_log
+              where action = 'event.deleted' and target_id = $3 and actor_auth_id = $4) as recorded`,
+    [eventId, sessionId, String(eventId), superId],
+  );
+  check(
+    'deleting an event removes its sessions and attendance',
+    eventGone.rows[0].events === 0 &&
+      eventGone.rows[0].sessions === 0 &&
+      eventGone.rows[0].attendance === 0,
+  );
+  check(
+    'deleting an event keeps the points and stars it gave',
+    linkedBefore.rows[0].n > 0 &&
+      after.ledger === before.ledger &&
+      after.stars === before.stars &&
+      after.points === before.points,
+    `linked=${linkedBefore.rows[0].n} points ${before.points} -> ${after.points}`,
+  );
+  check(
+    'a delete adds one audit entry that names what was deleted',
+    after.audit === before.audit + 1 &&
+      eventGone.rows[0].recorded === 1 &&
+      deletedEvent.rows[0].before.name === 'Verify Event',
+  );
+  await expectError(
+    'deleting something twice says it is gone',
+    `select public.delete_record('event', $1, $2)`,
+    [eventId, superId],
+    'not_found',
+  );
+
+  // An invitation: the unused account goes with it, a real person's does not.
+  const { rows: doomedInvitee } = await client.query(`
+    insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, created_at, updated_at,
+      raw_app_meta_data, raw_user_meta_data, email_change_confirm_status)
+    values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+      'verify.delete.invitee@example.test', now(), now(), now(), '{}'::jsonb, '{}'::jsonb, 0)
+    returning id
+  `);
+  const { rows: doomedInvites } = await client.query(
+    `insert into public.member_invitations (email, paid_since, auth_user_id, status) values
+       ('verify.delete.invitee@example.test', current_date, $1, 'pending'),
+       ('verify.b@example.test', current_date, $2, 'revoked')
+     returning id, email`,
+    [doomedInvitee[0].id, memberBId],
+  );
+  for (const invite of doomedInvites) {
+    await client.query(`select public.delete_record('invitation', $1, $2)`, [invite.id, superId]);
+  }
+  const inviteGone = await client.query(
+    `select (select count(*)::int from public.member_invitations where id = any($1::uuid[])) as invites,
+            (select count(*)::int from auth.users where id = $2) as unused_account,
+            (select count(*)::int from auth.users where id = $3) as member_account`,
+    [doomedInvites.map((invite) => invite.id), doomedInvitee[0].id, memberBId],
+  );
+  check(
+    'deleting an unused invitation removes the account made for it',
+    inviteGone.rows[0].invites === 0 && inviteGone.rows[0].unused_account === 0,
+  );
+  check(
+    'deleting an invitation never removes a member account',
+    inviteGone.rows[0].member_account === 1,
+  );
+
+  // A person: everything about them goes, and the entry does not name them.
+  before = await deleteCounts();
+  const deletedUser = await client.query(`select public.delete_record('user', $1, $2) as before`, [
+    memberBId,
+    superId,
+  ]);
+  after = await deleteCounts();
+  const userGone = await client.query(
+    `select (select count(*)::int from auth.users where id = $1) as account,
+            (select count(*)::int from public.members where id = $2) as member,
+            (select count(*)::int from public.member_profiles where member_id = $2) as profile,
+            (select count(*)::int from public.member_private where member_id = $2) as private,
+            (select count(*)::int from public.point_ledger where member_id = $2) as ledger`,
+    [memberBId, memberB],
+  );
+  check(
+    'deleting an account removes the person and everything about them',
+    Object.values(userGone.rows[0]).every((count) => count === 0),
+    JSON.stringify(userGone.rows[0]),
+  );
+  check(
+    'the record of a deleted account does not name them',
+    after.audit === before.audit + 1 &&
+      JSON.stringify(deletedUser.rows[0].before) === JSON.stringify({ kind: 'member', roles: [] }),
+    JSON.stringify(deletedUser.rows[0].before),
+  );
+
   await client.query('rollback');
 
   // ---- True concurrency (separate committed transactions) ------------------

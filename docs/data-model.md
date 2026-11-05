@@ -32,6 +32,7 @@ Current migration order:
 | `0016_leaderboard_by_stars.sql`       | Ranks the leaderboard by lifetime stars                                                 |
 | `0017_organizer_profiles.sql`         | Gives staff a profile and card through `members.kind = 'organizer'`                     |
 | `0018_organizer_profile_backfill.sql` | A placeholder organizer profile for each existing staff account                         |
+| `0019_superadmin_delete.sql`          | Permanent delete for superadmins, and an audit log nothing can change                   |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -159,7 +160,7 @@ A scan is intent only: optional device (null for the USB kiosk), resolved member
 
 ### `audit_log`
 
-Append-only admin/security actions: action, target type/id, reason, redacted before/after JSON, request ID, actor, timestamp.
+Append-only admin/security actions: action, target type/id, reason, redacted before/after JSON, request ID, actor, timestamp. Since migration 0019 its guard has no exception: no role, function or erasure can update or delete a row. Only `pnpm db:reset`, which truncates every table, empties it.
 
 ### `rate_limit_counters`
 
@@ -184,7 +185,9 @@ The public pages and `/api/public/*` read the two projections with the server-on
 - Attendance, ledger, audit and scan-confirmation history are append-only. Corrections use compensating entries with an actor and reason.
 - Archiving/suspending a member removes them from public views immediately; records remain for dispute resolution.
 - Account closure runs through `erase_member(auth_user_id)` (migration 0009), which sets a transaction-local flag, deletes the Auth user and lets identity, card, attendance and ledger rows cascade. The append-only triggers still reject every ordinary `UPDATE`/`DELETE`; the flag exists only inside that function's transaction. Treat erasure as a deliberate, reviewed operation, not routine cleanup.
-- Profile photos are stored in the private `avatars` bucket and served through an authorization-aware endpoint; replacing a photo deletes the previous object.
+- A superadmin can delete a record for good through `delete_record(kind, id, actor)` (migration 0019): an event with its sessions and attendance, a reward with its handled requests, a handled reward request, a card, an attendance record that gave no points, an invitation with the unused account made for it, or a person's whole account. The function checks that the actor is a superadmin, deletes, and writes a `<kind>.deleted` audit entry in the same transaction. The entry carries the name of a deleted event or reward, and nothing that identifies a deleted person.
+- A delete never takes points or stars back. Ledger rows that pointed at a deleted event or request keep their amount and description and lose only the link. A reward with a request still waiting, and an attendance that gave points, are refused until they are decided or corrected.
+- Profile photos are stored in the private `avatars` bucket and served through an authorization-aware endpoint; replacing a photo deletes the previous object, and deleting an account deletes its photos.
 - The schema has no automatic data-retention job. Retention periods must be decided by the organization (see `PRIVACY.md` and `docs/backup-restore.md`).
 
 ## Functions
@@ -214,6 +217,7 @@ The public pages and `/api/public/*` read the two projections with the server-on
 | `correct_attendance(...)`     | service_role          | Audited corrections/reversals                                      |
 | `consume_rate_limit(...)`     | service_role          | Atomic fixed-window limiter                                        |
 | `erase_member(uid)`           | service_role          | Reviewed erasure; lifts append-only guard for its transaction only |
+| `delete_record(kind, id, by)` | service_role          | Superadmin-only permanent delete with its audit entry              |
 
 All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions can be executed only by `service_role`; the web server authorizes the actor before calling them.
 

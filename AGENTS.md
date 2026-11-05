@@ -98,7 +98,7 @@ without an explicit product decision.
 - **Superadmin** — inherits admin operations, manages staff roles/invitations, reads the full audit
   log, and owns the manage pages, `/admin/members/[id]` and `/admin/staff/[id]`: type changes,
   status changes, interaction points, attendance corrections, removing an organizer's access, and
-  recovery links. A recovery link is a password reset for whoever holds it, so it
+  recovery links. Only a superadmin can delete anything for good. A recovery link is a password reset for whoever holds it, so it
   must stay superadmin-only. The last active superadmin cannot be revoked or demoted (enforced by the
   `user_roles_keep_last_superadmin` trigger), and self-revocation is blocked.
 
@@ -241,9 +241,27 @@ instants are stored as `timestamptz`; event wall-clock input and display use
 - Revocation is explicit and audited. Unknown/revoked/replaced tokens go to the neutral
   `/card-unavailable` page with no member metadata.
 
+### Permanent delete
+
+- Organizers hide things: an event is cancelled, a reward or a card switched off, a member archived.
+  Only a superadmin deletes, and only through `delete_record(kind, id, actor)`, which checks the
+  actor, deletes, and writes the `<kind>.deleted` audit entry in one transaction. Do not delete
+  rows from TypeScript.
+- It covers an event (with its sessions and attendance), a reward (with its handled requests), a
+  handled reward request, a card, an attendance record, an invitation (with the unused account made
+  for it), and a person's whole account, whose photos the action then removes from storage.
+- A delete never takes points or stars back: ledger rows keep their amount and lose only the link.
+  A reward with a request still waiting and an attendance that gave points are refused, because the
+  correction paths exist for those.
+- The entry for a deleted person records their kind and roles, never a name, number or address.
+- `is_superadmin()` is an RLS helper tied to the caller's own session and is always false for the
+  service role. A function that runs for the server checks `user_roles` directly.
+
 ### Audit and rate limits
 
-- Audit rows are append-only and outlive account erasure. Never log secrets, card tokens, one-time
+- Audit rows are append-only and outlive account erasure and every delete. Since 0019 the guard on
+  `audit_log` has no exception at all, unlike the ledgers' guard, which an erasure lifts. Nothing
+  may update or delete an audit row, and no screen offers to. Never log secrets, card tokens, one-time
   invitation/recovery links, unnecessary email addresses, or profile content; record which fields
   changed, not their values.
 - Rate limits are Postgres-backed. Use `withinRateLimit` (`consume_rate_limit`); do not add
@@ -507,6 +525,8 @@ permission.
   takes `exact` or it lights up on every page beneath it.
 - A form inside a closed `<details>` is still in the page, so a test's `getByText` can match its
   hidden options. Scope the locator to the row or to `main`.
+- `db-verify` catches a function that only works with a signed-in session: the first version of
+  `delete_record` used `is_superadmin()` and refused every caller.
 
 ## 11. Definition of done
 
@@ -546,8 +566,9 @@ Last updated 2026-11-05.
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0018 applied. The
-  Supabase GitHub integration applies new migrations when `main` is pushed.
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`. The Supabase GitHub integration applies new
+  migrations when `main` is pushed. 0019 (permanent delete) is pushed ahead of the app code that
+  uses it; check that it is applied before relying on a Delete button.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
   test members exist. Nothing here was read from it after that.
 - **Latest stage:** the kiosk reads continuously and can check a member in by name, GDG number, or
@@ -557,15 +578,19 @@ Last updated 2026-11-05.
   switched on from one button; the admin area went from eight tabs to five and the member area
   from six to four; invitations moved onto the People page, where each person has one manage page;
   reward requests are decided with buttons; privacy switches save as they are flipped; the activity
-  page says why a session gave no points; and the audit log reads as sentences. That part has no
-  schema change. See `docs/test-plan.md`.
+  page says why a session gave no points; and the audit log reads as sentences. That part is
+  deployed in `214b981`. Last, a superadmin can delete an event, reward, reward request, card,
+  attendance record, invitation or account for good, and the audit log can no longer be changed by
+  anything. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
-The owner approved this on 2026-11-04 and widened it on 2026-11-05:
+Nothing is waiting. These were left out of permanent delete on purpose and need a decision:
 
-1. Permanent delete for superadmins, for everything that can be added or changed, with the audit
-   log kept.
+- A delete keeps the points and stars an event gave. Taking them back as well would be a second,
+  separate choice in the dialog.
+- A bonus session that people attended is still only switched off; it goes when its event is deleted.
+- An organizer's point award cannot be removed, only outweighed, because the ledgers are append-only.
 
 ### Waiting on a person
 
@@ -579,20 +604,24 @@ them, and do not record a weak setting here, because this repository is public:
 
 ### Verification record
 
-On a local Supabase stack rebuilt from every migration through 0018, on 2026-11-05:
+On a local Supabase stack rebuilt from every migration through 0019, on 2026-11-05:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 80
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 81
   unit tests.
-- `pnpm db:verify` passes 83/83.
+- `pnpm db:verify` passes 103/103 on a database rebuilt from every migration through 0019. The 20
+  new checks cover each kind of delete, what is refused, points and stars surviving, the audit
+  entry, and the audit log refusing a delete or an update even during an erasure.
 - The 0018 backfill, run in a rolled-back transaction, passed 8 checks: active staff get one
   placeholder each, revoked staff and members get nothing, and a second run changes nothing.
-- `pnpm e2e` passes 55 with 35 skipped: 45/45 on desktop Chromium, and on the mobile project the 10
+- `pnpm e2e` passes 56 with 36 skipped: 46/46 on desktop Chromium, and on the mobile project the 10
   public specs pass while the signed-in specs skip by design. The suite covers the always-on kiosk,
   check-in by name and by a typed QR link, the short event form, the bug fixes, a new admin setting
   up a profile, user type changes keeping the profile and card, organizers being refused points
   and check-in, the one-button card writer and its read-back check, the five and four tabs, the
-  People and manage pages with their named confirmations, auto-saving privacy, and audit sentences.
-- In one of three full runs the legacy device-signature spec got a 500 from the heartbeat route
+  People and manage pages with their named confirmations, auto-saving privacy, audit sentences,
+  and a superadmin deleting an invitation, a reward request, a reward, a card, an event and an
+  account through the real pages, with the audit log refusing a delete even from the service key.
+- In one of five full runs the legacy device-signature spec got a 500 from the heartbeat route
   ("Body has already been read") on both projects, then passed alone and in the next full run. That
   route is unchanged legacy code.
 - A one-off run on 2026-11-04 with Chromium's simulated camera decoded a member's QR code at the
@@ -633,6 +662,7 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
   for a new admin, and a card written for an organizer.
 - The one-button card writer on the physical reader: it was only run against the fake reader.
 - The new Home, People, manage and audit pages on production while signed in.
+- Permanent delete on production. It was never run there, and an agent must not run it there.
 - A real card read through the always-on kiosk on the physical reader, and the reader reconnecting
   by itself on a second visit, which needs a real browser's saved port permission.
 - A real camera scanning a real phone screen at the kiosk.
