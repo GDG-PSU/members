@@ -129,11 +129,19 @@ their own: route handlers and server actions must re-check the viewer and role.
 - Use `getApiViewer`/the API guard for route handlers, then check `isAdmin`/`isSuperadmin`.
 - Roles live in `user_roles`; never trust `user_metadata`, a client-supplied role, or client-side
   visibility.
-- Invitations and recovery links are generated manually through Supabase Auth. There is no SMTP or
-  email provider. The admin copies the one-time link; it is a secret.
+- Invitation and password reset links are made by hand and are the app's own. There is no SMTP or
+  email provider. The admin copies the one-time link; it is a secret. `issueSignInLink` stores only
+  the hash of a random token in `sign_in_links`, one link per person, so a new link replaces the
+  old one. Pressing Continue redeems it and only then asks Supabase for a session.
+- An invitation link works for 72 hours and a password reset link for 48 (`LINK_HOURS`); the
+  database refuses more than 72. A member invitation's `expires_at` is its link's. Do not put a
+  Supabase token in a link: its lifetime is the hosted OTP window, which cannot exceed 24 hours.
 - Staff invitation state is derived from the `admin.invited` audit event plus the **absence** of
   `auth.password_updated`. Do **not** use `last_sign_in_at` or `encrypted_password` for this; they
   are unreliable and previously caused accepted invitations to look pending.
+- An invitation whose link has stopped working shows as "Not accepted" on the People page, for a
+  member and an organizer alike. New link reopens a member's; inviting an organizer again reopens
+  theirs.
 
 ## 5. Route map
 
@@ -500,9 +508,11 @@ permission.
 - A local Docker volume can sit at an older migration, which makes `pnpm db:verify` fail falsely.
   Run `pnpm dlx supabase@2.122.0 migration up --local` before trusting a failure.
 - A password change ends the user's other sessions, so tests and flows must sign in again afterward.
-- A page load must never spend a one-time token. Chat previews and mail scanners fetch a link as soon
-  as it is shared, which used to burn invitations within seconds. `/auth/confirm` only shows a button;
-  its server action calls `verifyOtp`.
+- A page load must never spend a one-time link. Chat previews and mail scanners fetch a link as soon
+  as it is shared, which used to burn invitations within seconds. `/auth/confirm` looks at the link
+  to say whether it has expired or been used, and only its button's server action redeems it.
+- `/auth/confirm` still accepts the older `token_hash` links so that ones already sent keep working.
+  Nothing makes them any more, and none can outlive 2026-11-08; remove the branch after that.
 - `mfa.enroll` without `issuer` names the authenticator entry after the hosted Auth Site URL, so the
   app passes the `SITE_URL` hostname. Entries already scanned keep their old name until renamed in the
   authenticator app.
@@ -580,8 +590,10 @@ Last updated 2026-11-05.
   page says why a session gave no points; and the audit log reads as sentences. That part is
   deployed in `214b981`. Last, a superadmin can delete an event, reward, reward request, card,
   attendance record, invitation or account for good, and the audit log can no longer be changed by
-  anything. Its schema went ahead in `f187f33` and the app followed in `e18f987`. See
-  `docs/test-plan.md`.
+  anything. Its schema went ahead in `f187f33` and the app followed in `e18f987`. Since then
+  invitation links work for 72 hours and password reset links for 48, an invitation nobody used
+  shows as not accepted, and the links are the app's own instead of Supabase tokens. That needs
+  migration 0020, which goes ahead of the app code. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
@@ -604,13 +616,14 @@ them, and do not record a weak setting here, because this repository is public:
 
 ### Verification record
 
-On a local Supabase stack rebuilt from every migration through 0019, on 2026-11-05:
+On a local Supabase stack with every migration through 0020, on 2026-11-05:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 81
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 91
   unit tests.
-- `pnpm db:verify` passes 103/103 on a database rebuilt from every migration through 0019. The 20
-  new checks cover each kind of delete, what is refused, points and stars surviving, the audit
-  entry, and the audit log refusing a delete or an update even during an erasure.
+- `pnpm db:verify` passes 114/114. Twenty checks cover each kind of delete, what is refused, points
+  and stars surviving, the audit entry, and the audit log refusing a delete or an update even during
+  an erasure. Eleven cover sign-in links: the two lifetimes, the 72-hour ceiling, single use, a new
+  link replacing the old, an expired link, and API roles being unable to read the table.
 - The 0018 backfill, run in a rolled-back transaction, passed 8 checks: active staff get one
   placeholder each, revoked staff and members get nothing, and a second run changes nothing.
 - `pnpm e2e` passes 56 with 36 skipped: 46/46 on desktop Chromium, and on the mobile project the 10
@@ -621,7 +634,11 @@ On a local Supabase stack rebuilt from every migration through 0019, on 2026-11-
   People and manage pages with their named confirmations, auto-saving privacy, audit sentences,
   and a superadmin deleting an invitation, a reward request, a reward, a card, an event and an
   account through the real pages, with the audit log refusing a delete even from the service key.
-- In one of five full runs the legacy device-signature spec got a 500 from the heartbeat route
+  It also covers a link aged past 72 and 48 hours, the page that says so, the People page showing
+  "Not accepted" for a member and an organizer, New link reopening an invitation, and a cancelled
+  or replaced link no longer working.
+- `pnpm db:bootstrap-admin` was run against the local stack and its link opened the Continue page.
+- In one of six full runs the legacy device-signature spec got a 500 from the heartbeat route
   ("Body has already been read") on both projects, then passed alone and in the next full run. That
   route is unchanged legacy code.
 - A one-off run on 2026-11-04 with Chromium's simulated camera decoded a member's QR code at the
@@ -672,6 +689,8 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
 - The one-button card writer on the physical reader: it was only run against the fake reader.
 - The new Home, People, manage and audit pages on production while signed in.
 - Permanent delete on production. It was never run there, and an agent must not run it there.
+- The new links on production: making one, opening it days later, and the Not accepted status.
+  Links were aged in the test database, not by waiting.
 - A real card read through the always-on kiosk on the physical reader, and the reader reconnecting
   by itself on a second visit, which needs a real browser's saved port permission.
 - A real camera scanning a real phone screen at the kiosk.
@@ -686,8 +705,6 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
   email default is deliberate (`PRIVACY.md`). Consider hiding it by default and adding `noindex`.
 - **Decision:** the legacy device API is still reachable, though no devices are registered. Consider
   removing it.
-- Inviting a staff email as a member is refused, but only after a recovery link was generated, which
-  can invalidate that person's outstanding link.
 - The public read APIs have no rate limit.
 - The database scripts connect without validating the TLS certificate.
 - `scripts/admin-enroll-totp.mjs` reads a credentials file that nothing creates anymore.

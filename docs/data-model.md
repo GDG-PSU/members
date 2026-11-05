@@ -33,6 +33,7 @@ Current migration order:
 | `0017_organizer_profiles.sql`         | Gives staff a profile and card through `members.kind = 'organizer'`                     |
 | `0018_organizer_profile_backfill.sql` | A placeholder organizer profile for each existing staff account                         |
 | `0019_superadmin_delete.sql`          | Permanent delete for superadmins, and an audit log nothing can change                   |
+| `0020_sign_in_links.sql`              | One-time invitation and reset links the app owns: 72 and 48 hours                       |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -46,7 +47,7 @@ Server-assigned roles. Primary key `(auth_user_id, role)`; `admin` or `superadmi
 
 ### `member_invitations`
 
-One row per invitation. Columns include normalized lowercase `email`, `status` (`pending`, `accepted`, `expired`, `revoked`), `paid_since`, optional internal `note`, Auth user reference, timestamps and `expires_at` (default +14 days).
+One row per invitation. Columns include normalized lowercase `email`, `status` (`pending`, `accepted`, `expired`, `revoked`), `paid_since`, optional internal `note`, Auth user reference, timestamps and `expires_at`, which is when its link stops working: 72 hours after the link was made, and again after each New link. Past that the People page shows the invitation as not accepted.
 
 - Partial unique index `member_invitations_one_live_pending` prevents two pending invitations for one email.
 - No invitation token is stored; Supabase Auth owns the single-use link.
@@ -158,6 +159,10 @@ Device credentials are independent of user identity. A secret is shown once at p
 
 A scan is intent only: optional device (null for the USB kiosk), resolved member, card, session, suggested `action`, status (`pending`, `confirmed`, `rejected`, `expired`), expiry (default 3 minutes), confirming admin. The USB kiosk creates a short-lived pending row from `previewUsbKioskAction`; attendance and points change only through `confirm_scan` from an authenticated admin action.
 
+### `sign_in_links`
+
+One row per person who has been sent an invitation or password reset link: the SHA-256 hash of the link's token, its purpose (`member_invite`, `staff_invite`, `recovery`), the Auth user it is for, who made it, `expires_at` and `used_at`. The token and the link are never stored. A check constraint refuses a lifetime over 72 hours. RLS is on with no policies, so only the server reads it. `issue_sign_in_link` replaces the person's earlier link; `redeem_sign_in_link` spends one in a single statement if it is unused and unexpired.
+
 ### `audit_log`
 
 Append-only admin/security actions: action, target type/id, reason, redacted before/after JSON, request ID, actor, timestamp. Since migration 0019 its guard has no exception: no role, function or erasure can update or delete a row. Only `pnpm db:reset`, which truncates every table, empties it.
@@ -218,6 +223,8 @@ The public pages and `/api/public/*` read the two projections with the server-on
 | `consume_rate_limit(...)`     | service_role          | Atomic fixed-window limiter                                        |
 | `erase_member(uid)`           | service_role          | Reviewed erasure; lifts append-only guard for its transaction only |
 | `delete_record(kind, id, by)` | service_role          | Superadmin-only permanent delete with its audit entry              |
+| `issue_sign_in_link(...)`     | service_role          | Stores a new one-time link and removes the person's earlier ones   |
+| `redeem_sign_in_link(hash)`   | service_role          | Spends an unused, unexpired link; returns who it is for            |
 
 All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions can be executed only by `service_role`; the web server authorizes the actor before calling them.
 

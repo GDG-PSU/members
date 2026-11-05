@@ -851,6 +851,90 @@ try {
   });
   check('RLS: current_member_id resolves the signed-in member', crossMember === memberA);
 
+  // ---- One-time sign-in links (migration 0020) -------------------------------
+  // The app decides how long a link works; the database caps it, lets it be
+  // used once, and keeps only one per person.
+  const linkHash = (seed) => seed.repeat(64);
+  await expectError(
+    'a link cannot be made to last longer than 72 hours',
+    `select public.issue_sign_in_link($1, 'member_invite', $2, 73, $3)`,
+    [linkHash('a'), memberAId, adminId],
+    'link_lifetime_out_of_range',
+  );
+  await client.query(`select public.issue_sign_in_link($1, 'member_invite', $2, 72, $3)`, [
+    linkHash('b'),
+    memberAId,
+    adminId,
+  ]);
+  const inviteLifetime = await client.query(
+    `select extract(epoch from (expires_at - created_at)) / 3600 as hours
+     from public.sign_in_links where token_hash = $1`,
+    [linkHash('b')],
+  );
+  check('an invitation link lasts 72 hours', Number(inviteLifetime.rows[0].hours) === 72);
+
+  await client.query(`select public.issue_sign_in_link($1, 'recovery', $2, 48, $3)`, [
+    linkHash('c'),
+    memberAId,
+    adminId,
+  ]);
+  const resetLifetime = await client.query(
+    `select extract(epoch from (expires_at - created_at)) / 3600 as hours
+     from public.sign_in_links where token_hash = $1`,
+    [linkHash('c')],
+  );
+  check('a password reset link lasts 48 hours', Number(resetLifetime.rows[0].hours) === 48);
+
+  const redeem = async (seed) =>
+    (await client.query(`select * from public.redeem_sign_in_link($1)`, [linkHash(seed)])).rows;
+  check("a new link replaces the person's earlier one", (await redeem('b')).length === 0);
+  const redeemed = await redeem('c');
+  check(
+    'a link is redeemed for the person and purpose it was made for',
+    redeemed.length === 1 &&
+      redeemed[0].auth_user_id === memberAId &&
+      redeemed[0].purpose === 'recovery',
+  );
+  check('a link works once', (await redeem('c')).length === 0);
+
+  await client.query(`select public.issue_sign_in_link($1, 'recovery', $2, 48, $3)`, [
+    linkHash('d'),
+    memberAId,
+    adminId,
+  ]);
+  await client.query(
+    `update public.sign_in_links
+     set created_at = now() - interval '49 hours', expires_at = now() - interval '1 hour'
+     where token_hash = $1`,
+    [linkHash('d')],
+  );
+  check('a link past its time is refused', (await redeem('d')).length === 0);
+  await expectError(
+    'the table refuses a lifetime over 72 hours',
+    `update public.sign_in_links set expires_at = created_at + interval '73 hours' where token_hash = $1`,
+    [linkHash('d')],
+    'check constraint',
+  );
+  await expectDenied(
+    'anon cannot read sign-in links',
+    'anon',
+    'select token_hash from public.sign_in_links',
+  );
+  await expectDenied(
+    'members cannot read sign-in links',
+    'authenticated',
+    'select token_hash from public.sign_in_links',
+  );
+  const invitationDefault = await client.query(
+    `select column_default from information_schema.columns
+     where table_schema = 'public' and table_name = 'member_invitations' and column_name = 'expires_at'`,
+  );
+  check(
+    'a new invitation is open for 72 hours unless told otherwise',
+    /72:00:00|72 hours/.test(invitationDefault.rows[0].column_default),
+    invitationDefault.rows[0].column_default,
+  );
+
   // ---- Permanent delete (migration 0019) ------------------------------------
   // Only a superadmin deletes, every delete is recorded, points and stars stay,
   // and nothing can delete the record of it.
