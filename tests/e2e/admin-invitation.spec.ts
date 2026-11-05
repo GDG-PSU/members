@@ -660,6 +660,63 @@ test.describe('admin invitation and member setup', () => {
             .fill(invitedPassword);
           await inviteePage.getByRole('button', { name: 'Set new password' }).click();
           await expect(inviteePage).toHaveURL(/\/admin-mfa$/, { timeout: 30_000 });
+
+          // After the authenticator comes the profile their card will open. No
+          // admin page is reachable until it exists.
+          await inviteePage.getByRole('button', { name: 'Set up authenticator' }).click();
+          const inviteeSecret = inviteePage.locator('code');
+          await expect(inviteeSecret).toBeVisible();
+          await inviteePage
+            .getByLabel('Six-digit code')
+            .fill(totp(((await inviteeSecret.textContent()) ?? '').trim().toUpperCase()));
+          await inviteePage.getByRole('button', { name: 'Verify and open admin' }).click();
+          await expect(inviteePage).toHaveURL(/\/admin-setup$/, { timeout: 30_000 });
+          await inviteePage.goto('/admin/events');
+          await expect(inviteePage).toHaveURL(/\/admin-setup$/);
+
+          await inviteePage.getByLabel('Your name').fill('Invited Organizer');
+          await inviteePage.getByRole('button', { name: 'Save and continue' }).click();
+          await expect(inviteePage.getByText('Add a photo for your profile.')).toBeVisible({
+            timeout: 15_000,
+          });
+          await expect(inviteePage.getByLabel('Your name')).toHaveValue('Invited Organizer');
+
+          await inviteePage.locator('input[type="file"]').setInputFiles({
+            name: 'organizer.png',
+            mimeType: 'image/png',
+            buffer: Buffer.from(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+              'base64',
+            ),
+          });
+          await inviteePage.getByRole('button', { name: 'Save and continue' }).click();
+          await expect(inviteePage).toHaveURL(/\/admin\/profile/, { timeout: 30_000 });
+          await expect(inviteePage.getByText('Your profile is ready.')).toBeVisible();
+
+          const { data: organizer } = await supabase
+            .from('members')
+            .select('kind, status, member_profiles(profile_slug, display_name, photo_path)')
+            .eq('auth_user_id', invitedUserId)
+            .single();
+          const organizerProfile = organizer?.member_profiles as unknown as {
+            profile_slug: string;
+            display_name: string;
+            photo_path: string | null;
+          };
+          expect(organizer).toMatchObject({ kind: 'organizer', status: 'active' });
+          expect(organizerProfile.display_name).toBe('Invited Organizer');
+          expect(organizerProfile.photo_path).toBeTruthy();
+
+          // Their public page is an organizer's, with no points on it.
+          await inviteePage.goto(`/m/${organizerProfile.profile_slug}`);
+          await expect(
+            inviteePage.getByRole('heading', { name: 'Invited Organizer' }),
+          ).toBeVisible();
+          await expect(inviteePage.getByText('Organizer', { exact: true })).toBeVisible();
+          await expect(inviteePage.getByText('Lifetime stars')).toHaveCount(0);
+
+          await inviteePage.goto('/admin');
+          await expect(inviteePage).toHaveURL(/\/admin$/);
         } finally {
           await inviteeContext.close();
         }

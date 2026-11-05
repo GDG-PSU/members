@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowRight, CalendarDays, Link2, Lock, Star, Trophy } from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarDays, Link2, Lock, Star, Trophy } from 'lucide-react';
 import { buttonVariants, Card, CardContent, MemberAvatar, PageShell } from '@gdg/ui';
 import { getViewer } from '@/lib/auth/viewer';
 import { getProfileState, getPublicProfile } from '@/lib/public/queries';
@@ -19,13 +19,16 @@ export async function generateMetadata({
   if (!profile) {
     return { title: 'Member profile', robots: { index: false, follow: false } };
   }
+  const fallbackName = profile.kind === 'organizer' ? 'GDG@PSU organizer' : 'GDG@PSU member';
   return {
-    title: profile.displayName ?? 'GDG@PSU member',
+    title: profile.displayName ?? fallbackName,
     description:
       profile.about ??
-      `A GDG@PSU member${profile.memberSince ? ` since ${profile.memberSince}` : ''}.`,
+      (profile.kind === 'organizer'
+        ? 'A GDG@PSU organizer.'
+        : `A GDG@PSU member${profile.memberSince ? ` since ${profile.memberSince}` : ''}.`),
     openGraph: {
-      title: profile.displayName ?? 'GDG@PSU member',
+      title: profile.displayName ?? fallbackName,
       images: profile.photoUrl ? [profile.photoUrl] : undefined,
       type: 'profile',
     },
@@ -49,7 +52,8 @@ export default async function MemberProfilePage({
     return <PrivateProfile isOwner={viewer.member?.slug === profileSlug} />;
   }
 
-  const name = profile.displayName ?? 'GDG@PSU member';
+  const isOrganizer = profile.kind === 'organizer';
+  const name = profile.displayName ?? (isOrganizer ? 'GDG@PSU organizer' : 'GDG@PSU member');
   const hasStats =
     profile.points !== null || profile.stars !== null || profile.attendedEvents !== null;
 
@@ -62,6 +66,12 @@ export default async function MemberProfilePage({
             <div className="min-w-0 flex-1">
               <h1 className="type-h1">{name}</h1>
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {isOrganizer ? (
+                  <span className="inline-flex h-6 items-center gap-1.5 bg-primary px-2 text-xs font-semibold text-primary-foreground">
+                    <BadgeCheck className="size-3.5" aria-hidden />
+                    Organizer
+                  </span>
+                ) : null}
                 {profile.memberNumber ? (
                   <span className="inline-flex h-6 items-center bg-layer-accent px-2 font-mono text-xs text-foreground">
                     {profile.memberNumber}
@@ -156,7 +166,7 @@ export default async function MemberProfilePage({
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Visibility is managed by the member.
+          {isOrganizer ? 'A GDG@PSU organizer.' : 'Visibility is managed by the member.'}
         </p>
         <Link href="/leaderboard" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
           See the leaderboard

@@ -160,7 +160,7 @@ export async function getPublicProfile(slug: string): Promise<PublicProfile | nu
   const { data, error } = await supabase
     .from('public_profiles')
     .select(
-      'slug, display_name, photo_path, about, links, member_number, member_since, points, stars, attended_events, email, created_at',
+      'slug, kind, display_name, photo_path, about, links, member_number, member_since, points, stars, attended_events, email, created_at',
     )
     .eq('slug', slug)
     .maybeSingle();
@@ -179,6 +179,7 @@ export async function getPublicProfile(slug: string): Promise<PublicProfile | nu
 
   return {
     slug: data.slug as string,
+    kind: data.kind === 'organizer' ? 'organizer' : 'member',
     displayName: (data.display_name as string | null) ?? null,
     photoUrl: profilePhotoUrl((data.photo_path as string | null) ?? null),
     about: (data.about as string | null) ?? null,

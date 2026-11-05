@@ -49,7 +49,12 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
 
   const admin = createSupabaseAdmin();
   const [{ data: member }, { data: roleRows }] = await Promise.all([
-    admin.from('members').select('id, status').eq('auth_user_id', data.user.id).maybeSingle(),
+    admin
+      .from('members')
+      .select('id, status')
+      .eq('auth_user_id', data.user.id)
+      .eq('kind', 'member')
+      .maybeSingle(),
     admin
       .from('user_roles')
       .select('role')

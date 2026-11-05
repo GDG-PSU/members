@@ -9,6 +9,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (assurance?.currentLevel !== 'aal2') {
     redirect('/admin-mfa');
   }
+  // An organizer's card opens their profile, so a new one sets it up first.
+  if (!viewer.profile) {
+    redirect('/admin-setup');
+  }
 
   return (
     <main id="main">

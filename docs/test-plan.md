@@ -12,15 +12,15 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
 | Unit tests          | `pnpm test`                   | 67/67 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
-| Browser E2E         | `pnpm e2e`                    | 52 pass, 32 skipped; 42/42 on desktop Chromium |
-| Database/RLS/ledger | `pnpm db:verify`              | 76/76 pass on the local Supabase stack         |
+| Browser E2E         | `pnpm e2e`                    | 53 pass, 33 skipped; 43/43 on desktop Chromium |
+| Database/RLS/ledger | `pnpm db:verify`              | 83/83 pass on the local Supabase stack         |
 | Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
 | Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
 | Physical end to end | Browser app + real reader     | Pass on 2.0.2; see Hardware coverage           |
 | Camera QR scan      | Simulated camera, one-off     | Pass; check-in recorded as `qr`                |
 | Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
 
-The 32 skips are the signed-in specs on the mobile project, which run on desktop
+The 33 skips are the signed-in specs on the mobile project, which run on desktop
 only. On mobile, the 10 public specs pass, and one desktop test checks that member
 and admin pages fit a phone-width viewport.
 
@@ -38,6 +38,9 @@ disposable accounts it creates and removes:
   token refresh; signing out one device; recovery; suspension; user type changes.
 - **Members:** profile, photo and links, privacy settings, and forms keeping their
   values after a validation error.
+- **Organizers:** a new admin setting up their profile after the authenticator,
+  editing it, the public page with its Organizer badge, user type changes keeping
+  the profile and card, and organizers being refused points and check-in.
 - **Events:** the short form and its validation, the web address made from the
   name, the two attendance rules becoming the stored times, no time shift on save,
   publishing, cancelling and restoring, and adding and removing a bonus session.

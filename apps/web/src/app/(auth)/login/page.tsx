@@ -51,7 +51,9 @@ export default async function LoginPage({
           </div>
 
           <div className="mt-5">
-            <LoginForm next={next} />
+            <LoginForm
+              next={safeReturnPath(next, 'member') ?? safeReturnPath(next, 'admin') ?? undefined}
+            />
           </div>
 
           <div className="my-6 border-t border-border" />

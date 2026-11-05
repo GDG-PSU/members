@@ -8,7 +8,7 @@ import {
   visibilitySchema,
   type Visibility,
 } from '@gdg/contracts';
-import { requireMember } from '@/lib/auth/viewer';
+import { requireMember, requireProfile } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { storeProfilePhoto, PhotoError } from '@/lib/profile/photo';
 
@@ -48,7 +48,8 @@ export async function updateProfileAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { member, user } = await requireMember();
+  const { profile: own, user } = await requireProfile();
+  const member = { id: own.memberId, slug: own.slug, photoPath: own.photoPath };
   const admin = createSupabaseAdmin();
 
   let links: unknown = [];
@@ -72,13 +73,16 @@ export async function updateProfileAction(
     .select('photo_path, display_name, about, links')
     .eq('member_id', member.id)
     .maybeSingle();
-  const previousPhotoPath = (current?.photo_path as string | undefined) ?? member.photoPath;
-  if (!previousPhotoPath) {
+  const previousPhotoPath = (current?.photo_path as string | null | undefined) ?? member.photoPath;
+  const photo = formData.get('photo');
+  const hasNewPhoto = photo instanceof File && photo.size > 0;
+  // The kiosk checks a member against their photo. An organizer is never checked
+  // in, so theirs can wait.
+  if (!previousPhotoPath && !hasNewPhoto && own.kind === 'member') {
     return { error: 'Add a clear photo of your face before saving.' };
   }
 
   let newPhotoPath: string | null = null;
-  const photo = formData.get('photo');
   if (photo instanceof File && photo.size > 0) {
     try {
       newPhotoPath = await storeProfilePhoto(photo, user.id);
@@ -132,6 +136,7 @@ export async function updateProfileAction(
 
   revalidatePath('/member/profile');
   revalidatePath('/member');
+  revalidatePath('/admin/profile');
   revalidatePath(`/m/${member.slug}`);
   return { ok: true, message: 'Profile saved.' };
 }
@@ -140,7 +145,8 @@ export async function updatePrivacyAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { member, user } = await requireMember();
+  const { profile: own, user } = await requireProfile();
+  const member = { id: own.memberId, slug: own.slug };
   const admin = createSupabaseAdmin();
 
   const input = Object.fromEntries(

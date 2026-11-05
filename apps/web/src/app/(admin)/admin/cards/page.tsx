@@ -35,7 +35,7 @@ export default async function CardsPage({
       .limit(100),
     admin
       .from('members')
-      .select('id, public_number, member_profiles(display_name)')
+      .select('id, kind, public_number, member_profiles(display_name)')
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(300),
@@ -47,7 +47,10 @@ export default async function CardsPage({
       : row.member_profiles;
     return {
       id: row.id as string,
-      label: `${(profile?.display_name as string) ?? 'Member'} · ${row.public_number as string}`,
+      label:
+        row.kind === 'organizer'
+          ? `${(profile?.display_name as string) ?? 'Organizer'} · organizer`
+          : `${(profile?.display_name as string) ?? 'Member'} · ${row.public_number as string}`,
     };
   });
 

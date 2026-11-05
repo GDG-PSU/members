@@ -107,7 +107,7 @@ const client = new Client({
 });
 await client.connect();
 const { rows: memberRows } = await client.query(
-  `select 1 from public.members where auth_user_id = $1`,
+  `select 1 from public.members where auth_user_id = $1 and kind = 'member'`,
   [user.id],
 );
 if (memberRows.length > 0) {
@@ -129,6 +129,11 @@ await client.query(
   `update public.user_roles set revoked_at = now()
    where auth_user_id = $1 and role <> $2 and revoked_at is null`,
   [user.id, role],
+);
+// Staff whose access was revoked keep a switched-off profile; bring it back.
+await client.query(
+  `update public.members set status = 'active' where auth_user_id = $1 and kind = 'organizer'`,
+  [user.id],
 );
 await client.query(
   `insert into public.audit_log (actor_auth_id, action, target_type, target_id, after)
@@ -181,4 +186,6 @@ if (recovery.ok) {
     'Role granted, but the recovery link could not be generated. Re-run this command to try again.',
   );
 }
-console.log('The user must set a password, then enroll TOTP at /admin-mfa before /admin opens.');
+console.log(
+  'The user sets a password, enrolls TOTP at /admin-mfa, then sets up their profile before /admin opens.',
+);

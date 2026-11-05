@@ -121,6 +121,8 @@ export type SetupCompletion = z.infer<typeof setupCompletionSchema>;
 
 export interface PublicProfile {
   slug: string;
+  /** An organizer has a profile and a card, but no number, points or attendance. */
+  kind: ProfileKind;
   displayName: string | null;
   photoUrl: string | null;
   about: string | null;
@@ -133,6 +135,8 @@ export interface PublicProfile {
   email: string | null;
   createdAt: string;
 }
+
+export type ProfileKind = 'member' | 'organizer';
 
 export interface LeaderboardEntry {
   rank: number;

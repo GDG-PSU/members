@@ -96,7 +96,8 @@ pnpm db:bootstrap-admin --email <you>@psu.edu --role superadmin --site-url https
 
 The link works once and expires with the project's OTP window, so generate it when
 it will be used. Open it, press Continue, set a password, enroll TOTP at
-`/admin-mfa`, and confirm the hosted admin dashboard opens. Delete the file afterward, and do not send the
+`/admin-mfa`, set up the profile your card will open, and confirm the hosted admin
+dashboard opens. Delete the file afterward, and do not send the
 link through this repository or chat.
 
 ## 5. USB reader deployment

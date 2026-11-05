@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     .maybeSingle();
   if (error || !profile) return missing();
   const member = Array.isArray(profile.members) ? profile.members[0] : profile.members;
-  if (!member) return missing();
+  if (!member || !profile.photo_path) return missing();
 
   let allowed = member.status === 'active' && profile.public_profile && profile.show_photo;
   if (!allowed) {

@@ -41,7 +41,11 @@ export default async function AdminOverviewPage({
   }
 
   const [members, invites, redemptions, rewards, recentAudit] = await Promise.all([
-    admin.from('members').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+    admin
+      .from('members')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .eq('kind', 'member'),
     invitesQuery,
     admin
       .from('redemptions')

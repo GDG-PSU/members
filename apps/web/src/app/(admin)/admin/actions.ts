@@ -188,11 +188,19 @@ export async function createInvitationAction(
 
   const { data: memberExists } = await admin
     .from('member_private')
-    .select('member_id')
+    .select('member_id, members(kind)')
     .eq('email', parsed.data.email)
     .maybeSingle();
   if (memberExists) {
-    return { error: 'That email already belongs to a member.' };
+    const owner = Array.isArray(memberExists.members)
+      ? memberExists.members[0]
+      : memberExists.members;
+    return {
+      error:
+        owner?.kind === 'organizer'
+          ? 'That email already has staff access. Change their user type from Users instead.'
+          : 'That email already belongs to a member.',
+    };
   }
 
   const redirectTo = `${SITE_URL}/auth/callback?next=/invite/accept`;
@@ -330,7 +338,12 @@ export async function inviteAdministratorAction(
       .eq('auth_user_id', authUserId)
       .in('role', ['admin', 'superadmin'])
       .is('revoked_at', null),
-    admin.from('members').select('id').eq('auth_user_id', authUserId).maybeSingle(),
+    admin
+      .from('members')
+      .select('id')
+      .eq('auth_user_id', authUserId)
+      .eq('kind', 'member')
+      .maybeSingle(),
   ]);
   if (existingMember) {
     if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
@@ -376,6 +389,14 @@ export async function inviteAdministratorAction(
     .eq('email', email)
     .eq('status', 'pending');
 
+  // Staff whose access was revoked keep an archived profile; inviting them
+  // again brings it back, card included.
+  await admin
+    .from('members')
+    .update({ status: 'active' })
+    .eq('auth_user_id', authUserId)
+    .eq('kind', 'organizer');
+
   await audit(user.id, 'admin.invited', 'user', authUserId, null, null, {
     email,
     role,
@@ -410,28 +431,20 @@ export async function changeUserRoleAction(formData: FormData) {
       .eq('auth_user_id', authUserId.data)
       .in('role', ['admin', 'superadmin'])
       .is('revoked_at', null),
-    admin.from('members').select('id, status').eq('auth_user_id', authUserId.data).maybeSingle(),
+    admin
+      .from('members')
+      .select('id, status, kind')
+      .eq('auth_user_id', authUserId.data)
+      .maybeSingle(),
   ]);
   const currentType = beforeRoles?.some((row) => row.role === 'superadmin')
     ? 'superadmin'
     : beforeRoles?.length
       ? 'admin'
-      : beforeMember
+      : beforeMember?.kind === 'member'
         ? 'member'
         : null;
-  // The database call reactivates a member's row, so a save that changes
-  // nothing would quietly lift a suspension.
   if (currentType === role.data) fail(returnTo, 'That is already their user type.');
-
-  let beforePhotoPath: string | null = null;
-  if (beforeMember) {
-    const { data: beforeProfile } = await admin
-      .from('member_profiles')
-      .select('photo_path')
-      .eq('member_id', beforeMember.id)
-      .maybeSingle();
-    beforePhotoPath = (beforeProfile?.photo_path as string | null) ?? null;
-  }
 
   const { data, error } = await admin.rpc('set_user_type', {
     p_auth_user_id: authUserId.data,
@@ -449,15 +462,10 @@ export async function changeUserRoleAction(formData: FormData) {
 
   const result = (data ?? {}) as {
     role?: string;
-    member_removed?: boolean;
+    history_removed?: boolean;
+    profile_removed?: boolean;
     invitation_id?: string | null;
   };
-  if (result.member_removed && beforePhotoPath) {
-    const { error: photoError } = await admin.storage.from('avatars').remove([beforePhotoPath]);
-    if (photoError) {
-      console.error(`[user-role] member photo cleanup failed: ${photoError.message}`);
-    }
-  }
   const label =
     role.data === 'superadmin' ? 'superadmin' : role.data === 'admin' ? 'admin' : 'member';
   const message =
@@ -465,8 +473,8 @@ export async function changeUserRoleAction(formData: FormData) {
       ? result.invitation_id
         ? 'Changed to member. They can finish member setup on their next sign-in.'
         : 'Changed to member.'
-      : result.member_removed
-        ? `Changed to ${label}. Their member profile was deleted.`
+      : result.history_removed
+        ? `Changed to ${label}. Their profile and card were kept; their points and attendance history were removed.`
         : `Changed to ${label}.`;
 
   await audit(
@@ -482,7 +490,8 @@ export async function changeUserRoleAction(formData: FormData) {
     },
     {
       role: role.data,
-      member_removed: Boolean(result.member_removed),
+      history_removed: Boolean(result.history_removed),
+      profile_removed: Boolean(result.profile_removed),
       invitation_id: result.invitation_id ?? null,
     },
   );
@@ -506,10 +515,19 @@ export async function revokeUserAccessAction(formData: FormData) {
       .eq('auth_user_id', authUserId.data)
       .in('role', ['admin', 'superadmin'])
       .is('revoked_at', null),
-    admin.from('members').select('id, status').eq('auth_user_id', authUserId.data).maybeSingle(),
+    admin
+      .from('members')
+      .select('id, status, kind')
+      .eq('auth_user_id', authUserId.data)
+      .maybeSingle(),
   ]);
+  // An organizer's row is their staff profile and card, so it goes with their
+  // staff access and is not a membership of its own.
+  const isMember = member?.kind === 'member';
 
-  if (!roles?.length && !member) fail(returnTo, 'That user has no active access.');
+  if (!roles?.length && (!member || (!isMember && member.status === 'archived'))) {
+    fail(returnTo, 'That user has no active access.');
+  }
   if (roles?.length && !viewer.isSuperadmin) {
     fail(returnTo, 'Only superadmins can revoke staff access.');
   }
@@ -517,13 +535,8 @@ export async function revokeUserAccessAction(formData: FormData) {
     fail(returnTo, 'That member is already archived.');
   }
 
-  if (member) {
-    const { error } = await admin
-      .from('members')
-      .update({ status: 'archived' })
-      .eq('id', member.id);
-    if (error) fail(returnTo, 'Member access could not be revoked.');
-  }
+  // Staff roles first: if the last-superadmin guard refuses, the profile and card
+  // must not have been switched off already.
   if (roles?.length) {
     const { error } = await admin
       .from('user_roles')
@@ -539,6 +552,13 @@ export async function revokeUserAccessAction(formData: FormData) {
           : 'Staff access could not be revoked.',
       );
     }
+  }
+  if (member) {
+    const { error } = await admin
+      .from('members')
+      .update({ status: 'archived' })
+      .eq('id', member.id);
+    if (error) fail(returnTo, 'Member access could not be revoked.');
   }
 
   await audit(
@@ -559,9 +579,9 @@ export async function revokeUserAccessAction(formData: FormData) {
   );
   succeed(
     returnTo,
-    member && roles?.length
+    isMember && roles?.length
       ? 'Member and staff access revoked.'
-      : member
+      : isMember
         ? 'Member access revoked.'
         : 'Staff access revoked.',
     ['/admin', '/admin/users', '/member'],
@@ -831,7 +851,7 @@ async function startKioskScan(input: {
   const { data: member } = await admin
     .from('members')
     .select(
-      'id, status, public_number, member_profiles(display_name, profile_slug, photo_changed_at)',
+      'id, kind, status, public_number, member_profiles(display_name, profile_slug, photo_changed_at)',
     )
     .eq('id', input.memberId)
     .maybeSingle();
@@ -840,6 +860,9 @@ async function startKioskScan(input: {
     : member?.member_profiles;
   if (!member || member.status !== 'active') {
     return { error: 'That member is not active.' };
+  }
+  if (member.kind !== 'member') {
+    return { error: 'That is an organizer. Organizers are not checked in to events.' };
   }
 
   const { data: session } = await admin
@@ -1043,6 +1066,7 @@ export async function searchKioskMembersAction(query: string): Promise<KioskMemb
       .select('display_name, profile_slug, members!inner(id, status, public_number)')
       .ilike('display_name', pattern)
       .eq('members.status', 'active')
+      .eq('members.kind', 'member')
       .order('display_name')
       .limit(8),
     admin
@@ -1050,6 +1074,7 @@ export async function searchKioskMembersAction(query: string): Promise<KioskMemb
       .select('id, public_number, member_profiles!inner(display_name, profile_slug)')
       .ilike('public_number', pattern)
       .eq('status', 'active')
+      .eq('kind', 'member')
       .order('public_number')
       .limit(8),
   ]);

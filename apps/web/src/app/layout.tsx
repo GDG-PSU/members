@@ -58,7 +58,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           Skip to content
         </a>
         <AppHeader
-          displayName={viewer?.member?.displayName ?? null}
+          displayName={viewer?.profile?.displayName ?? viewer?.member?.displayName ?? null}
+          isMember={Boolean(viewer?.member)}
           isAdmin={viewer?.isAdmin ?? false}
           isSignedIn={Boolean(viewer?.user)}
         />

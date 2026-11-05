@@ -92,6 +92,8 @@ export default async function UsersPage({
       .select(
         'id, auth_user_id, status, public_number, member_since, created_at, member_profiles(profile_slug, display_name, photo_path), member_private(email)',
       )
+      // Organizers have a profile row too, but they are listed as staff below.
+      .eq('kind', 'member')
       .order('member_since', { ascending: false })
       .limit(500),
     inviteQuery,
@@ -142,11 +144,30 @@ export default async function UsersPage({
       .map((row) => row.target_id as string),
   );
 
+  // A staff member's own profile gives them a real name and photo in this list.
+  const { data: organizerRows } =
+    staffOnlyAuthIds.length > 0
+      ? await admin
+          .from('members')
+          .select('auth_user_id, member_profiles(profile_slug, display_name, photo_path)')
+          .eq('kind', 'organizer')
+          .in('auth_user_id', staffOnlyAuthIds)
+      : { data: [] };
+  const organizerByAuth = new Map(
+    (organizerRows ?? []).map((row) => {
+      const profile = Array.isArray(row.member_profiles)
+        ? row.member_profiles[0]
+        : row.member_profiles;
+      return [row.auth_user_id as string, profile] as const;
+    }),
+  );
+
   const staffOnlyUsers: UserRow[] = await Promise.all(
     staffOnlyAuthIds.map(async (authUserId) => {
       const { data } = await admin.auth.admin.getUserById(authUserId);
       const authUser = data.user;
       const staff = staffByAuth.get(authUserId);
+      const organizer = organizerByAuth.get(authUserId);
       return {
         key: `user:${authUserId}`,
         kind: 'staff' as const,
@@ -154,10 +175,13 @@ export default async function UsersPage({
         memberId: null,
         invitationId: null,
         name:
+          (organizer?.display_name as string | undefined) ??
           metadataName(authUser?.user_metadata) ??
           (staff?.role === 'superadmin' ? 'Superadmin' : 'Administrator'),
         email: authUser?.email ?? 'No email',
-        photo: null,
+        photo: organizer?.photo_path
+          ? profilePhotoUrl((organizer.profile_slug as string) ?? null)
+          : null,
         memberNumber: null,
         memberSince: null,
         memberStatus: null,

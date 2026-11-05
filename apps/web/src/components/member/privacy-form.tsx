@@ -29,7 +29,22 @@ const fields: { key: keyof Visibility; label: string; description: string }[] = 
   },
 ];
 
-export function PrivacyForm({ initial: initialSettings }: { initial: Visibility }) {
+const ORGANIZER_FIELDS: (keyof Visibility)[] = [
+  'showDisplayName',
+  'showPhoto',
+  'showAbout',
+  'showLinks',
+  'showEmail',
+];
+
+export function PrivacyForm({
+  initial: initialSettings,
+  organizer = false,
+}: {
+  initial: Visibility;
+  /** Organizers have no number, points or leaderboard place to show. */
+  organizer?: boolean;
+}) {
   const [state, action, pending] = useActionState(updatePrivacyAction, initial);
   const [settings, setSettings] = useState<Visibility>(initialSettings);
 
@@ -57,11 +72,14 @@ export function PrivacyForm({ initial: initialSettings }: { initial: Visibility 
           </div>
 
           <div className="divide-y divide-border">
-            {fields.map((field) => (
+            {(organizer
+              ? fields.filter((field) => ORGANIZER_FIELDS.includes(field.key))
+              : fields
+            ).map((field) => (
               <div key={field.key} className="py-0.5">
                 <VisibilityControl
                   label={field.label}
-                  description={field.description}
+                  description={organizer ? '' : field.description}
                   checked={settings[field.key]}
                   disabled={!settings.publicProfile}
                   onChange={(value) => set(field.key, value)}

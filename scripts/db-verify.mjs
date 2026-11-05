@@ -718,6 +718,119 @@ try {
   const bucket = await client.query(`select public from storage.buckets where id = 'avatars'`);
   check('avatar bucket is private', bucket.rows[0]?.public === false);
 
+  // ---- Organizer profiles ---------------------------------------------------
+  const organizer = await client.query(
+    `select public.complete_staff_profile($1, 'verify-organizer-slug-cccccc', 'GDG-VRFC03', 'Verify Organizer', null, '', false) as id`,
+    [adminId],
+  );
+  const organizerId = organizer.rows[0].id;
+  // Even with every switch on, an organizer shows no member numbers.
+  await client.query(
+    `update public.member_profiles
+     set show_points = true, show_stars = true, show_events = true, show_on_leaderboard = true,
+         show_member_number = true, show_member_since = true
+     where member_id = $1`,
+    [organizerId],
+  );
+  const organizerView = await client.query(
+    `select kind, photo_path, member_number, member_since, points, stars, attended_events
+     from public.public_profiles where slug = 'verify-organizer-slug-cccccc'`,
+  );
+  const shown = organizerView.rows[0] ?? {};
+  check(
+    'an organizer has a public profile with no member numbers on it',
+    shown.kind === 'organizer' &&
+      shown.photo_path === null &&
+      shown.member_number === null &&
+      shown.member_since === null &&
+      shown.points === null &&
+      shown.stars === null &&
+      shown.attended_events === null,
+  );
+  const board = await client.query(`select slug from public.leaderboard`);
+  check(
+    'organizers never appear on the leaderboard',
+    !board.rows.some((row) => row.slug === 'verify-organizer-slug-cccccc'),
+  );
+
+  let organizerPointsBlocked = false;
+  await client.query('savepoint organizer_points');
+  try {
+    await client.query(
+      `select public.grant_points($1, 5, 'interaction_reward', 'verify:organizer', 'Not allowed', $2)`,
+      [organizerId, adminId],
+    );
+  } catch (error) {
+    organizerPointsBlocked = /organizer_has_no_member_activity/.test(error.message);
+  }
+  await client.query('rollback to savepoint organizer_points');
+  check('an organizer can never be given points', organizerPointsBlocked);
+
+  let memberPhotoRequired = false;
+  await client.query('savepoint member_photo');
+  try {
+    await client.query('update public.member_profiles set photo_path = null where member_id = $1', [
+      memberA,
+    ]);
+  } catch (error) {
+    memberPhotoRequired = /photo_required/.test(error.message);
+  }
+  await client.query('rollback to savepoint member_photo');
+  check('a member profile cannot lose its photo', memberPhotoRequired);
+
+  await client.query('savepoint promote_member');
+  const promoted = await client.query(`select public.set_user_type($1, 'admin', $2) as result`, [
+    memberAId,
+    adminId,
+  ]);
+  const afterPromotion = await client.query(
+    `select (select kind from public.members where id = $1) as kind,
+            (select count(*)::int from public.member_profiles where member_id = $1) as profile,
+            (select count(*)::int from public.point_ledger where member_id = $1) as ledger,
+            (select count(*)::int from public.star_ledger where member_id = $1) as stars`,
+    [memberA],
+  );
+  check(
+    'promoting a member keeps their profile and removes their points',
+    promoted.rows[0].result.history_removed === true &&
+      afterPromotion.rows[0].kind === 'organizer' &&
+      afterPromotion.rows[0].profile === 1 &&
+      afterPromotion.rows[0].ledger === 0 &&
+      afterPromotion.rows[0].stars === 0,
+  );
+  // With a photo on file, the same profile becomes a member's again.
+  const demoted = await client.query(`select public.set_user_type($1, 'member', $2) as result`, [
+    memberAId,
+    adminId,
+  ]);
+  const afterDemotion = await client.query(`select kind from public.members where id = $1`, [
+    memberA,
+  ]);
+  check(
+    'demoting staff with a photo turns their profile back into a member profile',
+    demoted.rows[0].result.member_id === memberA &&
+      demoted.rows[0].result.invitation_id === null &&
+      afterDemotion.rows[0].kind === 'member',
+  );
+  await client.query('rollback to savepoint promote_member');
+
+  await client.query('savepoint demote_placeholder');
+  const placeholder = await client.query(
+    `select public.set_user_type($1, 'member', $1) as result`,
+    [adminId],
+  );
+  const afterPlaceholder = await client.query(
+    `select count(*)::int as n from public.members where id = $1`,
+    [organizerId],
+  );
+  check(
+    'demoting staff without a photo sends them through member setup',
+    placeholder.rows[0].result.profile_removed === true &&
+      placeholder.rows[0].result.invitation_id !== null &&
+      afterPlaceholder.rows[0].n === 0,
+  );
+  await client.query('rollback to savepoint demote_placeholder');
+
   await client.query('savepoint anon_ctx');
   await client.query('set local role anon');
   let anonLedgerDenied = false;

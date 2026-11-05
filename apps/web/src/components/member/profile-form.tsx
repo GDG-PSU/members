@@ -14,6 +14,8 @@ interface ProfileFormProps {
   initialAbout: string;
   initialLinks: { label: string; url: string }[];
   photoUrl: string | null;
+  /** Organizers are never checked in, so their photo is not an identity check. */
+  organizer?: boolean;
 }
 
 export function ProfileForm({
@@ -21,6 +23,7 @@ export function ProfileForm({
   initialAbout,
   initialLinks,
   photoUrl,
+  organizer = false,
 }: ProfileFormProps) {
   const [state, action, pending] = useActionState(updateProfileAction, initial);
   const [links, setLinks] = useState(initialLinks.length > 0 ? initialLinks : []);
@@ -70,7 +73,7 @@ export function ProfileForm({
                     className: 'cursor-pointer',
                   })}
                 >
-                  Change face photo
+                  {organizer ? (photoUrl ? 'Change photo' : 'Add a photo') : 'Change face photo'}
                 </label>
                 <input
                   id="profile-photo"
@@ -93,7 +96,9 @@ export function ProfileForm({
                   }}
                 />
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  Clear, front-facing photo · max 2 MB. A new photo triggers a PSU ID check.
+                  {organizer
+                    ? 'JPEG, PNG or WebP · max 2 MB · cropped to a square.'
+                    : 'Clear, front-facing photo · max 2 MB. A new photo triggers a PSU ID check.'}
                 </p>
               </div>
             </div>

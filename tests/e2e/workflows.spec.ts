@@ -1522,7 +1522,7 @@ test.describe('every member and organizer workflow', () => {
     await expect(memberPage.getByText('Marked lost.')).toBeVisible();
   });
 
-  test('user types convert both ways, with the member flow on demotion', async ({ browser }) => {
+  test('user types convert both ways and keep the profile and card', async ({ browser }) => {
     const client = supabase();
     const { data: invitation } = await client
       .from('member_invitations')
@@ -1532,6 +1532,24 @@ test.describe('every member and organizer workflow', () => {
       .single();
     const secondAuthId = invitation?.auth_user_id as string;
     const secondRow = () => superPage.getByRole('row').filter({ hasText: people.second.email });
+    const secondMember = async () => {
+      const { data } = await client
+        .from('members')
+        .select('id, kind, status, member_profiles(profile_slug, photo_path)')
+        .eq('auth_user_id', secondAuthId)
+        .single();
+      const profile = data?.member_profiles as unknown as {
+        profile_slug: string;
+        photo_path: string | null;
+      };
+      return { id: data?.id as string, kind: data?.kind, status: data?.status, ...profile };
+    };
+    const before = await secondMember();
+    const { count: pointsBefore } = await client
+      .from('point_ledger')
+      .select('id', { count: 'exact', head: true })
+      .eq('member_id', before.id);
+    expect(pointsBefore).toBeGreaterThan(0);
 
     // A normal admin can revoke a member, and that member can no longer sign in.
     await adminPage.goto('/admin/users');
@@ -1547,46 +1565,142 @@ test.describe('every member and organizer workflow', () => {
       timeout: 15_000,
     });
 
-    // Member -> admin removes the member data and keeps the account.
+    // Member -> admin keeps the profile and card, and drops the points.
     await superPage.goto('/admin/users');
     await secondRow()
       .getByRole('combobox', { name: /User type for/ })
       .selectOption('admin');
     await secondRow().getByRole('button', { name: 'Save' }).click();
-    await expect(superPage.getByText('Their member profile was deleted.')).toBeVisible({
-      timeout: 15_000,
+    await expect(
+      superPage.getByText(
+        'Their profile and card were kept; their points and attendance history were removed.',
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+    const promoted = await secondMember();
+    expect(promoted).toMatchObject({
+      id: before.id,
+      kind: 'organizer',
+      status: 'active',
+      profile_slug: before.profile_slug,
+      photo_path: before.photo_path,
     });
-    const { data: gone } = await client
-      .from('members')
-      .select('id')
-      .eq('auth_user_id', secondAuthId);
-    expect(gone).toHaveLength(0);
-    const { data: stillThere } = await client.auth.admin.getUserById(secondAuthId);
-    expect(stillThere.user?.email).toBe(people.second.email);
+    for (const table of ['point_ledger', 'star_ledger', 'attendance_records']) {
+      const { count } = await client
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('member_id', before.id);
+      expect(count).toBe(0);
+    }
 
+    // Their page now says Organizer, with no points, and they are off the board.
+    await anonPage.goto(`/m/${before.profile_slug}`);
+    await expect(anonPage.getByRole('heading', { name: 'Second Member' })).toBeVisible();
+    await expect(anonPage.getByText('Organizer', { exact: true })).toBeVisible();
+    await expect(anonPage.getByText('Lifetime stars')).toHaveCount(0);
+    await anonPage.goto('/leaderboard');
+    await expect(anonPage.getByText('Second Member')).toHaveCount(0);
+
+    // An organizer is never checked in, by search or by their QR code.
+    await adminPage.goto(`/admin/kiosk?session=${mainSessionId}`);
+    await adminPage.locator('#kiosk-search').fill('second mem');
+    await expect(adminPage.getByText('No active member matches.')).toBeVisible({ timeout: 15_000 });
+    await adminPage.locator('#kiosk-search').fill(`${origin}/m/${before.profile_slug}`);
+    await adminPage.locator('#kiosk-search').press('Enter');
+    await expect(adminPage.getByText('That is an organizer.')).toBeVisible({ timeout: 15_000 });
+    // The database refuses too, whatever the app does.
+    const { error: pointsError } = await client.rpc('grant_points', {
+      p_member_id: before.id,
+      p_points: 5,
+      p_kind: 'interaction_reward',
+      p_source_key: `wf:organizer:${stamp}`,
+      p_description: 'Must be refused',
+    });
+    expect(pointsError?.message).toContain('organizer_has_no_member_activity');
+
+    // They sign in as staff, and their kept profile means no setup step.
     await signIn(second, people.second.email, people.second.password);
-    await expect(second).toHaveURL(/\/admin-mfa/, { timeout: 20_000 });
+    await enrollTotp(second);
+    await second.goto('/admin/profile');
+    await expect(second.getByRole('heading', { name: 'My profile' })).toBeVisible();
 
-    // Admin -> member keeps the password and opens member setup again.
+    // Admin -> member turns the same profile back into a member's, with no setup.
     await superPage.goto('/admin/users');
     await secondRow()
       .getByRole('combobox', { name: /User type for/ })
       .selectOption('member');
     await secondRow().getByRole('button', { name: 'Save' }).click();
     await expect(superPage.getByText('Changed to member.')).toBeVisible({ timeout: 15_000 });
-
-    await second.goto('/invite/accept');
-    await expect(second.getByRole('heading', { name: 'Make it yours' })).toBeVisible();
-    await expect(second.locator('input[name="password"]')).toHaveCount(0);
-    await second.locator('input[type="file"]').setInputFiles({
-      name: 'avatar.png',
-      mimeType: 'image/png',
-      buffer: PHOTO,
+    expect(await secondMember()).toMatchObject({
+      id: before.id,
+      kind: 'member',
+      status: 'active',
+      profile_slug: before.profile_slug,
     });
-    await fillSetup(second, 'Second Member Again');
-    await second.getByRole('button', { name: 'Create my profile' }).click();
-    await expect(second).toHaveURL(/\/member\?welcome=1/, { timeout: 30_000 });
-    await expect(second.getByRole('heading', { name: 'Second Member Again' })).toBeVisible();
+    await second.goto('/member');
+    await expect(second.getByRole('heading', { name: 'Second Member' })).toBeVisible();
+    await second.goto('/admin');
+    await expect(second).not.toHaveURL(/\/admin$/);
+
+    // Saving the same type again changes nothing, so a suspension cannot be lifted by it.
+    await secondRow().getByRole('button', { name: 'Save' }).click();
+    await expect(superPage.getByText('That is already their user type.')).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test('an organizer has a profile of their own, and staff emails cannot be invited as members', async () => {
+    const client = supabase();
+    const { data: ownPrivate } = await client
+      .from('member_private')
+      .select('member_id')
+      .eq('email', people.superadmin.email)
+      .single();
+    const { data: own } = await client
+      .from('members')
+      .select('kind, member_profiles(profile_slug, photo_path)')
+      .eq('id', ownPrivate?.member_id as string)
+      .single();
+    const slug = (own?.member_profiles as unknown as { profile_slug: string }).profile_slug;
+    expect(own?.kind).toBe('organizer');
+
+    // Their name in the header opens their own profile.
+    await superPage.goto('/admin');
+    await superPage.locator('header a[href="/admin/profile"]').first().click();
+    await expect(superPage).toHaveURL(/\/admin\/profile$/);
+    // An organizer has no number, points or leaderboard place to show or hide.
+    const settings = superPage.locator('main');
+    await expect(settings.getByText('Member number')).toHaveCount(0);
+    await expect(settings.getByText('Leaderboard', { exact: true })).toHaveCount(0);
+    await expect(settings.getByText('Email address')).toBeVisible();
+
+    // No photo is needed to save, unlike a member's profile.
+    await superPage.locator('#profile-name').fill('Olive Organizer');
+    await superPage.getByRole('button', { name: 'Save profile' }).click();
+    await expect(superPage.getByText('Profile saved.')).toBeVisible({ timeout: 15_000 });
+
+    await anonPage.goto(`/m/${slug}`);
+    await expect(anonPage.getByRole('heading', { name: 'Olive Organizer' })).toBeVisible();
+    await expect(anonPage.getByText('Organizer', { exact: true })).toBeVisible();
+    await expect(anonPage.getByText('Spendable points')).toHaveCount(0);
+
+    // The Users list shows the name they chose.
+    await superPage.goto('/admin/users');
+    await expect(
+      superPage.getByRole('row').filter({ hasText: people.superadmin.email }),
+    ).toContainText('Olive Organizer');
+
+    // A staff email is refused as a member before any link is generated.
+    await adminPage.goto('/admin/invitations');
+    await adminPage.locator('#invite-email').fill(people.superadmin.email);
+    await adminPage.locator('#invite-paid-since').fill('2026-01-15');
+    await adminPage.getByRole('button', { name: 'Generate invitation link' }).click();
+    await expect(adminPage.getByText('That email already has staff access.')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // The member area is not theirs.
+    await superPage.goto('/member');
+    await expect(superPage).toHaveURL(/\/admin$/);
   });
 
   test('a returning staff member verifies TOTP, and the audit log records the work', async ({

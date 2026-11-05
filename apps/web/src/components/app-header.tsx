@@ -22,10 +22,12 @@ const publicLinks = [
 
 export function AppHeader({
   displayName,
+  isMember,
   isAdmin,
   isSignedIn,
 }: {
   displayName: string | null;
+  isMember: boolean;
   isAdmin: boolean;
   isSignedIn: boolean;
 }) {
@@ -35,14 +37,24 @@ export function AppHeader({
   const showAdmin = isSignedIn && isAdmin;
   const links = [
     ...publicLinks,
-    ...(isSignedIn ? [{ href: '/member', label: 'My dashboard' }] : []),
+    // Organizers have no member dashboard; theirs is the admin area.
+    ...(isSignedIn && (isMember || !isAdmin) ? [{ href: '/member', label: 'My dashboard' }] : []),
   ];
-  const mobileLinks = [...links, ...(showAdmin ? [{ href: '/admin', label: 'Admin' }] : [])];
+  const mobileLinks = [
+    ...links,
+    ...(showAdmin
+      ? [
+          { href: '/admin', label: 'Admin' },
+          { href: '/admin/profile', label: 'My profile' },
+        ]
+      : []),
+  ];
   const onAuthPage =
     pathname === '/login' ||
     pathname === '/forgot-password' ||
     pathname === '/account/password' ||
     pathname === '/admin-mfa' ||
+    pathname === '/admin-setup' ||
     pathname.startsWith('/invite/');
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -94,9 +106,18 @@ export function AppHeader({
           ) : null}
           {isSignedIn ? (
             <>
-              <span className="hidden max-w-[9rem] truncate px-2 text-xs text-[#c6c6c6] lg:block">
-                {displayName ?? (isAdmin ? 'Organizer' : 'Member')}
-              </span>
+              {showAdmin ? (
+                <Link
+                  href="/admin/profile"
+                  className="hidden max-w-[9rem] truncate px-2 text-xs text-[#c6c6c6] underline-offset-4 hover:text-white hover:underline lg:block"
+                >
+                  {displayName ?? 'My profile'}
+                </Link>
+              ) : (
+                <span className="hidden max-w-[9rem] truncate px-2 text-xs text-[#c6c6c6] lg:block">
+                  {displayName ?? 'Member'}
+                </span>
+              )}
               <form action="/api/auth/signout" method="post" className="hidden sm:block">
                 <button
                   type="submit"

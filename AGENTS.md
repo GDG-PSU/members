@@ -101,15 +101,30 @@ without an explicit product decision.
   must stay superadmin-only. The last active superadmin cannot be revoked or demoted (enforced by the
   `user_roles_keep_last_superadmin` trigger), and self-revocation is blocked.
 
-User types are exclusive: member, admin, or superadmin, enforced by `set_user_type`. Promoting a
-member to staff deletes their member row and dependent member data while preserving the Auth user.
-Demoting staff revokes staff roles and creates a pending member setup invitation with
-`requires_password = false`. Treat these as deliberate, audited operations.
+User types are exclusive: member, admin, or superadmin, enforced by `set_user_type`. Staff also
+have a row in `members`, with `kind = 'organizer'`, because the profile and the card hang off that
+table. An organizer row is a profile and a card holder only: it never earns or spends points, has
+attendance, or appears on the leaderboard, and triggers on the ledgers, attendance and redemptions
+refuse one. So:
+
+- `viewer.member` is set for members only. `viewer.profile` is anyone's own profile; use
+  `requireProfile` to edit it.
+- A query that means paying members must filter `kind = 'member'`.
+- A new staff account sets up its profile at `/admin-setup` after TOTP, and the admin layout sends
+  an organizer without a profile there.
+- Promoting a member keeps their profile and card, and deletes their points, attendance and reward
+  requests. Demoting staff turns their profile back into a member's when it has a photo. Without
+  one, the profile is removed and they get a member setup invitation with
+  `requires_password = false`.
+- Revoking staff access archives the organizer row, which switches off the profile and the card;
+  inviting them again restores it.
+
+Treat type changes as deliberate, audited operations.
 
 Admin pages and privileged database policies require **AAL2** (TOTP). Page guards are not enough on
 their own: route handlers and server actions must re-check the viewer and role.
 
-- Use `requireMember`, `requireAdmin`, or `requireSuperadmin` for pages/actions.
+- Use `requireMember`, `requireProfile`, `requireAdmin`, or `requireSuperadmin` for pages/actions.
 - Use `getApiViewer`/the API guard for route handlers, then check `isAdmin`/`isSuperadmin`.
 - Roles live in `user_roles`; never trust `user_metadata`, a client-supplied role, or client-side
   visibility.
@@ -121,13 +136,13 @@ their own: route handlers and server actions must re-check the viewer and role.
 
 ## 5. Route map
 
-| Surface    | Routes                                                                                                                                                                              |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public     | `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[profileSlug]`, `/c/[cardToken]`, `/card-unavailable`, `/privacy`                                                             |
-| Auth       | `/login`, `/forgot-password`, `/account/password`, `/account-suspended`, `/invite/accept`, `/auth/callback`, `/auth/confirm`, `/admin-mfa`                                          |
-| Member     | `/member`, `/member/activity`, `/member/id`, `/member/profile`, `/member/privacy`, `/member/rewards`                                                                                |
-| Admin      | `/admin`, `/admin/invitations`, `/admin/users`, `/admin/cards`, `/admin/kiosk`, `/admin/events`, `/admin/events/new`, `/admin/events/[id]`, `/admin/rewards`, `/admin/rewards/[id]` |
-| Superadmin | `/admin/audit`, `/admin/members/[id]` (and staff-role controls within `/admin/users`)                                                                                               |
+| Surface    | Routes                                                                                                                                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public     | `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[profileSlug]`, `/c/[cardToken]`, `/card-unavailable`, `/privacy`                                                                               |
+| Auth       | `/login`, `/forgot-password`, `/account/password`, `/account-suspended`, `/invite/accept`, `/auth/callback`, `/auth/confirm`, `/admin-mfa`, `/admin-setup`                                            |
+| Member     | `/member`, `/member/activity`, `/member/id`, `/member/profile`, `/member/privacy`, `/member/rewards`                                                                                                  |
+| Admin      | `/admin`, `/admin/profile`, `/admin/invitations`, `/admin/users`, `/admin/cards`, `/admin/kiosk`, `/admin/events`, `/admin/events/new`, `/admin/events/[id]`, `/admin/rewards`, `/admin/rewards/[id]` |
+| Superadmin | `/admin/audit`, `/admin/members/[id]` (and staff-role controls within `/admin/users`)                                                                                                                 |
 
 Canonical aliases/redirects:
 
@@ -151,7 +166,8 @@ cloneable; never use a card tap as proof of identity or authorization.
 ### Identity, profiles, and privacy
 
 - Membership starts only through an invitation and atomic `complete_member_setup`.
-- A profile requires a face photo before it can be saved. Photos are validated, metadata-stripped,
+- A member's profile requires a face photo before it can be saved, because the kiosk checks the
+  person against it. An organizer's photo is optional. Photos are validated, metadata-stripped,
   cropped, and re-encoded server-side (`normalizeProfilePhoto`), which reads the real format from the
   file; never trust the filename or client MIME type.
 - Only serve photos through the authorization-aware endpoint. Do not expose storage paths or raw
@@ -467,6 +483,9 @@ permission.
   content height. It made the kiosk confirm button 18px tall.
 - `Permissions-Policy` is fixed when a document loads and client-side navigation keeps it, so the
   camera the kiosk uses for QR codes is allowed site-wide, not per route.
+- The app and the migrations deploy from the same push at different speeds, so for a few minutes
+  one runs without the other. When the old app cannot run on the new schema, or the new app on the
+  old one, split it: push the part the running app tolerates, confirm it applied, then push the rest.
 - A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
   "Access is denied" until the tab disconnects.
 
@@ -501,39 +520,39 @@ record what was not verified as plainly as what was.
 
 ## 13. Current state and progress
 
-Last updated 2026-11-04.
+Last updated 2026-11-05.
 
 ### Where things stand
 
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`. Production had migrations through 0014 at
-  the last check. 0015 (check-in methods) and 0016 (leaderboard by stars) are in the repo and must be
-  applied with the push that carries this change.
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0016 applied. The
+  Supabase GitHub integration applies new migrations when `main` is pushed. 0017 (organizer
+  profiles) and 0018 (a placeholder profile for each existing staff account) are in the repo. 0017
+  is pushed alone first, and 0018 goes with the app code.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
   test members exist. Nothing here was read from it after that.
 - **Latest stage:** the kiosk reads continuously and can check a member in by name, GDG number, or
   QR code; the event form is cut from 26 fields to 7; and eight bugs from a full UX audit are fixed.
-  All of it is tested on a local stack. See `docs/test-plan.md`.
+  That is deployed in `7472690`. Since then staff have a profile and a card of their own, tested on
+  a local stack. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
 The owner approved these on 2026-11-04, in this order:
 
-1. Profiles and cards for admins: staff get the same profile and card records as members, marked as
-   organizers, with no points or leaderboard place. Existing staff get a placeholder profile.
-2. A single guided card-writing flow, fewer navigation tabs, merged Users and Invitations, simpler
+1. A single guided card-writing flow, fewer navigation tabs, merged Users and Invitations, simpler
    reward decisions, and plain wording throughout.
-3. Permanent delete for superadmins (events and similar records), with the audit log kept.
+2. Permanent delete for superadmins (events and similar records), with the audit log kept.
 
 ### Waiting on a person
 
 These are hosted settings that an agent should not change. Check current values rather than assuming
 them, and do not record a weak setting here, because this repository is public:
 
-- After the push, confirm migrations 0015 and 0016 are applied to production. Until they are, the
-  leaderboard is empty and check-in methods are not recorded.
+- After each push, confirm its migration is applied to production: 0017 before the app code is
+  pushed, then 0018.
 - Set the Site URL in Supabase Auth to the production host, as `docs/deployment.md` says. Agents have
   no way to read it from here.
 - Confirm `NEXT_PUBLIC_SITE_URL` in Vercel matches the production host before writing physical cards,
@@ -541,16 +560,20 @@ them, and do not record a weak setting here, because this repository is public:
 
 ### Verification record
 
-On a local Supabase stack with every migration through 0016 applied, on 2026-11-04:
+On a local Supabase stack rebuilt from every migration through 0018, on 2026-11-05:
 
 - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 67
   unit tests.
-- `pnpm db:verify` passes 76/76.
-- `pnpm e2e` passes 52 with 32 skipped: 42/42 on desktop Chromium, and on the mobile project the 10
+- `pnpm db:verify` passes 83/83.
+- The 0018 backfill, run in a rolled-back transaction, passed 8 checks: active staff get one
+  placeholder each, revoked staff and members get nothing, and a second run changes nothing.
+- `pnpm e2e` passes 53 with 33 skipped: 43/43 on desktop Chromium, and on the mobile project the 10
   public specs pass while the signed-in specs skip by design. The suite covers the always-on kiosk,
-  check-in by name and by a typed QR link, the short event form, and the bug fixes.
-- A one-off run with Chromium's simulated camera decoded a member's QR code at the kiosk and recorded
-  the check-in as `qr`, with no CSP or permissions-policy violation.
+  check-in by name and by a typed QR link, the short event form, the bug fixes, a new admin setting
+  up a profile, user type changes keeping the profile and card, and organizers being refused points
+  and check-in.
+- A one-off run on 2026-11-04 with Chromium's simulated camera decoded a member's QR code at the
+  kiosk and recorded the check-in as `qr`, with no CSP or permissions-policy violation.
 
 On the physical ESP32 + PN532 with firmware 2.0.2:
 
@@ -560,7 +583,12 @@ On the physical ESP32 + PN532 with firmware 2.0.2:
   read back, activate, the card URL resolving, check-in, check-out, and the points grant. Only
   `navigator.serial` was bridged to COM3, because its picker cannot be automated.
 
-On production, read-only, earlier on 2026-11-04:
+On production, read-only, after `7472690` was pushed on 2026-11-04:
+
+- CI and the Vercel deploy passed, and migrations 0015 and 0016 are applied: the method columns
+  exist, `confirm_scan` records the method, and the leaderboard view returns `stars`.
+- Public pages load, gated pages redirect to `/login` with the destination, and the leaderboard API
+  returns the new fields.
 
 - `anon` can execute no public function, and `authenticated` can execute only the three RLS helpers.
 - `/auth/v1/settings` reports `disable_signup: true`.
@@ -568,7 +596,10 @@ On production, read-only, earlier on 2026-11-04:
 
 ### Not verified yet
 
-- This change on the deployed app, including the two migrations.
+- The signed-in parts of the deployed app since `7472690`: the kiosk, the event form, and the fixes
+  behind sign-in.
+- Organizer profiles on production: migration 0018's placeholder profiles for the real staff
+  accounts, the setup step for a new admin, and a card written for an organizer.
 - A real card read through the always-on kiosk on the physical reader, and the reader reconnecting
   by itself on a second visit, which needs a real browser's saved port permission.
 - A real camera scanning a real phone screen at the kiosk.

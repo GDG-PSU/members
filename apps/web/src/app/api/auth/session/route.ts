@@ -56,7 +56,12 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (user) {
     const [{ data: member }, { data: roleRows }] = await Promise.all([
-      supabase.from('members').select('id').eq('auth_user_id', user.id).maybeSingle(),
+      supabase
+        .from('members')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .eq('kind', 'member')
+        .maybeSingle(),
       supabase
         .from('user_roles')
         .select('role')

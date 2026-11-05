@@ -15,10 +15,25 @@ export interface MemberSession {
 
 export type StaffRole = 'admin' | 'superadmin';
 
+/**
+ * The signed-in person's own profile. Members and organizers both have one; only
+ * a member also has a `member` session with points, attendance and rewards.
+ */
+export interface ProfileSession {
+  memberId: string;
+  kind: 'member' | 'organizer';
+  slug: string;
+  displayName: string;
+  /** Organizers may have no photo; members always have one. */
+  photoPath: string | null;
+}
+
 export interface Viewer {
   supabase: SupabaseClient;
   user: User | null;
+  /** Set for members only, so member pages and member rules never see an organizer. */
   member: MemberSession | null;
+  profile: ProfileSession | null;
   isAdmin: boolean;
   isSuperadmin: boolean;
   role: StaffRole | null;
@@ -35,6 +50,7 @@ export async function getViewer(): Promise<Viewer> {
       supabase,
       user: null,
       member: null,
+      profile: null,
       isAdmin: false,
       isSuperadmin: false,
       role: null,
@@ -47,7 +63,7 @@ export async function getViewer(): Promise<Viewer> {
     supabase
       .from('members')
       .select(
-        'id, status, public_number, member_since, member_profiles(profile_slug, display_name, photo_path)',
+        'id, kind, status, public_number, member_since, member_profiles(profile_slug, display_name, photo_path)',
       )
       .eq('auth_user_id', user.id)
       .maybeSingle(),
@@ -63,8 +79,9 @@ export async function getViewer(): Promise<Viewer> {
     ? memberRow?.member_profiles[0]
     : memberRow?.member_profiles;
 
+  const kind = memberRow?.kind === 'organizer' ? 'organizer' : 'member';
   const member =
-    memberRow && (profile || memberRow.status !== 'active')
+    memberRow && kind === 'member' && (profile || memberRow.status !== 'active')
       ? {
           id: memberRow.id as string,
           status: memberRow.status as MemberSession['status'],
@@ -84,10 +101,24 @@ export async function getViewer(): Promise<Viewer> {
       ? 'admin'
       : null;
 
+  // An organizer whose staff access was revoked keeps an archived row, which is
+  // not a profile they can use.
+  const ownProfile: ProfileSession | null =
+    memberRow && profile && memberRow.status === 'active'
+      ? {
+          memberId: memberRow.id as string,
+          kind,
+          slug: profile.profile_slug as string,
+          displayName: profile.display_name as string,
+          photoPath: (profile.photo_path as string | null) ?? null,
+        }
+      : null;
+
   return {
     supabase,
     user,
     member,
+    profile: ownProfile,
     isAdmin: role !== null,
     isSuperadmin: role === 'superadmin',
     role,
@@ -105,6 +136,20 @@ export async function requireMember(): Promise<Viewer & { user: User; member: Me
   if (!viewer.member) redirect(viewer.isAdmin ? '/admin' : '/invite/accept');
   if (viewer.member.status !== 'active') redirect('/account-suspended');
   return viewer as Viewer & { user: User; member: MemberSession };
+}
+
+/** For editing one's own profile, which members and organizers both do. */
+export async function requireProfile(): Promise<Viewer & { user: User; profile: ProfileSession }> {
+  const viewer = await requireUser();
+  if (viewer.member && viewer.member.status !== 'active') redirect('/account-suspended');
+  if (!viewer.profile) redirect(viewer.isAdmin ? '/admin-setup' : '/invite/accept');
+  if (viewer.profile.kind === 'organizer') {
+    // An organizer's profile is only theirs while they are staff with a verified code.
+    if (!viewer.isAdmin) redirect('/');
+    const { data: assurance } = await viewer.supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assurance?.currentLevel !== 'aal2') redirect('/admin-mfa');
+  }
+  return viewer as Viewer & { user: User; profile: ProfileSession };
 }
 
 export async function requireAdmin(): Promise<

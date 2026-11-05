@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 
 /** Service-role client used only by the test runner to set up and clean up fixtures. */
@@ -21,10 +22,13 @@ export interface DisposableAdmin {
 /**
  * Creates a confirmed Auth user and grants the admin role. No email is sent;
  * the account is deleted by the spec's cleanup step.
+ *
+ * Every admin page needs the organizer's own profile, so one is created too
+ * unless `profile: false` asks for an account that has not set theirs up yet.
  */
 export async function createDisposableAdmin(
   client: SupabaseClient,
-  input: { email: string; password: string; role?: 'admin' | 'superadmin' },
+  input: { email: string; password: string; role?: 'admin' | 'superadmin'; profile?: boolean },
 ): Promise<DisposableAdmin> {
   const { data, error } = await client.auth.admin.createUser({
     email: input.email,
@@ -44,6 +48,22 @@ export async function createDisposableAdmin(
   if (roleError) {
     await client.auth.admin.deleteUser(data.user.id).catch(() => {});
     throw new Error(`Could not grant the disposable admin role: ${roleError.message}`);
+  }
+
+  if (input.profile !== false) {
+    const { error: profileError } = await client.rpc('complete_staff_profile', {
+      p_auth_user_id: data.user.id,
+      p_profile_slug: randomBytes(18).toString('base64url'),
+      p_public_number: `GDG-${randomBytes(3).toString('hex').toUpperCase()}`,
+      p_display_name: 'E2E Organizer',
+      p_photo_path: null,
+      p_about: '',
+      p_show_email: false,
+    });
+    if (profileError) {
+      await client.auth.admin.deleteUser(data.user.id).catch(() => {});
+      throw new Error(`Could not create the disposable admin profile: ${profileError.message}`);
+    }
   }
 
   return { user: data.user };

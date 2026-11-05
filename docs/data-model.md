@@ -12,22 +12,26 @@ The schema source of truth is `supabase/migrations/`. Never edit the hosted sche
 
 Current migration order:
 
-| File                             | Purpose                                                                                 |
-| -------------------------------- | --------------------------------------------------------------------------------------- |
-| `0001_schema.sql`                | Tables, constraints, indexes, updated-at triggers, append-only guards, helper functions |
-| `0002_functions.sql`             | Transactional domain functions and public projections                                   |
-| `0003_rls.sql`                   | Row Level Security, grants, storage bucket and policies                                 |
-| `0004_rate_limits.sql`           | Postgres-backed fixed-window rate limiting                                              |
-| `0005_audit_actor_retention.sql` | Preserve audit actor identifiers                                                        |
-| `0006_profile_privacy.sql`       | Private photos and activation privacy controls                                          |
-| `0007_device_signatures.sql`     | Signed device requests and replay protection                                            |
-| `0008_admin_rls_mfa.sql`         | MFA enforcement for admin database policies                                             |
-| `0009_controlled_erasure.sql`    | Controlled erasure without weakening append-only guards                                 |
-| `0010_photo_identity.sql`        | Photo-change timestamp and the 48-hour kiosk identity window                            |
-| `0011_usb_kiosk.sql`             | Allows the transient USB-kiosk scan row with no registered device                       |
-| `0012_superadmins.sql`           | Superadmin role, narrower admin read policies                                           |
-| `0013_exclusive_user_types.sql`  | `set_user_type`: a user is exactly one of member, admin, superadmin                     |
-| `0014_security_hardening.sql`    | Closes API access to privileged functions and columns; hardens domain transitions       |
+| File                                  | Purpose                                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------------------------- |
+| `0001_schema.sql`                     | Tables, constraints, indexes, updated-at triggers, append-only guards, helper functions |
+| `0002_functions.sql`                  | Transactional domain functions and public projections                                   |
+| `0003_rls.sql`                        | Row Level Security, grants, storage bucket and policies                                 |
+| `0004_rate_limits.sql`                | Postgres-backed fixed-window rate limiting                                              |
+| `0005_audit_actor_retention.sql`      | Preserve audit actor identifiers                                                        |
+| `0006_profile_privacy.sql`            | Private photos and activation privacy controls                                          |
+| `0007_device_signatures.sql`          | Signed device requests and replay protection                                            |
+| `0008_admin_rls_mfa.sql`              | MFA enforcement for admin database policies                                             |
+| `0009_controlled_erasure.sql`         | Controlled erasure without weakening append-only guards                                 |
+| `0010_photo_identity.sql`             | Photo-change timestamp and the 48-hour kiosk identity window                            |
+| `0011_usb_kiosk.sql`                  | Allows the transient USB-kiosk scan row with no registered device                       |
+| `0012_superadmins.sql`                | Superadmin role, narrower admin read policies                                           |
+| `0013_exclusive_user_types.sql`       | `set_user_type`: a user is exactly one of member, admin, superadmin                     |
+| `0014_security_hardening.sql`         | Closes API access to privileged functions and columns; hardens domain transitions       |
+| `0015_kiosk_check_in_methods.sql`     | Records whether each check-in and check-out was by card, QR code or an organizer        |
+| `0016_leaderboard_by_stars.sql`       | Ranks the leaderboard by lifetime stars                                                 |
+| `0017_organizer_profiles.sql`         | Gives staff a profile and card through `members.kind = 'organizer'`                     |
+| `0018_organizer_profile_backfill.sql` | A placeholder organizer profile for each existing staff account                         |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -50,6 +54,8 @@ One row per invitation. Columns include normalized lowercase `email`, `status` (
 ### `members`
 
 Internal UUID, unique `auth_user_id` (FK `auth.users`), `status` (`active`, `suspended`, `archived`), unique public member number matching `^GDG-[A-Z0-9]{6}$`, `member_since`, and the accepting `invitation_id` (unique). A profile/card does not exist before acceptance.
+
+`kind` is `member` or `organizer`. An organizer row belongs to a staff account and exists only to carry their profile and card: triggers refuse it points, stars, attendance and reward requests, the leaderboard excludes it, and the public projection never shows member numbers for it. An organizer's `photo_path` may be null; a member's may not.
 
 `public.current_member_id()` resolves the signed-in Auth user to an active member.
 
@@ -183,30 +189,31 @@ The public pages and `/api/public/*` read the two projections with the server-on
 
 ## Functions
 
-| Function                     | Access                | Notes                                                              |
-| ---------------------------- | --------------------- | ------------------------------------------------------------------ |
-| `set_updated_at()`           | trigger               | Sets `updated_at`                                                  |
-| `prevent_mutation()`         | trigger               | Raises `append_only_relation`                                      |
-| `is_admin(uid)`              | authenticated/service | Role check used by RLS                                             |
-| `is_superadmin(uid)`         | authenticated/service | Role check used by RLS                                             |
-| `current_member_id()`        | authenticated/service | Resolves active member                                             |
-| `set_user_type(...)`         | service_role          | Exclusive member/admin/superadmin conversion                       |
-| `log_audit(...)`             | service_role          | Inserts audit row                                                  |
-| `grant_points(...)`          | service_role          | Idempotent points + stars                                          |
-| `reverse_grant(...)`         | service_role          | Compensating reversal                                              |
-| `redeem_reward(...)`         | service_role          | Atomic balance/inventory debit                                     |
-| `decide_redemption(...)`     | service_role          | Status transitions + refund                                        |
-| `prepare_card(...)`          | service_role          | Creates a pending card, supersedes an earlier unwritten one        |
-| `activate_card(...)`         | service_role          | Activates one card, replaces the previous active card              |
-| `revoke_card(...)`           | service_role          | Revokes pending/active card                                        |
-| `queue_write_job(...)`       | service_role          | One-use encrypted URL payload                                      |
-| `claim_write_job(...)`       | service_role          | Device-scoped claim with locking                                   |
-| `complete_write_job(...)`    | service_role          | Read-back gate, payload destruction                                |
-| `complete_member_setup(...)` | service_role          | Idempotent invite acceptance                                       |
-| `confirm_scan(...)`          | service_role          | Admin-confirmed attendance state machine                           |
-| `correct_attendance(...)`    | service_role          | Audited corrections/reversals                                      |
-| `consume_rate_limit(...)`    | service_role          | Atomic fixed-window limiter                                        |
-| `erase_member(uid)`          | service_role          | Reviewed erasure; lifts append-only guard for its transaction only |
+| Function                      | Access                | Notes                                                              |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------ |
+| `set_updated_at()`            | trigger               | Sets `updated_at`                                                  |
+| `prevent_mutation()`          | trigger               | Raises `append_only_relation`                                      |
+| `is_admin(uid)`               | authenticated/service | Role check used by RLS                                             |
+| `is_superadmin(uid)`          | authenticated/service | Role check used by RLS                                             |
+| `current_member_id()`         | authenticated/service | Resolves active member                                             |
+| `set_user_type(...)`          | service_role          | Exclusive member/admin/superadmin conversion, keeping the profile  |
+| `complete_staff_profile(...)` | service_role          | Creates, or restores, a staff account's own organizer profile      |
+| `log_audit(...)`              | service_role          | Inserts audit row                                                  |
+| `grant_points(...)`           | service_role          | Idempotent points + stars                                          |
+| `reverse_grant(...)`          | service_role          | Compensating reversal                                              |
+| `redeem_reward(...)`          | service_role          | Atomic balance/inventory debit                                     |
+| `decide_redemption(...)`      | service_role          | Status transitions + refund                                        |
+| `prepare_card(...)`           | service_role          | Creates a pending card, supersedes an earlier unwritten one        |
+| `activate_card(...)`          | service_role          | Activates one card, replaces the previous active card              |
+| `revoke_card(...)`            | service_role          | Revokes pending/active card                                        |
+| `queue_write_job(...)`        | service_role          | One-use encrypted URL payload                                      |
+| `claim_write_job(...)`        | service_role          | Device-scoped claim with locking                                   |
+| `complete_write_job(...)`     | service_role          | Read-back gate, payload destruction                                |
+| `complete_member_setup(...)`  | service_role          | Idempotent invite acceptance                                       |
+| `confirm_scan(...)`           | service_role          | Admin-confirmed attendance state machine                           |
+| `correct_attendance(...)`     | service_role          | Audited corrections/reversals                                      |
+| `consume_rate_limit(...)`     | service_role          | Atomic fixed-window limiter                                        |
+| `erase_member(uid)`           | service_role          | Reviewed erasure; lifts append-only guard for its transaction only |
 
 All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions can be executed only by `service_role`; the web server authorizes the actor before calling them.
 
