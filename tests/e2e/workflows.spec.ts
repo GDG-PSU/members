@@ -130,10 +130,10 @@ test.describe('every member and organizer workflow', () => {
   }
 
   async function invite(page: Page, email: string): Promise<string> {
-    await page.goto('/admin/invitations');
+    await page.goto('/admin/users?invite=1');
     await page.locator('#invite-email').fill(email);
     await page.locator('#invite-paid-since').fill('2026-01-15');
-    await page.getByRole('button', { name: 'Generate invitation link' }).click();
+    await page.getByRole('button', { name: 'Make an invitation link' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Invitation link ready' })).toBeVisible(
       { timeout: 20_000 },
     );
@@ -174,7 +174,7 @@ test.describe('every member and organizer workflow', () => {
     await page.addInitScript(() => {
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
-      const state = window as unknown as { __cardUri: string | null };
+      const state = window as unknown as { __cardUri: string | null; __corruptWrites?: boolean };
       state.__cardUri = null;
       class FakeSerialPort {
         readable: ReadableStream<Uint8Array>;
@@ -204,7 +204,9 @@ test.describe('every member and organizer workflow', () => {
                     },
                   };
                 } else if (command.cmd === 'nfc.write') {
-                  state.__cardUri = command.uri ?? null;
+                  state.__cardUri = state.__corruptWrites
+                    ? `${command.uri}#corrupt`
+                    : (command.uri ?? null);
                   payload = { id: command.id, ok: true, result: { readBack: true } };
                 } else if (command.cmd === 'nfc.read' && state.__cardUri?.startsWith('error:')) {
                   payload = { id: command.id, ok: false, error: state.__cardUri.slice(6) };
@@ -230,11 +232,6 @@ test.describe('every member and organizer workflow', () => {
         value: { requestPort: async () => port },
       });
     });
-  }
-
-  async function connectLane(page: Page) {
-    await page.getByRole('button', { name: 'Connect lane' }).click();
-    await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
   }
 
   async function setCard(page: Page, uri: string | null) {
@@ -378,7 +375,48 @@ test.describe('every member and organizer workflow', () => {
     await adminPage.goto('/admin/audit');
     await expect(adminPage).toHaveURL(/\/admin\?notice=superadmin-required/);
     await adminPage.goto('/admin/users');
-    await expect(adminPage.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
+    await expect(adminPage.getByRole('link', { name: 'Manage' })).toHaveCount(0);
+    await adminPage.goto('/admin/staff/00000000-0000-4000-8000-000000000000');
+    await expect(adminPage).toHaveURL(/\/admin\?notice=superadmin-required/);
+  });
+
+  test('the admin area has five tabs, and old addresses still lead somewhere', async () => {
+    const tabs = adminPage.getByRole('navigation', { name: 'Admin sections' });
+    const current = tabs.locator('[aria-current="page"]');
+    await adminPage.goto('/admin');
+    await expect(tabs.getByRole('link')).toHaveText([
+      'Home',
+      'People',
+      'Cards',
+      'Events',
+      'Rewards',
+    ]);
+    await expect(current).toHaveText('Home');
+
+    await adminPage.goto('/admin/users?invite=1');
+    await expect(adminPage).toHaveURL(/\/admin\/users\?invite=1$/);
+    await expect(current).toHaveText('People');
+    await expect(adminPage.locator('#invite-email')).toBeVisible();
+    // Only a superadmin is offered the organizer invitation.
+    await expect(adminPage.getByRole('heading', { name: 'Invite an organizer' })).toHaveCount(0);
+    await superPage.goto('/admin/users');
+    await expect(superPage.locator('#invite-email')).toBeHidden();
+    await superPage.getByText('Invite someone', { exact: true }).click();
+    await expect(superPage.getByRole('heading', { name: 'Invite an organizer' })).toBeVisible();
+
+    // The kiosk belongs to Events, and a page with no tab of its own lights none.
+    await adminPage.goto('/admin/kiosk');
+    await expect(current).toHaveText('Events');
+    await adminPage.goto('/admin/profile');
+    await expect(current).toHaveCount(0);
+
+    // The tiles on Home are links to what they count.
+    await adminPage.goto('/admin');
+    await expect(adminPage.getByRole('link', { name: /Reward requests waiting/ })).toHaveAttribute(
+      'href',
+      '/admin/rewards',
+    );
+    await expect(adminPage.getByRole('link', { name: 'Open kiosk' })).toBeVisible();
   });
 
   test('an invitation can be revoked and re-issued, and only its creator sees it', async ({
@@ -387,21 +425,25 @@ test.describe('every member and organizer workflow', () => {
     const firstLink = await invite(adminPage, people.member.email);
     expect(new URL(firstLink).origin).toBe(origin);
 
-    await adminPage.goto('/admin/invitations');
+    await adminPage.goto('/admin/users?invite=1');
     await adminPage.locator('#invite-email').fill(people.member.email);
     await adminPage.locator('#invite-paid-since').fill('2026-01-15');
-    await adminPage.getByRole('button', { name: 'Generate invitation link' }).click();
+    await adminPage.getByRole('button', { name: 'Make an invitation link' }).click();
     await expect(adminPage.getByText('A pending invitation already exists')).toBeVisible();
 
     await superPage.goto('/admin/users');
     await expect(superPage.getByRole('row').filter({ hasText: people.member.email })).toBeVisible();
     await invite(superPage, people.second.email);
-    await adminPage.goto('/admin/invitations');
+    await adminPage.goto('/admin/users?invite=1');
     await expect(adminPage.getByText(people.second.email)).toHaveCount(0);
 
     const row = adminPage.getByRole('row').filter({ hasText: people.member.email });
-    await row.getByRole('button', { name: 'Revoke' }).click();
-    await expect(adminPage.getByText('Invitation revoked.')).toBeVisible({ timeout: 15_000 });
+    await row.getByRole('button', { name: 'Cancel invitation' }).click();
+    // The confirmation says whose invitation it is.
+    const confirm = adminPage.getByRole('dialog');
+    await expect(confirm).toContainText(`Cancel the invitation for ${people.member.email}?`);
+    await confirm.getByRole('button', { name: 'Yes, cancel it' }).click();
+    await expect(adminPage.getByText('Invitation cancelled.')).toBeVisible({ timeout: 15_000 });
 
     const secondLink = await invite(adminPage, people.member.email);
 
@@ -499,10 +541,10 @@ test.describe('every member and organizer workflow', () => {
       .eq('status', 'pending');
     expect(data).toHaveLength(0);
 
-    await adminPage.goto('/admin/invitations');
+    await adminPage.goto('/admin/users?invite=1');
     await adminPage.locator('#invite-email').fill(people.member.email);
     await adminPage.locator('#invite-paid-since').fill('2026-01-15');
-    await adminPage.getByRole('button', { name: 'Generate invitation link' }).click();
+    await adminPage.getByRole('button', { name: 'Make an invitation link' }).click();
     await expect(adminPage.getByText('That email already belongs to a member.')).toBeVisible();
 
     const stranger = await newPage(browser, 'replay');
@@ -679,6 +721,22 @@ test.describe('every member and organizer workflow', () => {
     await expect(memberPage.getByText('Profile saved.')).toBeVisible({ timeout: 20_000 });
   });
 
+  test('the member area has four tabs and puts the ID first', async () => {
+    const tabs = memberPage.getByRole('navigation', { name: 'Member sections' });
+    const current = tabs.locator('[aria-current="page"]');
+    await memberPage.goto('/member');
+    await expect(tabs.getByRole('link')).toHaveText(['Home', 'Activity', 'Rewards', 'Profile']);
+    await expect(current).toHaveText('Home');
+    await memberPage.getByRole('link', { name: 'Show my ID' }).click();
+    await expect(memberPage).toHaveURL(/\/member\/id$/);
+    await expect(current).toHaveText('Home');
+    // Privacy is part of the profile page; its old address still works.
+    await memberPage.goto('/member/privacy');
+    await expect(memberPage).toHaveURL(/\/member\/profile/);
+    await expect(current).toHaveText('Profile');
+    await expect(memberPage.getByRole('heading', { name: 'What others can see' })).toBeVisible();
+  });
+
   test('privacy settings control the public profile, photo and leaderboard', async () => {
     const photoUrl = `/api/profile-photo/${memberSlug}`;
     await anonPage.goto(`/m/${memberSlug}`);
@@ -690,12 +748,14 @@ test.describe('every member and organizer workflow', () => {
     );
     expect((await anonPage.request.get(photoUrl)).status()).toBe(200);
 
-    await memberPage.goto('/member/privacy');
+    // Each switch saves as it is flipped; there is no Save button.
+    const saved = memberPage.getByText('Saved.', { exact: true });
+    await memberPage.goto('/member/profile');
+    await expect(memberPage.getByRole('button', { name: /Save privacy/ })).toHaveCount(0);
     await memberPage.getByRole('switch', { name: 'Email address' }).click();
     await memberPage.getByRole('switch', { name: 'Profile photo' }).click();
     await memberPage.getByRole('switch', { name: 'Short bio' }).click();
-    await memberPage.getByRole('button', { name: 'Save privacy settings' }).click();
-    await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
+    await expect(saved).toBeVisible({ timeout: 15_000 });
 
     await anonPage.goto(`/m/${memberSlug}`);
     await expect(anonPage.getByRole('heading', { name: memberName })).toBeVisible();
@@ -706,8 +766,7 @@ test.describe('every member and organizer workflow', () => {
 
     await memberPage.reload();
     await memberPage.getByRole('switch', { name: 'Public profile' }).click();
-    await memberPage.getByRole('button', { name: 'Save privacy settings' }).click();
-    await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
+    await expect(saved).toBeVisible({ timeout: 15_000 });
     await anonPage.goto(`/m/${memberSlug}`);
     await expect(anonPage.getByRole('heading', { name: 'This profile is private' })).toBeVisible();
     await expect(anonPage.getByText(memberName)).toHaveCount(0);
@@ -717,8 +776,7 @@ test.describe('every member and organizer workflow', () => {
     await memberPage.getByRole('switch', { name: 'Email address' }).click();
     await memberPage.getByRole('switch', { name: 'Profile photo' }).click();
     await memberPage.getByRole('switch', { name: 'Short bio' }).click();
-    await memberPage.getByRole('button', { name: 'Save privacy settings' }).click();
-    await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
+    await expect(saved).toBeVisible({ timeout: 15_000 });
   });
 
   test('events are created from the short form, published and edited without shifting times', async () => {
@@ -870,59 +928,87 @@ test.describe('every member and organizer workflow', () => {
     bonusSessionId = bonus?.[0]?.id as string;
   });
 
-  test('cards go pending, active and replaced, and several can be written in a row', async () => {
+  test('a card is written, checked and switched on in one go, and a new one replaces the old', async () => {
+    const client = supabase();
     const lookup = async (url: string) => {
       await anonPage.goto(new URL(url).pathname);
       return new URL(anonPage.url()).pathname;
     };
+    const writeButton = adminPage.getByRole('button', { name: 'Write card' });
+    const written = `${memberName}'s card is written and working.`;
+    const onReader = () =>
+      adminPage.evaluate(() => (window as unknown as { __cardUri: string | null }).__cardUri);
+    const choose = async () => {
+      await adminPage.locator('#card-holder-search').fill('workflow mem');
+      await adminPage
+        .getByRole('list', { name: 'People found' })
+        .getByRole('button', { name: memberName })
+        .click();
+    };
 
     await adminPage.goto('/admin/cards');
-    await adminPage.locator('#usb-member').selectOption(memberId);
-    await adminPage.getByRole('button', { name: 'Prepare card' }).click();
-    await expect(adminPage.getByText(`Pending card for ${memberName}`)).toBeVisible({
-      timeout: 20_000,
-    });
-    firstCardUrl = await adminPage.getByLabel('Card URL').inputValue();
+    // Nothing can be written until the reader is connected and someone is chosen.
+    await expect(writeButton).toBeDisabled();
+    await adminPage.getByRole('button', { name: 'Connect reader' }).click();
+    await expect(adminPage.getByText('Reader connected')).toBeVisible({ timeout: 15_000 });
+    await expect(writeButton).toBeDisabled();
+
+    await adminPage.locator('#card-holder-search').fill('zzz-nobody');
+    await expect(adminPage.getByText('Nobody active matches.')).toBeVisible({ timeout: 15_000 });
+    await choose();
+    await writeButton.click();
+    await expect(adminPage.getByText(written)).toBeVisible({ timeout: 20_000 });
+    firstCardUrl = (await onReader()) ?? '';
     expect(new URL(firstCardUrl).origin).toBe(origin);
-    expect(await lookup(firstCardUrl)).toBe('/card-unavailable');
-
-    await connectLane(adminPage);
-    await adminPage.getByLabel('NDEF URI').fill(firstCardUrl);
-    await adminPage.getByRole('button', { name: 'Write and verify' }).click();
-    await expect(adminPage.getByText('Write completed and read back.')).toBeVisible({
-      timeout: 10_000,
-    });
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
-    await expect(adminPage.locator('p.break-all')).toHaveText(firstCardUrl, { timeout: 10_000 });
-
-    await adminPage.getByText('I verified the URL was written').click();
-    await adminPage.getByRole('button', { name: 'Activate written card' }).click();
-    await expect(adminPage.getByRole('button', { name: 'Card activated' })).toBeVisible({
-      timeout: 20_000,
-    });
+    expect(new URL(firstCardUrl).pathname).toMatch(/^\/c\/[A-Za-z0-9_-]{43}$/);
     expect(await lookup(firstCardUrl)).toBe(`/m/${memberSlug}`);
+
+    // The reader gives back exactly what was written.
+    await adminPage.getByText('Reader tools').click();
+    await adminPage.getByRole('button', { name: 'Read a card' }).click();
+    await expect(adminPage.locator('p.break-all')).toHaveText(firstCardUrl, { timeout: 10_000 });
 
     await memberPage.goto('/member');
     await expect(memberPage.getByText('Tap at any kiosk.')).toBeVisible();
 
-    // Preparing a replacement must not break the working card, and activating it
-    // must work without reloading the page: organizers write cards in batches.
-    await adminPage.locator('#usb-member').selectOption(memberId);
-    await adminPage.getByRole('button', { name: 'Prepare card' }).click();
-    await expect(adminPage.getByLabel('Card URL')).not.toHaveValue(firstCardUrl, {
+    // The written card has to leave the reader before another can be written, or
+    // the next person's link would land on it.
+    await choose();
+    await expect(adminPage.getByText(`${memberName} already has a card.`)).toBeVisible();
+    await expect(adminPage.getByText('Lift the last card off the reader')).toBeVisible();
+    await expect(writeButton).toBeDisabled();
+    await setCard(adminPage, null);
+    await expect(writeButton).toBeEnabled({ timeout: 15_000 });
+
+    // A write that does not read back correctly switches nothing on, and the
+    // working card keeps working.
+    await adminPage.evaluate(() => {
+      (window as unknown as { __corruptWrites: boolean }).__corruptWrites = true;
+    });
+    await writeButton.click();
+    await expect(adminPage.getByText('The card did not save correctly.')).toBeVisible({
       timeout: 20_000,
     });
-    const replacementUrl = await adminPage.getByLabel('Card URL').inputValue();
+    const replacementUrl = ((await onReader()) ?? '').replace(/#corrupt$/, '');
+    expect(replacementUrl).not.toBe(firstCardUrl);
     expect(await lookup(firstCardUrl)).toBe(`/m/${memberSlug}`);
     expect(await lookup(replacementUrl)).toBe('/card-unavailable');
 
-    await adminPage.getByText('I verified the URL was written').click();
-    await adminPage.getByRole('button', { name: 'Activate written card' }).click();
-    await expect(adminPage.getByRole('button', { name: 'Card activated' })).toBeVisible({
-      timeout: 20_000,
+    // Trying again reuses the same card rather than preparing another.
+    await adminPage.evaluate(() => {
+      (window as unknown as { __corruptWrites: boolean }).__corruptWrites = false;
     });
+    await writeButton.click();
+    await expect(adminPage.getByText(written)).toBeVisible({ timeout: 20_000 });
+    expect(await onReader()).toBe(replacementUrl);
     expect(await lookup(firstCardUrl)).toBe('/card-unavailable');
     expect(await lookup(replacementUrl)).toBe(`/m/${memberSlug}`);
+    const { data: cards } = await client
+      .from('card_credentials')
+      .select('status')
+      .eq('member_id', memberId)
+      .order('created_at');
+    expect(cards?.map((card) => card.status)).toEqual(['replaced', 'active']);
     activeCardUrl = replacementUrl;
   });
 
@@ -1054,7 +1140,11 @@ test.describe('every member and organizer workflow', () => {
 
     await memberPage.goto('/member/activity');
     await expect(memberPage.getByText('Workflow Event').first()).toBeVisible();
-    await expect(memberPage.getByText('+20 pts').first()).toBeVisible();
+    await expect(memberPage.getByText('+20 points').first()).toBeVisible();
+    // The session that earned nothing says why.
+    await expect(
+      memberPage.getByText(/You stayed \d+ min and this session needs 30\./),
+    ).toBeVisible();
 
     await anonPage.goto('/leaderboard');
     await expect(anonPage.getByText(memberName).first()).toBeVisible();
@@ -1304,22 +1394,24 @@ test.describe('every member and organizer workflow', () => {
     await expectBalance(30, 40);
 
     await adminPage.goto('/admin/rewards');
-    const decide = async (name: string, action: string, reason = '') => {
-      const row = adminPage
+    const waiting = (name: string) =>
+      adminPage
+        .getByRole('list', { name: 'Requests waiting' })
         .locator('li')
-        .filter({ hasText: name })
-        .filter({
-          has: adminPage.locator('select[name="action"]'),
-        });
-      await row.locator('input[name="reason"]').fill(reason);
-      await row.locator('select[name="action"]').selectOption(action);
-      await row.getByRole('button', { name: 'Apply' }).click();
-    };
-    await decide(rewardName, 'approve');
-    await expect(adminPage.getByText('Redemption approve.')).toBeVisible({ timeout: 15_000 });
-    await decide(rewardName, 'fulfil');
-    await expect(adminPage.getByText('Redemption fulfil.')).toBeVisible({ timeout: 15_000 });
+        .filter({ hasText: name });
+    // Each decision is one button: no dropdown, and nothing that cannot apply.
+    await expect(waiting(rewardName).getByRole('button', { name: 'Handed over' })).toHaveCount(0);
+    await waiting(rewardName).getByRole('button', { name: 'Approve' }).click();
+    await expect(adminPage.getByText('Request approved.')).toBeVisible({ timeout: 15_000 });
+    await expect(waiting(rewardName).getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    await waiting(rewardName).getByRole('button', { name: 'Handed over' }).click();
+    await expect(adminPage.getByText('Marked as handed over.')).toBeVisible({ timeout: 15_000 });
     expect((await redemptions(rewardName)).at(-1)?.status).toBe('fulfilled');
+    // A handled request stays on the page as history.
+    await expect(waiting(rewardName)).toHaveCount(0);
+    await expect(
+      adminPage.getByRole('list', { name: 'Recently handled' }).getByText(rewardName).first(),
+    ).toBeVisible();
     await expectBalance(30, 40);
 
     await memberPage.goto('/member/rewards');
@@ -1330,13 +1422,21 @@ test.describe('every member and organizer workflow', () => {
     await expect.poll(async () => (await balance()).points).toBe(25);
 
     await adminPage.goto('/admin/rewards');
-    await decide(secondReward, 'reject');
-    await expect(adminPage.getByText('Enter a reason for this action.')).toBeVisible({
+    // Rejecting asks for a reason first, because the member sees it.
+    await waiting(secondReward).getByText('Reject', { exact: true }).click();
+    const reason = waiting(secondReward).getByLabel('Reason the member will see');
+    await waiting(secondReward).getByRole('button', { name: 'Reject and refund' }).click();
+    await expect(reason).toHaveJSProperty('validity.valueMissing', true);
+    expect((await redemptions(secondReward)).at(-1)?.status).toBe('requested');
+    await reason.fill('Out of mugs');
+    await waiting(secondReward).getByRole('button', { name: 'Reject and refund' }).click();
+    await expect(adminPage.getByText('Request rejected and the points refunded.')).toBeVisible({
       timeout: 15_000,
     });
-    await decide(secondReward, 'reject', 'Out of mugs');
-    await expect(adminPage.getByText('Redemption reject.')).toBeVisible({ timeout: 15_000 });
     await expectBalance(30, 40);
+    await expect(
+      adminPage.getByRole('list', { name: 'Recently handled' }).getByText('Out of mugs'),
+    ).toBeVisible();
 
     // A sold-out reward says so, and edits to a reward show up for members.
     await memberPage.goto('/member/rewards');
@@ -1346,7 +1446,7 @@ test.describe('every member and organizer workflow', () => {
   test('a recovery link resets a password once', async ({ browser }) => {
     const newPassword = `Wf-Recovered-${stamp}-5e`;
     await superPage.goto(`/admin/members/${memberId}`);
-    await superPage.getByRole('button', { name: 'Generate recovery link' }).click();
+    await superPage.getByRole('button', { name: 'Make a password reset link' }).click();
     const link = await superPage.getByLabel('One-time sign-in link').inputValue();
     expect(new URL(link).origin).toBe(origin);
     expect(new URL(link).searchParams.get('next')).toBe('/account/password');
@@ -1505,9 +1605,9 @@ test.describe('every member and organizer workflow', () => {
     await superPage.goto('/admin/cards');
     await superPage
       .locator(`form:has(input[name="cardId"][value="${card?.id}"])`)
-      .getByRole('button', { name: 'Revoke' })
+      .getByRole('button', { name: 'Switch off' })
       .click();
-    await expect(superPage.getByText('Card revoked.')).toBeVisible({ timeout: 15_000 });
+    await expect(superPage.getByText('Card switched off.')).toBeVisible({ timeout: 15_000 });
 
     await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
     await expect(adminPage.getByText('This card is no longer active.')).toBeVisible({
@@ -1556,9 +1656,12 @@ test.describe('every member and organizer workflow', () => {
     await adminPage
       .getByRole('row')
       .filter({ hasText: people.second.email })
-      .getByRole('button', { name: 'Revoke access' })
+      .getByRole('button', { name: 'Remove access' })
       .click();
-    await expect(adminPage.getByText('Member access revoked.')).toBeVisible({ timeout: 15_000 });
+    // The confirmation names the person, so the wrong row is hard to act on.
+    await expect(adminPage.getByRole('dialog')).toContainText("Remove Second Member's access?");
+    await adminPage.getByRole('dialog').getByRole('button', { name: 'Yes, remove access' }).click();
+    await expect(adminPage.getByText('Member access removed.')).toBeVisible({ timeout: 15_000 });
     const second = await newPage(browser, 'second member again');
     await signIn(second, people.second.email, people.second.password);
     await expect(second.getByText('This membership is not active.')).toBeVisible({
@@ -1567,10 +1670,17 @@ test.describe('every member and organizer workflow', () => {
 
     // Member -> admin keeps the profile and card, and drops the points.
     await superPage.goto('/admin/users');
-    await secondRow()
-      .getByRole('combobox', { name: /User type for/ })
-      .selectOption('admin');
-    await secondRow().getByRole('button', { name: 'Save' }).click();
+    await secondRow().getByRole('link', { name: 'Manage' }).click();
+    await expect(superPage).toHaveURL(new RegExp(`/admin/members/${before.id}$`));
+    // A member is only offered the types they are not.
+    await expect(superPage.getByRole('button', { name: 'Make member' })).toHaveCount(0);
+    await superPage.getByRole('button', { name: 'Make admin' }).click();
+    await expect(superPage.getByRole('dialog')).toContainText('Make Second Member an admin?');
+    await expect(superPage.getByRole('dialog')).toContainText('deleted for good');
+    await superPage
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Yes, make them an admin' })
+      .click();
     await expect(
       superPage.getByText(
         'Their profile and card were kept; their points and attendance history were removed.',
@@ -1591,6 +1701,19 @@ test.describe('every member and organizer workflow', () => {
         .eq('member_id', before.id);
       expect(count).toBe(0);
     }
+
+    // An organizer has a manage page of their own, and their member address leads to it.
+    await superPage.goto(`/admin/members/${before.id}`);
+    await expect(superPage).toHaveURL(new RegExp(`/admin/staff/${secondAuthId}$`));
+    await expect(superPage.getByRole('heading', { name: 'Second Member' })).toBeVisible();
+    await expect(superPage.locator('main').getByText('Admin', { exact: true })).toBeVisible();
+    await expect(superPage.getByRole('link', { name: 'Write a card for them' })).toHaveAttribute(
+      'href',
+      `/admin/cards?member=${before.id}`,
+    );
+    await expect(
+      superPage.getByRole('button', { name: 'Make a password reset link' }),
+    ).toBeVisible();
 
     // Their page now says Organizer, with no points, and they are off the board.
     await anonPage.goto(`/m/${before.profile_slug}`);
@@ -1625,10 +1748,14 @@ test.describe('every member and organizer workflow', () => {
 
     // Admin -> member turns the same profile back into a member's, with no setup.
     await superPage.goto('/admin/users');
-    await secondRow()
-      .getByRole('combobox', { name: /User type for/ })
-      .selectOption('member');
-    await secondRow().getByRole('button', { name: 'Save' }).click();
+    await secondRow().getByRole('link', { name: 'Manage' }).click();
+    await expect(superPage).toHaveURL(new RegExp(`/admin/staff/${secondAuthId}$`));
+    await superPage.getByRole('button', { name: 'Make member' }).click();
+    await expect(superPage.getByRole('dialog')).toContainText('Make Second Member a member?');
+    await superPage
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Yes, make them a member' })
+      .click();
     await expect(superPage.getByText('Changed to member.')).toBeVisible({ timeout: 15_000 });
     expect(await secondMember()).toMatchObject({
       id: before.id,
@@ -1641,11 +1768,13 @@ test.describe('every member and organizer workflow', () => {
     await second.goto('/admin');
     await expect(second).not.toHaveURL(/\/admin$/);
 
-    // Saving the same type again changes nothing, so a suspension cannot be lifted by it.
-    await secondRow().getByRole('button', { name: 'Save' }).click();
-    await expect(superPage.getByText('That is already their user type.')).toBeVisible({
-      timeout: 15_000,
-    });
+    // Nobody manages themselves: a superadmin's own row leads to their profile.
+    await expect(
+      superPage
+        .getByRole('row')
+        .filter({ hasText: people.superadmin.email })
+        .getByRole('link', { name: 'My profile' }),
+    ).toHaveAttribute('href', '/admin/profile');
   });
 
   test('an organizer has a profile of their own, and staff emails cannot be invited as members', async () => {
@@ -1690,10 +1819,10 @@ test.describe('every member and organizer workflow', () => {
     ).toContainText('Olive Organizer');
 
     // A staff email is refused as a member before any link is generated.
-    await adminPage.goto('/admin/invitations');
+    await adminPage.goto('/admin/users?invite=1');
     await adminPage.locator('#invite-email').fill(people.superadmin.email);
     await adminPage.locator('#invite-paid-since').fill('2026-01-15');
-    await adminPage.getByRole('button', { name: 'Generate invitation link' }).click();
+    await adminPage.getByRole('button', { name: 'Make an invitation link' }).click();
     await expect(adminPage.getByText('That email already has staff access.')).toBeVisible({
       timeout: 15_000,
     });
@@ -1719,9 +1848,27 @@ test.describe('every member and organizer workflow', () => {
 
     await again.goto('/admin/audit');
     await expect(again.getByRole('heading', { name: 'Audit log' })).toBeVisible();
-    await again.locator('#audit-action').fill('attendance');
-    await again.getByRole('button', { name: 'Filter' }).click();
-    await expect(again.getByText('attendance.check_in').first()).toBeVisible({ timeout: 15_000 });
+    // Entries are sentences that name who did what, not codes.
+    await again.locator('#audit-topic').selectOption('attendance');
+    await again.getByRole('button', { name: 'Show' }).click();
+    await expect(again).toHaveURL(/about=attendance/);
+    await expect(again.getByText(`checked ${memberName} in by card.`).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(again.getByText('attendance.check_in')).toHaveCount(0);
+    await expect(again.getByText('wrote a card for')).toHaveCount(0);
+    await again.locator('#audit-topic').selectOption('cards');
+    await again.getByRole('button', { name: 'Show' }).click();
+    await expect(again.getByText(`wrote a card for ${memberName}.`).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    // Home shows the latest of them the same way, with the full log one click away.
+    await again.goto('/admin');
+    await expect(
+      again.getByRole('list', { name: 'Recent actions' }).locator('li').first(),
+    ).toContainText(/^(You|Someone|[A-Z]).+\./);
+    await again.getByRole('link', { name: 'Full audit log' }).click();
+    await expect(again).toHaveURL(/\/admin\/audit$/);
 
     const { data: rows } = await supabase()
       .from('audit_log')
@@ -1756,10 +1903,22 @@ test.describe('every member and organizer workflow', () => {
       '/member/privacy',
       '/member/rewards',
     ]);
+    const { data: adminPrivate } = await supabase()
+      .from('member_private')
+      .select('member_id')
+      .eq('email', people.admin.email)
+      .single();
+    const { data: adminMember } = await supabase()
+      .from('members')
+      .select('auth_user_id')
+      .eq('id', adminPrivate?.member_id as string)
+      .single();
     await checkFit(superPage, [
       '/admin',
       '/admin/users',
-      '/admin/invitations',
+      '/admin/users?invite=1',
+      `/admin/staff/${adminMember?.auth_user_id as string}`,
+      '/admin/profile',
       '/admin/cards',
       '/admin/kiosk',
       '/admin/events',

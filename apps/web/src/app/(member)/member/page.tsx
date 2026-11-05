@@ -5,8 +5,8 @@ import {
   BadgeCheck,
   CalendarDays,
   Gift,
-  MapPin,
   Nfc,
+  QrCode,
   Sparkles,
   Star,
   Trophy,
@@ -30,7 +30,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'My dashboard',
+  title: 'Home',
   robots: { index: false, follow: false },
 };
 
@@ -121,17 +121,41 @@ export default async function MemberDashboard({
                 {member.publicNumber} · {user.email}
               </p>
             </div>
-            <Link
-              href={`/m/${member.slug}`}
-              className={buttonVariants({
-                variant: 'secondary',
-                size: 'sm',
-                className: 'self-start sm:self-auto',
-              })}
-            >
-              View public profile
-            </Link>
+            <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+              <Link href="/member/id" className={buttonVariants({ size: 'sm' })}>
+                <QrCode className="size-4" aria-hidden />
+                Show my ID
+              </Link>
+              <Link
+                href={`/m/${member.slug}`}
+                className={buttonVariants({ variant: 'secondary', size: 'sm' })}
+              >
+                View public profile
+              </Link>
+            </div>
           </div>
+
+          {nextEvent.data ? (
+            <Link
+              href={`/events/${nextEvent.data.slug}`}
+              className="flex items-center gap-4 border border-border bg-card p-4 transition-colors hover:border-primary/40"
+            >
+              <span className="grid size-10 shrink-0 place-items-center bg-primary-soft text-primary">
+                <CalendarDays className="size-5" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="type-overline block text-muted-foreground">Next event</span>
+                <span className="mt-0.5 block truncate text-base font-bold">
+                  {nextEvent.data.name}
+                </span>
+                <span className="mt-0.5 block text-sm leading-relaxed text-muted-foreground">
+                  {formatDateTime(nextEvent.data.starts_at)}
+                  {nextEvent.data.location ? ` · ${nextEvent.data.location}` : ''}
+                </span>
+              </span>
+              <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            </Link>
+          ) : null}
 
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard
@@ -240,40 +264,9 @@ export default async function MemberDashboard({
                         ? 'Inactive. Use your digital ID or ask for a new card.'
                         : 'Ask an organizer to write your card.'}
               </p>
-              <Link href="/member/id" className={buttonVariants({ className: 'mt-4 w-full' })}>
-                Show digital ID
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-5">
-              <h2 className="mb-2 text-base font-bold">Next up</h2>
-              {nextEvent.data ? (
-                <>
-                  <p className="text-sm font-semibold">{nextEvent.data.name}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    {formatDateTime(nextEvent.data.starts_at)}
-                    {nextEvent.data.location ? (
-                      <span className="mt-1 flex items-center gap-1.5 text-xs">
-                        <MapPin className="size-3.5" aria-hidden />
-                        {nextEvent.data.location}
-                      </span>
-                    ) : null}
-                  </p>
-                  <Link
-                    href={`/events/${nextEvent.data.slug}`}
-                    className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-primary underline-offset-2 hover:underline"
-                  >
-                    Event details
-                    <ArrowRight className="size-4" aria-hidden />
-                  </Link>
-                </>
-              ) : (
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  No events right now.
-                </p>
-              )}
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                No card with you? Show my ID works the same way at check-in.
+              </p>
             </CardContent>
           </Card>
 

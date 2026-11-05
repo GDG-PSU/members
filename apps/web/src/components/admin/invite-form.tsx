@@ -24,7 +24,7 @@ export function InviteForm() {
           <Textarea id="invite-note" name="note" rows={2} maxLength={300} className="min-h-20" />
         </Field>
         <Button type="submit" disabled={pending} className="w-full">
-          {pending ? 'Generating…' : 'Generate invitation link'}
+          {pending ? 'Making the link…' : 'Make an invitation link'}
         </Button>
       </form>
 
@@ -35,7 +35,7 @@ export function InviteForm() {
 
       <p className="text-xs leading-relaxed text-muted-foreground">
         No email is sent, so copy the link and send it yourself. The invitation stays open for 14
-        days; use New link if the link itself has expired.
+        days. If the link stops working before then, select New link next to their name.
       </p>
     </div>
   );

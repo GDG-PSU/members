@@ -94,10 +94,11 @@ without an explicit product decision.
   sign-up.
 - **Admin** — invitations, revoking member access, cards, events, kiosk, and rewards. Normal admins
   see only the invitations and activity they created (they can still see all members); they do not
-  get staff-role management, the member detail page and its actions, or the full audit log.
+  get staff-role management, the manage pages for a member or an organizer, or the full audit log.
 - **Superadmin** — inherits admin operations, manages staff roles/invitations, reads the full audit
-  log, and owns the member detail actions: status changes, interaction points, attendance
-  corrections, and recovery links. A recovery link is a password reset for whoever holds it, so it
+  log, and owns the manage pages, `/admin/members/[id]` and `/admin/staff/[id]`: type changes,
+  status changes, interaction points, attendance corrections, removing an organizer's access, and
+  recovery links. A recovery link is a password reset for whoever holds it, so it
   must stay superadmin-only. The last active superadmin cannot be revoked or demoted (enforced by the
   `user_roles_keep_last_superadmin` trigger), and self-revocation is blocked.
 
@@ -136,19 +137,26 @@ their own: route handlers and server actions must re-check the viewer and role.
 
 ## 5. Route map
 
-| Surface    | Routes                                                                                                                                                                                                |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public     | `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[profileSlug]`, `/c/[cardToken]`, `/card-unavailable`, `/privacy`                                                                               |
-| Auth       | `/login`, `/forgot-password`, `/account/password`, `/account-suspended`, `/invite/accept`, `/auth/callback`, `/auth/confirm`, `/admin-mfa`, `/admin-setup`                                            |
-| Member     | `/member`, `/member/activity`, `/member/id`, `/member/profile`, `/member/privacy`, `/member/rewards`                                                                                                  |
-| Admin      | `/admin`, `/admin/profile`, `/admin/invitations`, `/admin/users`, `/admin/cards`, `/admin/kiosk`, `/admin/events`, `/admin/events/new`, `/admin/events/[id]`, `/admin/rewards`, `/admin/rewards/[id]` |
-| Superadmin | `/admin/audit`, `/admin/members/[id]` (and staff-role controls within `/admin/users`)                                                                                                                 |
+| Surface    | Routes                                                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public     | `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[profileSlug]`, `/c/[cardToken]`, `/card-unavailable`, `/privacy`                                                         |
+| Auth       | `/login`, `/forgot-password`, `/account/password`, `/account-suspended`, `/invite/accept`, `/auth/callback`, `/auth/confirm`, `/admin-mfa`, `/admin-setup`                      |
+| Member     | `/member`, `/member/activity`, `/member/id`, `/member/profile`, `/member/rewards`                                                                                               |
+| Admin      | `/admin`, `/admin/profile`, `/admin/users`, `/admin/cards`, `/admin/kiosk`, `/admin/events`, `/admin/events/new`, `/admin/events/[id]`, `/admin/rewards`, `/admin/rewards/[id]` |
+| Superadmin | `/admin/audit`, `/admin/members/[id]`, `/admin/staff/[id]`                                                                                                                      |
 
 Canonical aliases/redirects:
 
 - `/admin/devices` -> `/admin/cards`
 - `/admin/usb` -> `/admin/cards`
 - `/admin/members` -> `/admin/users`
+- `/admin/invitations` -> `/admin/users?invite=1`, which opens the invite forms on the People page
+- `/member/privacy` -> `/member/profile#privacy`
+
+The admin area has five tabs: Home, People (`/admin/users`), Cards, Events and Rewards. The member
+area has four: Home, Activity, Rewards and Profile. The kiosk opens from Home or an event, the audit
+log from Home, and the digital ID from the member Home; each lights the tab that leads to it. A page
+with no tab of its own, such as `/admin/profile`, lights none.
 
 APIs and handlers:
 
@@ -224,7 +232,8 @@ instants are stored as `timestamptz`; event wall-clock input and display use
 ### Cards
 
 - `prepare_card` creates a pending credential; the admin writes the URL over USB and verifies the
-  read-back before activation.
+  read-back before activation. `CardWriter` does all of that from one button, and activates only
+  when the link this browser read back is the one it wrote.
 - At most one active card per member. The old card keeps working until `activate_card` replaces it,
   so an abandoned write never strands a member. A lost card is revoked explicitly.
 - Only the SHA-256 lookup hash and an encrypted token copy are stored. Never persist or log a
@@ -367,6 +376,12 @@ not assume CI covers those.
   clears a form after every action, including one that failed validation.
 - Server actions for such a form return `{ error }` rather than redirecting with the error, which
   would drop what was typed.
+- A change that is hard to take back goes through `ConfirmAction`, whose dialog names the person or
+  thing it affects. `window.confirm` cannot say that.
+- People read the audit log as sentences from `describeAudit` (`lib/audit/describe.ts`). A new
+  action code needs a sentence and a topic there, or it shows as a quoted code.
+- Use the words the UI already uses: organizer, authenticator app, points history, switch off a
+  card, remove access. Not staff, TOTP, ledger or revoke.
 - Sign out with `signOut({ scope: 'local' })`. The default is global, which ends every device's
   session.
 - A sign-in may continue to the page the person was opening only through `safeReturnPath`, which
@@ -488,6 +503,10 @@ permission.
   old one, split it: push the part the running app tolerates, confirm it applied, then push the rest.
 - A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
   "Access is denied" until the tab disconnects.
+- `NavTabs` lights the longest matching `href`, so a section's first page (`/admin`, `/member`)
+  takes `exact` or it lights up on every page beneath it.
+- A form inside a closed `<details>` is still in the page, so a test's `getByText` can match its
+  hidden options. Scope the locator to the row or to `main`.
 
 ## 11. Definition of done
 
@@ -527,32 +546,32 @@ Last updated 2026-11-05.
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0016 applied. The
-  Supabase GitHub integration applies new migrations when `main` is pushed. 0017 (organizer
-  profiles) and 0018 (a placeholder profile for each existing staff account) are in the repo. 0017
-  is pushed alone first, and 0018 goes with the app code.
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0018 applied. The
+  Supabase GitHub integration applies new migrations when `main` is pushed.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
   test members exist. Nothing here was read from it after that.
 - **Latest stage:** the kiosk reads continuously and can check a member in by name, GDG number, or
   QR code; the event form is cut from 26 fields to 7; and eight bugs from a full UX audit are fixed.
-  That is deployed in `7472690`. Since then staff have a profile and a card of their own, tested on
-  a local stack. See `docs/test-plan.md`.
+  That is deployed in `7472690`. Staff then got a profile and a card of their own, deployed in
+  `2df3898` after its schema went ahead in `5cd11ff`. Since then a card is written, checked and
+  switched on from one button; the admin area went from eight tabs to five and the member area
+  from six to four; invitations moved onto the People page, where each person has one manage page;
+  reward requests are decided with buttons; privacy switches save as they are flipped; the activity
+  page says why a session gave no points; and the audit log reads as sentences. That part has no
+  schema change. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
-The owner approved these on 2026-11-04, in this order:
+The owner approved this on 2026-11-04 and widened it on 2026-11-05:
 
-1. A single guided card-writing flow, fewer navigation tabs, merged Users and Invitations, simpler
-   reward decisions, and plain wording throughout.
-2. Permanent delete for superadmins (events and similar records), with the audit log kept.
+1. Permanent delete for superadmins, for everything that can be added or changed, with the audit
+   log kept.
 
 ### Waiting on a person
 
 These are hosted settings that an agent should not change. Check current values rather than assuming
 them, and do not record a weak setting here, because this repository is public:
 
-- After each push, confirm its migration is applied to production: 0017 before the app code is
-  pushed, then 0018.
 - Set the Site URL in Supabase Auth to the production host, as `docs/deployment.md` says. Agents have
   no way to read it from here.
 - Confirm `NEXT_PUBLIC_SITE_URL` in Vercel matches the production host before writing physical cards,
@@ -562,16 +581,20 @@ them, and do not record a weak setting here, because this repository is public:
 
 On a local Supabase stack rebuilt from every migration through 0018, on 2026-11-05:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 67
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 80
   unit tests.
 - `pnpm db:verify` passes 83/83.
 - The 0018 backfill, run in a rolled-back transaction, passed 8 checks: active staff get one
   placeholder each, revoked staff and members get nothing, and a second run changes nothing.
-- `pnpm e2e` passes 53 with 33 skipped: 43/43 on desktop Chromium, and on the mobile project the 10
+- `pnpm e2e` passes 55 with 35 skipped: 45/45 on desktop Chromium, and on the mobile project the 10
   public specs pass while the signed-in specs skip by design. The suite covers the always-on kiosk,
   check-in by name and by a typed QR link, the short event form, the bug fixes, a new admin setting
-  up a profile, user type changes keeping the profile and card, and organizers being refused points
-  and check-in.
+  up a profile, user type changes keeping the profile and card, organizers being refused points
+  and check-in, the one-button card writer and its read-back check, the five and four tabs, the
+  People and manage pages with their named confirmations, auto-saving privacy, and audit sentences.
+- In one of three full runs the legacy device-signature spec got a 500 from the heartbeat route
+  ("Body has already been read") on both projects, then passed alone and in the next full run. That
+  route is unchanged legacy code.
 - A one-off run on 2026-11-04 with Chromium's simulated camera decoded a member's QR code at the
   kiosk and recorded the check-in as `qr`, with no CSP or permissions-policy violation.
 
@@ -582,6 +605,14 @@ On the physical ESP32 + PN532 with firmware 2.0.2:
 - Earlier the same day, with the old Read button: the app passed invitation, setup, prepare, write,
   read back, activate, the card URL resolving, check-in, check-out, and the points grant. Only
   `navigator.serial` was bridged to COM3, because its picker cannot be automated.
+
+On production, read-only, after `2df3898` was pushed on 2026-11-05:
+
+- Migrations 0017 and 0018 are applied. All six active staff accounts have a placeholder organizer
+  profile with no photo and only the name shown, and none is on the leaderboard.
+- An organizer's public page loads with the Organizer badge and none of a member's numbers.
+  `/admin-setup` and `/admin/profile` are deployed and redirect to `/login` when signed out.
+- `anon` can still execute no public function, and `authenticated` only the three RLS helpers.
 
 On production, read-only, after `7472690` was pushed on 2026-11-04:
 
@@ -598,8 +629,10 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
 
 - The signed-in parts of the deployed app since `7472690`: the kiosk, the event form, and the fixes
   behind sign-in.
-- Organizer profiles on production: migration 0018's placeholder profiles for the real staff
-  accounts, the setup step for a new admin, and a card written for an organizer.
+- Organizer profiles on production while signed in: staff editing their placeholder, the setup step
+  for a new admin, and a card written for an organizer.
+- The one-button card writer on the physical reader: it was only run against the fake reader.
+- The new Home, People, manage and audit pages on production while signed in.
 - A real card read through the always-on kiosk on the physical reader, and the reader reconnecting
   by itself on a second visit, which needs a real browser's saved port permission.
 - A real camera scanning a real phone screen at the kiosk.

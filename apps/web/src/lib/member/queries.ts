@@ -16,6 +16,10 @@ export interface AttendanceRow {
   durationMinutes: number | null;
   sessionName: string;
   sessionKind: string;
+  /** What the session asks for, to explain an attendance that earned nothing. */
+  sessionReward: number | null;
+  minimumMinutes: number | null;
+  checkOutClosesAt: string | null;
   eventName: string;
   eventSlug: string;
   eventStartsAt: string;
@@ -54,7 +58,7 @@ export async function getRecentAttendance(
   const { data } = await supabase
     .from('attendance_records')
     .select(
-      'id, state, qualified, reward_points, checked_in_at, checked_out_at, duration_minutes, event_sessions(name, kind, events(name, slug, starts_at))',
+      'id, state, qualified, reward_points, checked_in_at, checked_out_at, duration_minutes, event_sessions(name, kind, reward_points, minimum_duration_minutes, check_out_closes_at, events(name, slug, starts_at))',
     )
     .eq('member_id', memberId)
     .order('checked_in_at', { ascending: false })
@@ -73,6 +77,9 @@ export async function getRecentAttendance(
       durationMinutes: (row.duration_minutes as number | null) ?? null,
       sessionName: (session?.name as string) ?? 'Session',
       sessionKind: (session?.kind as string) ?? 'main',
+      sessionReward: (session?.reward_points as number | undefined) ?? null,
+      minimumMinutes: (session?.minimum_duration_minutes as number | undefined) ?? null,
+      checkOutClosesAt: (session?.check_out_closes_at as string | undefined) ?? null,
       eventName: (event?.name as string) ?? 'Event',
       eventSlug: (event?.slug as string) ?? '',
       eventStartsAt: (event?.starts_at as string) ?? (row.checked_in_at as string),

@@ -65,7 +65,7 @@ export function MfaPanel({
         {/* eslint-disable-next-line @next/next/no-img-element -- data-URL QR from Supabase, not an optimizable remote image */}
         <img
           src={enrollState.qrCode}
-          alt="TOTP enrollment QR code"
+          alt="QR code to scan with your authenticator app"
           width={220}
           height={220}
           className="mx-auto size-[220px] rounded-2xl border border-border bg-white p-2"

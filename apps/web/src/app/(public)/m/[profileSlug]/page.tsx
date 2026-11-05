@@ -49,7 +49,17 @@ export default async function MemberProfilePage({
     // The owner reaches this page from their own dashboard and digital ID, and
     // should be told why it is empty rather than that "this member" is private.
     const viewer = await getViewer();
-    return <PrivateProfile isOwner={viewer.member?.slug === profileSlug} />;
+    return (
+      <PrivateProfile
+        ownerHref={
+          viewer.profile?.slug !== profileSlug
+            ? null
+            : viewer.member
+              ? '/member/profile#privacy'
+              : '/admin/profile#privacy'
+        }
+      />
+    );
   }
 
   const isOrganizer = profile.kind === 'organizer';
@@ -178,7 +188,8 @@ export default async function MemberProfilePage({
 }
 
 /** Neutral state for an existing profile the member has made private. */
-function PrivateProfile({ isOwner }: { isOwner: boolean }) {
+function PrivateProfile({ ownerHref }: { ownerHref: string | null }) {
+  const isOwner = ownerHref !== null;
   return (
     <PageShell width="sm" className="py-14 sm:py-20">
       <Card>
@@ -196,10 +207,10 @@ function PrivateProfile({ isOwner }: { isOwner: boolean }) {
               : 'This member keeps their profile private. Ask them directly if you need to reach them.'}
           </p>
           <Link
-            href={isOwner ? '/member/privacy' : '/'}
+            href={ownerHref ?? '/'}
             className={buttonVariants({ variant: 'secondary', className: 'mt-6' })}
           >
-            {isOwner ? 'Change privacy settings' : 'Back to the hub'}
+            {isOwner ? 'Change what others can see' : 'Back to the hub'}
           </Link>
         </CardContent>
       </Card>

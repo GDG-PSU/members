@@ -22,7 +22,7 @@ const sections = [
   },
   {
     title: 'What organizers can see',
-    body: 'Organizers see member, attendance, ledger, card and audit records. Access is role-gated and audited.',
+    body: 'Organizers see member, attendance, points, card and audit records. Access depends on their role and is recorded.',
   },
   {
     title: 'Changing or removing data',
@@ -30,7 +30,7 @@ const sections = [
   },
   {
     title: 'Retention',
-    body: 'Attendance and ledger records stay while you are a member and for dispute resolution. Archived accounts leave public views immediately.',
+    body: 'Attendance and points records stay while you are a member and for settling disputes. Archived accounts leave public views immediately.',
   },
 ];
 

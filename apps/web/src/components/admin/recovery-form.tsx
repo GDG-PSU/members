@@ -17,7 +17,7 @@ export function RecoveryForm({ email }: { email: string }) {
       <form action={action}>
         <input type="hidden" name="email" value={email} />
         <Button type="submit" size="sm" variant="secondary" disabled={pending}>
-          {pending ? 'Generating…' : 'Generate recovery link'}
+          {pending ? 'Making the link…' : 'Make a password reset link'}
         </Button>
       </form>
       {state.error ? (
@@ -26,14 +26,14 @@ export function RecoveryForm({ email }: { email: string }) {
         </Alert>
       ) : null}
       <p className="mt-2 text-[0.78rem] leading-relaxed text-muted-foreground">
-        No email is sent. Copy the link and deliver it privately.
+        No email is sent. Copy the link and send it to them privately.
       </p>
       <LinkDialog
         open={open}
         onClose={() => setDismissed(state.link ?? null)}
         link={state.link}
         email={state.email}
-        title="Recovery link"
+        title="Password reset link"
       />
     </div>
   );

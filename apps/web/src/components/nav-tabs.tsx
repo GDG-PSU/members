@@ -9,16 +9,18 @@ export function NavTabs({
   ariaLabel,
   className,
 }: {
-  items: { href: string; label: string; activePrefixes?: string[] }[];
+  /** `exact` keeps a section's first page from lighting up on every page under it. */
+  items: { href: string; label: string; exact?: boolean; activePrefixes?: string[] }[];
   ariaLabel: string;
   className?: string;
 }) {
   const pathname = usePathname();
+  const under = (prefix: string) => pathname === prefix || pathname.startsWith(`${prefix}/`);
   const active = items
-    .filter((item) =>
-      [item.href, ...(item.activePrefixes ?? [])].some(
-        (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-      ),
+    .filter(
+      (item) =>
+        (item.exact ? pathname === item.href : under(item.href)) ||
+        (item.activePrefixes ?? []).some(under),
     )
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 

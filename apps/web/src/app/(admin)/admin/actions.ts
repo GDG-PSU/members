@@ -580,10 +580,10 @@ export async function revokeUserAccessAction(formData: FormData) {
   succeed(
     returnTo,
     isMember && roles?.length
-      ? 'Member and staff access revoked.'
+      ? 'Member and organizer access removed.'
       : isMember
-        ? 'Member access revoked.'
-        : 'Staff access revoked.',
+        ? 'Member access removed.'
+        : 'Organizer access removed.',
     ['/admin', '/admin/users', '/member'],
   );
 }
@@ -668,7 +668,7 @@ export async function revokeInvitationAction(formData: FormData) {
     { status: 'pending' },
     { status: 'revoked' },
   );
-  succeed(returnTo, 'Invitation revoked.', ['/admin/invitations', '/admin/users']);
+  succeed(returnTo, 'Invitation cancelled.', ['/admin/invitations', '/admin/users']);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1105,6 +1105,109 @@ export async function searchKioskMembersAction(query: string): Promise<KioskMemb
   return [...hits.values()].slice(0, 8);
 }
 
+export type CardHolder = {
+  memberId: string;
+  name: string;
+  /** A member's GDG number, or "Organizer". */
+  detail: string;
+  photoUrl: string | null;
+  hasActiveCard: boolean;
+};
+
+type CardHolderRow = {
+  id: string;
+  kind: string;
+  public_number: string;
+  profile: { display_name: string; profile_slug: string; photo_path: string | null };
+};
+
+async function toCardHolders(rows: CardHolderRow[]): Promise<CardHolder[]> {
+  if (rows.length === 0) return [];
+  const { data: active } = await createSupabaseAdmin()
+    .from('card_credentials')
+    .select('member_id')
+    .eq('status', 'active')
+    .in(
+      'member_id',
+      rows.map((row) => row.id),
+    );
+  const withCard = new Set((active ?? []).map((card) => card.member_id as string));
+  return rows.map((row) => ({
+    memberId: row.id,
+    name: row.profile.display_name,
+    detail: row.kind === 'organizer' ? 'Organizer' : row.public_number,
+    photoUrl: row.profile.photo_path ? profilePhotoUrl(row.profile.profile_slug) : null,
+    hasActiveCard: withCard.has(row.id),
+  }));
+}
+
+const CARD_HOLDER_COLUMNS =
+  'id, kind, status, public_number, member_profiles!inner(display_name, profile_slug, photo_path)';
+
+function cardHolderRow(row: {
+  id: unknown;
+  kind: unknown;
+  public_number: unknown;
+  member_profiles: unknown;
+}): CardHolderRow | null {
+  const profile = Array.isArray(row.member_profiles) ? row.member_profiles[0] : row.member_profiles;
+  if (!profile) return null;
+  return {
+    id: row.id as string,
+    kind: row.kind as string,
+    public_number: row.public_number as string,
+    profile: profile as CardHolderRow['profile'],
+  };
+}
+
+/** Finds the active members and organizers a card can be written for. */
+export async function searchCardHoldersAction(query: string): Promise<CardHolder[]> {
+  await requireAdminActor();
+  const parsed = z.string().trim().min(2).max(60).safeParse(query);
+  if (!parsed.success) return [];
+  // The value goes into a LIKE pattern, where % and _ are wildcards.
+  const pattern = `%${parsed.data.replace(/[\\%_]/g, '\\$&')}%`;
+
+  const admin = createSupabaseAdmin();
+  const [byName, byNumber] = await Promise.all([
+    admin
+      .from('members')
+      .select(CARD_HOLDER_COLUMNS)
+      .eq('status', 'active')
+      .ilike('member_profiles.display_name', pattern)
+      .limit(8),
+    admin
+      .from('members')
+      .select(CARD_HOLDER_COLUMNS)
+      .eq('status', 'active')
+      .eq('kind', 'member')
+      .ilike('public_number', pattern)
+      .limit(8),
+  ]);
+
+  const rows = new Map<string, CardHolderRow>();
+  for (const row of [...(byName.data ?? []), ...(byNumber.data ?? [])]) {
+    const holder = cardHolderRow(row);
+    if (holder && !rows.has(holder.id)) rows.set(holder.id, holder);
+  }
+  const holders = await toCardHolders([...rows.values()].slice(0, 8));
+  return holders.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The person a card page was opened for, when a link names one. */
+export async function findCardHolderAction(memberId: string): Promise<CardHolder | null> {
+  await requireAdminActor();
+  if (!z.uuid().safeParse(memberId).success) return null;
+  const { data } = await createSupabaseAdmin()
+    .from('members')
+    .select(CARD_HOLDER_COLUMNS)
+    .eq('id', memberId)
+    .eq('status', 'active')
+    .maybeSingle();
+  const holder = data ? cardHolderRow(data) : null;
+  return holder ? ((await toCardHolders([holder]))[0] ?? null) : null;
+}
+
 /**
  * Prepares a pending card for the local Web Serial writer. Unlike the legacy
  * writer-job path, this returns the one-time card URL to the authenticated
@@ -1224,7 +1327,7 @@ export async function revokeCardAction(formData: FormData) {
     { status: card.status },
     { status: 'lost' },
   );
-  succeed(returnTo, 'Card revoked. The member profile URL is unchanged.', ['/member']);
+  succeed(returnTo, 'Card switched off. Their profile page is unchanged.', ['/member']);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1597,5 +1700,11 @@ export async function decideRedemptionAction(formData: FormData) {
     { status: current.status },
     { status: parsed.data.action },
   );
-  succeed(returnTo, `Redemption ${parsed.data.action}.`, ['/member/rewards']);
+  const message = {
+    approve: 'Request approved.',
+    fulfil: 'Marked as handed over.',
+    reject: 'Request rejected and the points refunded.',
+    cancel: 'Request cancelled and the points refunded.',
+  }[parsed.data.action];
+  succeed(returnTo, message, ['/member/rewards']);
 }

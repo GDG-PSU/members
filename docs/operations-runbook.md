@@ -1,12 +1,12 @@
 # Operations runbook
 
-> **Current hardware note (2026-11-04):** The supported lane is USB-only.
-> Prepare a card URL at `/admin/cards`, write it with the PN532 through Web Serial,
-> verify the read-back, then activate it. There is no device registration,
-> WiFi, heartbeat, HMAC secret, kiosk scan queue, or writer-job operation for
-> this lane. The same lane powers `/admin/kiosk`; select a session, read a card,
-> verify the member, and confirm attendance. The retired `/admin/devices` URL
-> redirects to `/admin/cards`.
+> **Current hardware note (2026-11-05):** The reader is USB-only. At
+> `/admin/cards`, choose a person and select **Write card**: the page prepares
+> the card, writes it with the PN532 through Web Serial, reads it back and
+> switches it on in one go. There is no device registration, WiFi, heartbeat,
+> HMAC secret, kiosk scan queue, or writer-job operation. The same reader powers
+> `/admin/kiosk`; select a session, read a card, verify the member, and confirm
+> attendance. The retired `/admin/devices` URL redirects to `/admin/cards`.
 
 Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**.
 
@@ -31,7 +31,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ## Preflight (day before / morning of)
 
 1. **Event:** create the event (it starts as a draft), check its times, points and attendance rules, then publish it. Add a bonus session only if part of the event needs its own check-in and points.
-2. **USB lane:** connect the reader at `/admin/cards` and confirm `info` reports NFC ready. There is no server registration or lane label.
+2. **Reader:** connect the reader at `/admin/cards` and confirm **Reader tools** reports NFC ready. There is no server registration.
 3. **Pages:** admin and kiosk pages load with AAL2, server time is sane, and the HTTPS certificate is valid. The reader itself does not use the network.
 4. **Test card:** perform a write test only on a non-production test card.
 5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, and photos load. **[target-project enrollment unverified]**
@@ -50,16 +50,17 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 
 ### Writing or replacing a card
 
-1. Open `/admin/cards`, select the member, and prepare one pending card URL.
-2. Connect the lane, insert a blank/eligible NFC tag, and write the URL. The firmware writes exactly one NDEF HTTPS URL and reads it back. Success requires an exact read-back match; failure yields a clear code.
-3. Verify the browser read-back matches the prepared URL, then activate the card. The previous card (if any) is revoked and the member can use the digital ID.
-4. Never write a card for a member whose identity/photo you have not verified. Do not leave a prepared URL active overnight.
+1. Open `/admin/cards` and select **Connect reader** once. From a person's page, **Write a card for them** opens it with that person already chosen.
+2. Find the person by name or GDG number. Members and organizers can both have a card.
+3. Select **Write card** and place a blank card on the reader. The page prepares the card, writes one link to it, reads it back and switches it on. It reports success only when the link it read back is the one it wrote; if anything fails, the person's old card keeps working and you can try again.
+4. Lift the card off before writing the next one; the page waits for that. The previous card, if there was one, stops working once the new one is on.
+5. Never write a card for someone whose identity and photo you have not checked. **Reader tools** at the bottom of the page reads any card and shows the reader's messages.
 
 ## Lost, stolen or replaced card
 
-1. Revoke the card immediately in the admin portal (reason required).
+1. Switch the card off straight away: **Switch off** in the list at `/admin/cards`, or on the person's page.
 2. The `/c/` link stops redirecting; the member's `/m/` profile URL is unchanged.
-3. Prepare and write a replacement; the previous card is marked replaced. Do not reuse a lost card's token.
+3. Write a replacement as above; the previous card is marked replaced.
 4. Tell the member their digital ID is the fallback until the new card is active.
 
 ## Attendance correction
@@ -71,9 +72,9 @@ Corrections are admin-only, require a reason, and are audited.
 - **Wrong session:** do not edit history. Reject/annotate and ask an organizer to handle it through the documented correction path.
 - If a member emails support, verify from their registered address, inspect the attendance row and audit trail, then act. Never accept a screenshot as proof of attendance.
 
-## USB lane management
+## Reader management
 
-- **Reconnect:** close the kiosk/writer tab or use **Disconnect**, then reconnect and select the port again. Do not open two admin tabs against the same lane.
+- **Reconnect:** close the kiosk or card tab or use **Disconnect**, then reconnect and select the port again. Do not open two admin tabs against the same reader.
 - **Lost or untrusted reader:** stop using it, remove physical access, and inspect recent `device_scans`/audit records. The reader has no server secret to rotate; it cannot reach the network on its own.
 - **Browser support:** use a current Chrome or Edge build with Web Serial. Safari and Firefox are not supported.
 
@@ -95,7 +96,7 @@ Corrections are admin-only, require a reason, and are audited.
 
 1. Member emails **gdg@psu.edu** from their registered address.
 2. Organizer verifies the sender against the member record; never disclose account details to a different address.
-3. Password reset: admin opens the member, chooses **Generate recovery link** (audited), copies the one-time link and sends it from their own mailbox. Never email a password. Links expire per the project's Auth OTP setting; regenerate if needed.
+3. Password reset: a superadmin opens the person from **People**, chooses **Make a password reset link** (audited), copies the one-time link and sends it from their own mailbox. Never email a password. Links expire per the project's Auth OTP setting; regenerate if needed.
 4. Attendance/points issue: inspect attendance + ledger + audit; correct with a reason if warranted; reply with the outcome, not ledger internals.
 5. Privacy/account closure: confirm identity, explain retention, follow `PRIVACY.md`; account deletion is reviewed because member ledger/attendance history is removed. Audit rows remain, retaining the actor UUID as an opaque historical identifier (migration 0005). Run the reviewed erasure as a service role or the `postgres` role, using the Auth user id from `auth.users`:
 

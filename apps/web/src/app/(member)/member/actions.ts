@@ -11,27 +11,13 @@ import {
 import { requireMember, requireProfile } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { storeProfilePhoto, PhotoError } from '@/lib/profile/photo';
+import { VISIBILITY_COLUMNS as visibilityColumns } from '@/lib/profile/visibility';
 
 export interface ActionState {
   ok?: boolean;
   message?: string;
   error?: string;
 }
-
-const visibilityColumns: Record<keyof Visibility, string> = {
-  publicProfile: 'public_profile',
-  showDisplayName: 'show_display_name',
-  showPhoto: 'show_photo',
-  showAbout: 'show_about',
-  showLinks: 'show_links',
-  showMemberNumber: 'show_member_number',
-  showMemberSince: 'show_member_since',
-  showPoints: 'show_points',
-  showStars: 'show_stars',
-  showEvents: 'show_events',
-  showOnLeaderboard: 'show_on_leaderboard',
-  showEmail: 'show_email',
-};
 
 function humanize(message: string): string {
   const map: Record<string, string> = {
@@ -190,7 +176,8 @@ export async function updatePrivacyAction(
     p_request_id: null,
   });
 
-  revalidatePath('/member/privacy');
+  revalidatePath('/member/profile');
+  revalidatePath('/admin/profile');
   revalidatePath('/member');
   revalidatePath('/leaderboard');
   revalidatePath(`/m/${member.slug}`);

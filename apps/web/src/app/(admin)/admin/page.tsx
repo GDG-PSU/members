@@ -1,20 +1,47 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, Gift, Mail, Users } from 'lucide-react';
+import { ArrowRight, Gift, Mail, MapPin, Users } from 'lucide-react';
 import { buttonVariants, Card, CardContent, MetricCard, PageShell } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
+import { auditSentence } from '@/lib/audit/describe';
+import { loadAuditNames } from '@/lib/audit/names';
 import { Flash } from '@/components/admin/ui';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Admin overview',
+  title: 'Admin home',
   robots: { index: false, follow: false },
 };
 
-export default async function AdminOverviewPage({
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function Tile({
+  href,
+  label,
+  value,
+  icon,
+}: {
+  href: string;
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="block border border-transparent transition-colors hover:border-primary/40 focus-visible:border-primary focus-visible:outline-none"
+    >
+      <MetricCard label={label} value={value} icon={icon} />
+    </Link>
+  );
+}
+
+export default async function AdminHomePage({
   searchParams,
 }: {
   searchParams: Promise<{ notice?: string; error?: string }>;
@@ -33,14 +60,14 @@ export default async function AdminOverviewPage({
 
   let auditQuery = admin
     .from('audit_log')
-    .select('id, action, target_type, target_id, reason, created_at')
+    .select('id, actor_auth_id, action, target_type, target_id, reason, after, created_at')
     .order('created_at', { ascending: false })
     .limit(8);
   if (!viewer.isSuperadmin) {
     auditQuery = auditQuery.eq('actor_auth_id', viewer.user.id);
   }
 
-  const [members, invites, redemptions, rewards, recentAudit] = await Promise.all([
+  const [members, invites, redemptions, recentAudit, nextEvent] = await Promise.all([
     admin
       .from('members')
       .select('id', { count: 'exact', head: true })
@@ -51,35 +78,60 @@ export default async function AdminOverviewPage({
       .from('redemptions')
       .select('id', { count: 'exact', head: true })
       .in('status', ['requested', 'approved']),
-    admin.from('rewards').select('id', { count: 'exact', head: true }).eq('is_active', true),
     auditQuery,
+    admin
+      .from('events')
+      .select('id, name, starts_at, location')
+      .eq('status', 'published')
+      .gte('ends_at', nowIso())
+      .order('starts_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
-  const readiness = [{ label: 'Active rewards', value: rewards.count ?? 0 }];
+  const actions = recentAudit.data ?? [];
+  const names = await loadAuditNames(admin, actions);
 
   return (
     <PageShell>
       <Flash notice={notice} error={error} />
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="type-overline text-primary">Organizer console</p>
-          <h1 className="type-h1 mt-2">Event control</h1>
+          <p className="type-overline text-primary">Organizers</p>
+          <h1 className="type-h1 mt-2">Home</h1>
         </div>
         <div className="flex flex-wrap gap-2.5">
           <Link href="/admin/kiosk" className={buttonVariants({})}>
             Open kiosk
           </Link>
-          <Link href="/admin/events" className={buttonVariants({ variant: 'secondary' })}>
-            Events
+          <Link href="/admin/cards" className={buttonVariants({ variant: 'secondary' })}>
+            Write a card
+          </Link>
+          <Link href="/admin/users?invite=1" className={buttonVariants({ variant: 'secondary' })}>
+            Invite someone
+          </Link>
+          <Link href="/admin/events/new" className={buttonVariants({ variant: 'secondary' })}>
+            New event
           </Link>
         </div>
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <MetricCard label="Active members" value={members.count ?? 0} icon={<Users />} />
-        <MetricCard label="Pending invitations" value={invites.count ?? 0} icon={<Mail />} />
-        <MetricCard
-          label="Open redemption requests"
+        <Tile
+          href="/admin/users"
+          label="Active members"
+          value={members.count ?? 0}
+          icon={<Users />}
+        />
+        <Tile
+          href="/admin/users?q=invite+pending"
+          label="Invitations waiting"
+          value={invites.count ?? 0}
+          icon={<Mail />}
+        />
+        <Tile
+          href="/admin/rewards"
+          label="Reward requests waiting"
           value={redemptions.count ?? 0}
           icon={<Gift />}
         />
@@ -90,7 +142,7 @@ export default async function AdminOverviewPage({
           <CardContent className="pt-5">
             <div className="mb-1 flex items-baseline justify-between">
               <h2 className="type-h3">
-                {viewer.isSuperadmin ? 'Recent actions' : 'Your recent actions'}
+                {viewer.isSuperadmin ? 'What happened lately' : 'What you did lately'}
               </h2>
               {viewer.isSuperadmin ? (
                 <Link
@@ -103,29 +155,25 @@ export default async function AdminOverviewPage({
               ) : null}
             </div>
 
-            {(recentAudit.data ?? []).length === 0 ? (
-              <p className="py-6 text-sm text-muted-foreground">
-                No actions recorded from your account yet.
-              </p>
+            {actions.length === 0 ? (
+              <p className="py-6 text-sm text-muted-foreground">Nothing has been recorded yet.</p>
             ) : (
-              <ul className="divide-y divide-border">
-                {(recentAudit.data ?? []).map((row) => (
-                  <li
-                    key={row.id as number}
-                    className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2.5"
-                  >
-                    <span className="w-[8.6rem] shrink-0 font-mono text-[0.7rem] tabular-nums text-muted-foreground">
+              <ul className="divide-y divide-border" aria-label="Recent actions">
+                {actions.map((row) => (
+                  <li key={row.id as number} className="py-2.5">
+                    <p className="text-sm leading-snug">
+                      {auditSentence(
+                        row.actor_auth_id === viewer.user.id
+                          ? 'You'
+                          : (names.actor(row) ?? 'Someone'),
+                        row,
+                        names.target(row),
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       {formatDateTime(row.created_at as string)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">
-                        {row.action as string}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {row.target_type as string}
-                        {row.reason ? ` · ${row.reason as string}` : ''}
-                      </span>
-                    </span>
+                      {row.reason ? ` · ${row.reason as string}` : ''}
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -135,25 +183,41 @@ export default async function AdminOverviewPage({
 
         <Card>
           <CardContent className="pt-5">
-            <h2 className="type-h3">Event readiness</h2>
-            <dl className="mt-3 divide-y divide-border">
-              {readiness.map((item) => (
-                <div key={item.label} className="flex items-center justify-between gap-4 py-2.5">
-                  <dt className="text-sm text-muted-foreground">{item.label}</dt>
-                  <dd className="font-mono text-sm font-semibold tabular-nums">{item.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Points are granted only after a human confirmation.
-            </p>
-            <Link
-              href="/admin/cards"
-              className={buttonVariants({ variant: 'soft', size: 'sm', className: 'mt-3' })}
-            >
-              Card writer
-              <ArrowRight className="size-3.5" aria-hidden />
-            </Link>
+            <h2 className="type-h3">Next event</h2>
+            {nextEvent.data ? (
+              <>
+                <p className="mt-3 text-sm font-semibold">{nextEvent.data.name as string}</p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {formatDateTime(nextEvent.data.starts_at as string)}
+                </p>
+                {nextEvent.data.location ? (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <MapPin className="size-3.5" aria-hidden />
+                    {nextEvent.data.location as string}
+                  </p>
+                ) : null}
+                <Link
+                  href={`/admin/events/${nextEvent.data.id as string}`}
+                  className={buttonVariants({ variant: 'soft', size: 'sm', className: 'mt-4' })}
+                >
+                  Open event
+                  <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  Nothing is published. Members see an event once you publish it.
+                </p>
+                <Link
+                  href="/admin/events"
+                  className={buttonVariants({ variant: 'soft', size: 'sm', className: 'mt-4' })}
+                >
+                  See events
+                  <ArrowRight className="size-3.5" aria-hidden />
+                </Link>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

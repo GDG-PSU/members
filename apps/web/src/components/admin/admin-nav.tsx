@@ -1,16 +1,19 @@
 import { NavTabs } from '@/components/nav-tabs';
 
-export function AdminNav({ isSuperadmin }: { isSuperadmin: boolean }) {
-  const links = [
-    { href: '/admin', label: 'Overview' },
-    { href: '/admin/invitations', label: 'Invitations' },
-    { href: '/admin/users', label: 'Users', activePrefixes: ['/admin/members'] },
-    { href: '/admin/cards', label: 'Cards' },
-    { href: '/admin/events', label: 'Events' },
-    { href: '/admin/kiosk', label: 'Kiosk' },
-    { href: '/admin/rewards', label: 'Rewards' },
-    ...(isSuperadmin ? [{ href: '/admin/audit', label: 'Audit' }] : []),
-  ];
+// The kiosk opens from an event and the full history from Home, so each sits
+// under the tab that leads to it.
+const links = [
+  { href: '/admin', label: 'Home', exact: true, activePrefixes: ['/admin/audit'] },
+  {
+    href: '/admin/users',
+    label: 'People',
+    activePrefixes: ['/admin/members', '/admin/staff', '/admin/invitations'],
+  },
+  { href: '/admin/cards', label: 'Cards' },
+  { href: '/admin/events', label: 'Events', activePrefixes: ['/admin/kiosk'] },
+  { href: '/admin/rewards', label: 'Rewards' },
+];
 
+export function AdminNav() {
   return <NavTabs items={links} ariaLabel="Admin sections" />;
 }

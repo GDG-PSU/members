@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import {
   Badge,
@@ -23,17 +23,19 @@ import { photoChangedWithin } from '@/lib/profile/identity';
 import { formatDate, formatDateTime } from '@/lib/format';
 import {
   adjustMemberPointsAction,
+  changeUserRoleAction,
   correctAttendanceAction,
   revokeCardAction,
   setMemberStatusAction,
 } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { ConfirmAction } from '@/components/admin/confirm-action';
 import { RecoveryForm } from '@/components/admin/recovery-form';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Member detail',
+  title: 'Member',
   robots: { index: false, follow: false },
 };
 
@@ -53,11 +55,13 @@ export default async function AdminMemberDetailPage({
   const { data: row } = await admin
     .from('members')
     .select(
-      'id, status, public_number, member_since, created_at, member_profiles(profile_slug, display_name, photo_path, photo_changed_at), member_private(email, admin_note)',
+      'id, kind, auth_user_id, status, public_number, member_since, created_at, member_profiles(profile_slug, display_name, photo_path, photo_changed_at), member_private(email, admin_note)',
     )
     .eq('id', id)
     .maybeSingle();
   if (!row) notFound();
+  // An organizer's row is their profile and card; they are managed on their own page.
+  if (row.kind === 'organizer') redirect(`/admin/staff/${row.auth_user_id as string}`);
 
   const profile = Array.isArray(row.member_profiles) ? row.member_profiles[0] : row.member_profiles;
   const priv = Array.isArray(row.member_private) ? row.member_private[0] : row.member_private;
@@ -86,6 +90,10 @@ export default async function AdminMemberDetailPage({
   ]);
 
   const activeCard = (cards.data ?? []).find((card) => card.status === 'active');
+  const name = (profile?.display_name as string | undefined) ?? 'This member';
+  const typeChange = { returnTo: '/admin/users', authUserId: row.auth_user_id as string };
+  const typeWarning =
+    'They keep their profile and card. Their points, stars, attendance and reward requests are deleted for good, and they set up an authenticator app the next time they sign in.';
   const points = balances.data?.points ?? 0;
   const stars = balances.data?.stars ?? 0;
 
@@ -98,7 +106,7 @@ export default async function AdminMemberDetailPage({
         className={buttonVariants({ variant: 'ghost', size: 'sm', className: '-ml-2 mb-4' })}
       >
         <ArrowLeft className="size-4" aria-hidden />
-        All users
+        Everyone
       </Link>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
@@ -232,9 +240,9 @@ export default async function AdminMemberDetailPage({
 
           <Card>
             <CardContent className="pt-5">
-              <h2 className="mb-1 text-base font-bold">Points ledger</h2>
+              <h2 className="mb-1 text-base font-bold">Points history</h2>
               {(ledger.data ?? []).length === 0 ? (
-                <EmptyState title="No ledger entries" />
+                <EmptyState title="No points yet" />
               ) : (
                 <div className="divide-y divide-border">
                   {(ledger.data ?? []).map((entry) => (
@@ -344,7 +352,7 @@ export default async function AdminMemberDetailPage({
             <CardContent className="pt-5">
               <h2 className="mb-1 text-sm font-bold">Cards</h2>
               <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-                Activating a new card replaces the previous one. The profile URL never changes.
+                A new card replaces the old one. Their profile page stays the same.
               </p>
 
               <div className="mb-3 space-y-2">
@@ -369,29 +377,29 @@ export default async function AdminMemberDetailPage({
                           size="small"
                           variant="text"
                           color="error"
-                          pendingLabel="Revoking…"
-                          confirmMessage="Revoke this card? The old /c link stops working."
+                          pendingLabel="Switching off…"
+                          confirmMessage={`Switch off ${name}'s card? Tapping it will no longer open their profile.`}
                         >
-                          Revoke
+                          Switch off
                         </SubmitButton>
                       </form>
                     ) : null}
                   </div>
                 ))}
                 {(cards.data ?? []).length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No card prepared yet.</p>
+                  <p className="text-xs text-muted-foreground">No card yet.</p>
                 ) : null}
               </div>
 
               <Link
-                href="/admin/cards"
+                href={`/admin/cards?member=${id}`}
                 className={buttonVariants({
                   variant: 'secondary',
                   size: 'sm',
                   className: 'w-full',
                 })}
               >
-                Open card writer
+                Write a card for them
               </Link>
 
               {activeCard ? (
@@ -405,11 +413,40 @@ export default async function AdminMemberDetailPage({
 
           <Card>
             <CardContent className="pt-5">
-              <h2 className="mb-1 text-sm font-bold">Account recovery</h2>
+              <h2 className="mb-1 text-sm font-bold">Password reset</h2>
               <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
-                Creates a one-time link. Copy it privately; it is never stored.
+                Makes a one-time link that lets them choose a new password. It is never stored.
               </p>
               <RecoveryForm email={(priv?.email as string) ?? ''} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5">
+              <h2 className="mb-1 text-sm font-bold">Type of user</h2>
+              <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
+                A member earns points and rewards. Making them an organizer lets them run events.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <ConfirmAction
+                  action={changeUserRoleAction}
+                  fields={{ ...typeChange, role: 'admin' }}
+                  label="Make admin"
+                  destructive
+                  title={`Make ${name} an admin?`}
+                  description={typeWarning}
+                  confirmLabel="Yes, make them an admin"
+                />
+                <ConfirmAction
+                  action={changeUserRoleAction}
+                  fields={{ ...typeChange, role: 'superadmin' }}
+                  label="Make superadmin"
+                  destructive
+                  title={`Make ${name} a superadmin?`}
+                  description={typeWarning}
+                  confirmLabel="Yes, make them a superadmin"
+                />
+              </div>
             </CardContent>
           </Card>
         </div>

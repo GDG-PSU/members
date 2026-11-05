@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
-import { Card, CardContent, DataTable, EmptyState, PageShell, StatusChip } from '@gdg/ui';
+import { DataTable, EmptyState, PageShell, SectionHeading, StatusChip } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
-import { revokeCardAction } from '@/app/(admin)/admin/actions';
+import { findCardHolderAction, revokeCardAction } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
-import { UsbCardPreparation } from '@/components/admin/usb-card-preparation';
-import { UsbDevicePanel } from '@/components/admin/usb-device-panel';
+import { CardWriter } from '@/components/admin/card-writer';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,94 +14,72 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+const CARD_STATUS_LABELS: Record<string, string> = {
+  pending: 'Not written yet',
+  active: 'Working',
+  revoked: 'Switched off',
+  lost: 'Reported lost',
+  replaced: 'Replaced',
+};
+
 export default async function CardsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string; error?: string }>;
+  searchParams: Promise<{ notice?: string; error?: string; member?: string }>;
 }) {
   await requireAdmin();
-  const { notice, error } = await searchParams;
-  const admin = createSupabaseAdmin();
+  const { notice, error, member } = await searchParams;
   const returnTo = '/admin/cards';
 
-  const [{ data: cards }, { data: members }] = await Promise.all([
-    admin
+  const [{ data: cards }, initialHolder] = await Promise.all([
+    createSupabaseAdmin()
       .from('card_credentials')
       .select(
-        'id, member_id, status, issued_at, revoked_at, revoke_reason, created_at, members(public_number, member_profiles(display_name))',
+        'id, member_id, status, issued_at, revoked_at, created_at, members(kind, public_number, member_profiles(display_name))',
       )
       .order('created_at', { ascending: false })
       .limit(100),
-    admin
-      .from('members')
-      .select('id, kind, public_number, member_profiles(display_name)')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(300),
+    member ? findCardHolderAction(member) : Promise.resolve(null),
   ]);
-
-  const memberOptions = (members ?? []).map((row) => {
-    const profile = Array.isArray(row.member_profiles)
-      ? row.member_profiles[0]
-      : row.member_profiles;
-    return {
-      id: row.id as string,
-      label:
-        row.kind === 'organizer'
-          ? `${(profile?.display_name as string) ?? 'Organizer'} · organizer`
-          : `${(profile?.display_name as string) ?? 'Member'} · ${row.public_number as string}`,
-    };
-  });
 
   return (
     <PageShell className="pb-10">
       <Flash notice={notice} error={error} />
-      <Card className="mb-6">
-        <CardContent className="p-5 sm:p-6">
-          <p className="type-overline text-primary">USB card lane</p>
-          <h1 className="type-h3 mt-1.5">Cards</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Prepare, write, read back, and activate cards here. Connect the local reader over USB
-            for the full operation; hardware diagnostics are kept under advanced details.
-          </p>
-        </CardContent>
-      </Card>
+      <SectionHeading
+        headingLevel={1}
+        eyebrow="Cards"
+        title="Write a card"
+        description="Choose the person, place a card on the reader, and it is written, checked and switched on."
+      />
 
-      <div className="mb-8 space-y-5">
-        <UsbCardPreparation members={memberOptions} />
-        <div>
-          <h2 className="type-h3 mb-3">Read and write a card</h2>
-          <UsbDevicePanel />
-        </div>
-      </div>
+      <CardWriter initialHolder={initialHolder} />
 
-      <h2 className="type-h3 mb-3">Card credentials</h2>
+      <h2 className="type-h3 mb-3 mt-10">Cards issued</h2>
       {!cards || cards.length === 0 ? (
-        <EmptyState
-          title="No cards prepared"
-          description="Prepare one above for an active member."
-        />
+        <EmptyState title="No cards yet" description="The cards you write appear here." />
       ) : (
         <DataTable
-          caption="Card credentials"
+          caption="Cards issued"
           rows={cards}
           getRowKey={(row) => row.id as string}
           columns={[
             {
               key: 'member',
-              header: 'Member',
+              header: 'Person',
               render: (row) => {
-                const member = Array.isArray(row.members) ? row.members[0] : row.members;
-                const profile = Array.isArray(member?.member_profiles)
-                  ? member.member_profiles[0]
-                  : member?.member_profiles;
+                const holder = Array.isArray(row.members) ? row.members[0] : row.members;
+                const profile = Array.isArray(holder?.member_profiles)
+                  ? holder.member_profiles[0]
+                  : holder?.member_profiles;
                 return (
                   <div>
                     <p className="text-sm font-semibold">
                       {(profile?.display_name as string) ?? 'Member'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {member?.public_number as string}
+                      {holder?.kind === 'organizer'
+                        ? 'Organizer'
+                        : (holder?.public_number as string)}
                     </p>
                   </div>
                 );
@@ -111,20 +88,25 @@ export default async function CardsPage({
             {
               key: 'status',
               header: 'Status',
-              render: (row) => <StatusChip status={row.status as string} />,
+              render: (row) => (
+                <StatusChip
+                  status={row.status as string}
+                  label={CARD_STATUS_LABELS[row.status as string]}
+                />
+              ),
             },
             {
               key: 'issued',
-              header: 'Issued',
+              header: 'Written',
               render: (row) => (
                 <span className="text-xs">
-                  {row.issued_at ? formatDateTime(row.issued_at as string) : 'not written'}
+                  {row.issued_at ? formatDateTime(row.issued_at as string) : '—'}
                 </span>
               ),
             },
             {
               key: 'revoked',
-              header: 'Revoked',
+              header: 'Stopped',
               render: (row) => (
                 <span className="text-xs text-muted-foreground">
                   {row.revoked_at ? formatDateTime(row.revoked_at as string) : '—'}
@@ -149,9 +131,9 @@ export default async function CardsPage({
                       size="small"
                       variant="text"
                       color="error"
-                      confirmMessage="Revoke this card?"
+                      confirmMessage="Switch this card off? It stops working straight away. Use this when a card is lost."
                     >
-                      Revoke
+                      Switch off
                     </SubmitButton>
                   </form>
                 ) : null,

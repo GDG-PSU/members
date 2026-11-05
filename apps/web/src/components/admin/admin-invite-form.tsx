@@ -15,7 +15,11 @@ export function AdminInviteForm() {
   return (
     <div className="space-y-3">
       <form action={action} onReset={keepValuesOnError(state)} className="space-y-3.5" noValidate>
-        <Field label="Email" htmlFor="admin-invite-email" hint="TOTP required before /admin opens.">
+        <Field
+          label="Email"
+          htmlFor="admin-invite-email"
+          hint="They set up an authenticator app before the admin area opens."
+        >
           <Input
             id="admin-invite-email"
             name="email"
@@ -32,7 +36,7 @@ export function AdminInviteForm() {
           </Select>
         </Field>
         <Button type="submit" variant="secondary" disabled={pending} className="w-full">
-          {pending ? 'Generating…' : 'Generate staff invite link'}
+          {pending ? 'Making the link…' : 'Make an organizer invite link'}
         </Button>
       </form>
 
@@ -48,8 +52,8 @@ export function AdminInviteForm() {
       ) : null}
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        No email is sent. The invitee sets a password, then enrolls TOTP. Superadmins can manage
-        users and view the full audit log.
+        No email is sent, so copy the link and send it yourself. They choose a password, then set up
+        an authenticator app and their profile.
       </p>
     </div>
   );

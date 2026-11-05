@@ -90,23 +90,23 @@ test.describe('admin invitation and member setup', () => {
       await test.step('admin generates and copies an invitation link', async () => {
         await page.goto('/admin');
         await expect(page.getByRole('link', { name: 'Devices', exact: true })).toHaveCount(0);
-        await expect(page.getByRole('link', { name: 'Users', exact: true })).toBeVisible();
-        await expect(page.getByRole('link', { name: 'Audit', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('link', { name: 'People', exact: true })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Full audit log' })).toHaveCount(0);
 
         await page.goto('/admin/users');
-        await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
-        await expect(page.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
+        await expect(page.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Manage' })).toHaveCount(0);
         await page.goto('/admin/audit');
         await expect(page).toHaveURL(/\/admin\?notice=superadmin-required$/);
 
         await page.goto('/admin/devices');
         await expect(page).toHaveURL(/\/admin\/cards$/);
-        await expect(page.getByRole('heading', { name: 'Cards', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Write a card' })).toBeVisible();
 
+        // The old invitations address opens the form on the People page.
         await page.goto('/admin/invitations');
-        await expect(
-          page.getByRole('heading', { name: 'Invite an admin or superadmin' }),
-        ).toHaveCount(0);
+        await expect(page).toHaveURL(/\/admin\/users\?invite=1$/);
+        await expect(page.getByRole('heading', { name: 'Invite an organizer' })).toHaveCount(0);
         const memberForm = page
           .locator('form')
           .filter({ has: page.getByLabel('Member since (paid date)') })
@@ -116,7 +116,7 @@ test.describe('admin invitation and member setup', () => {
         await memberForm
           .getByLabel('Internal note')
           .fill('Created by the authenticated E2E suite.');
-        await page.getByRole('button', { name: 'Generate invitation link' }).click();
+        await page.getByRole('button', { name: 'Make an invitation link' }).click();
 
         const ready = page.getByRole('status').filter({ hasText: 'Invitation link ready' });
         await expect(ready).toBeVisible({ timeout: 20_000 });
@@ -136,8 +136,8 @@ test.describe('admin invitation and member setup', () => {
 
         await page.goto('/admin/users');
         await expect(page.getByText(memberEmail).first()).toBeVisible();
-        await expect(page.getByText('Invite stage').first()).toBeVisible();
-        await expect(page.getByRole('combobox', { name: /User type for/ })).toHaveCount(0);
+        await expect(page.getByText('Invite pending').first()).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Manage' })).toHaveCount(0);
       });
       const memberContext = await browser.newContext({ baseURL: origin });
       const memberPage = await memberContext.newPage();
@@ -254,31 +254,108 @@ test.describe('admin invitation and member setup', () => {
 
         await test.step('admin prepares, activates and records a USB card', async () => {
           expect(memberId).toBeTruthy();
-          await page.goto('/admin/cards');
-          await expect(page.getByRole('heading', { name: 'Cards', exact: true })).toBeVisible();
+          // A stand-in for the USB reader. It is empty on the first write, so the
+          // open-ended wait for a card is exercised, and it remembers the card
+          // across page loads the way a real card on a real reader would.
+          await page.addInitScript(() => {
+            const encoder = new TextEncoder();
+            const decoder = new TextDecoder();
+            let readAttempts = 0;
+            let writeAttempts = 0;
+            class FakeSerialPort {
+              readable: ReadableStream<Uint8Array>;
+              writable: WritableStream<Uint8Array>;
+              private controller!: ReadableStreamDefaultController<Uint8Array>;
 
-          const memberSelect = page.locator('#usb-member');
-          const option = memberSelect.locator('option', { hasText: displayName }).first();
-          const optionValue = await option.getAttribute('value');
-          expect(optionValue).toBeTruthy();
-          await memberSelect.selectOption(optionValue as string);
-          await page.getByRole('button', { name: 'Prepare card' }).click();
+              constructor() {
+                this.readable = new ReadableStream<Uint8Array>({
+                  start: (controller) => {
+                    this.controller = controller;
+                  },
+                });
+                this.writable = new WritableStream<Uint8Array>({
+                  write: (chunk) => {
+                    const text = decoder.decode(chunk);
+                    for (const line of text.split('\n')) {
+                      if (!line.trim()) continue;
+                      const command = JSON.parse(line) as { id: number; cmd: string };
+                      if (command.cmd === 'nfc.read') readAttempts += 1;
+                      if (command.cmd === 'nfc.write') {
+                        writeAttempts += 1;
+                        // The first write finds no card; the retry stores it.
+                        if (writeAttempts > 1) {
+                          sessionStorage.setItem(
+                            'fake-card',
+                            (command as { uri?: string }).uri ?? '',
+                          );
+                        }
+                      }
+                      const payload =
+                        command.cmd === 'info'
+                          ? {
+                              id: command.id,
+                              ok: true,
+                              result: {
+                                protocol: 2,
+                                firmware: 'test',
+                                deviceId: 'esp32-test',
+                                chipId: 'test',
+                                nfcReady: true,
+                                nfcFirmware: 0x32010607,
+                                uptimeMs: 1,
+                              },
+                            }
+                          : command.cmd === 'nfc.read' &&
+                              ((location.pathname === '/admin/kiosk' && readAttempts === 1) ||
+                                (window as unknown as { __lifted?: boolean }).__lifted)
+                            ? { id: command.id, ok: false, error: 'no_card' }
+                            : command.cmd === 'nfc.read'
+                              ? {
+                                  id: command.id,
+                                  ok: true,
+                                  result: { uri: sessionStorage.getItem('fake-card') },
+                                }
+                              : command.cmd === 'nfc.write' && writeAttempts === 1
+                                ? { id: command.id, ok: false, error: 'no_card' }
+                                : { id: command.id, ok: true, result: {} };
+                      this.controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
+                    }
+                  },
+                });
+              }
 
-          await expect(page.getByText(`Pending card for ${displayName}`)).toBeVisible({
-            timeout: 20_000,
+              async open() {}
+              async close() {}
+              getInfo() {
+                return { usbVendorId: 0x10c4, usbProductId: 0xea60 };
+              }
+            }
+
+            const port = new FakeSerialPort();
+            Object.defineProperty(navigator, 'serial', {
+              configurable: true,
+              value: { requestPort: async () => port },
+            });
           });
-          cardUrl = await page.getByLabel('Card URL').inputValue();
+
+          await page.goto('/admin/cards');
+          await expect(page.getByRole('heading', { name: 'Write a card' })).toBeVisible();
+          await page.getByRole('button', { name: 'Connect reader' }).click();
+          await expect(page.getByText('Reader connected')).toBeVisible({ timeout: 15_000 });
+
+          // One action prepares, writes, reads back and switches the card on.
+          await page.locator('#card-holder-search').fill(displayName);
+          await page
+            .getByRole('list', { name: 'People found' })
+            .getByRole('button', { name: displayName })
+            .click();
+          await page.getByRole('button', { name: 'Write card' }).click();
+          await expect(page.getByText(`${displayName}'s card is written and working.`)).toBeVisible(
+            { timeout: 20_000 },
+          );
+          cardUrl = (await page.evaluate(() => sessionStorage.getItem('fake-card'))) ?? '';
           expect(new URL(cardUrl).origin).toBe(origin);
           expect(new URL(cardUrl).pathname).toMatch(/^\/c\/[A-Za-z0-9_-]{43}$/);
-
-          const activation = page.getByText(
-            'I verified the URL was written and the read-back matches.',
-          );
-          await activation.click();
-          await page.getByRole('button', { name: 'Activate written card' }).click();
-          await expect(page.getByRole('button', { name: 'Card activated' })).toBeVisible({
-            timeout: 20_000,
-          });
 
           const { data: card } = await supabase
             .from('card_credentials')
@@ -336,91 +413,13 @@ test.describe('admin invitation and member setup', () => {
           expect(sessionError).toBeNull();
           kioskSessionId = session?.id as string;
 
-          await page.addInitScript(
-            ({ cardUrl: fixtureCardUrl }) => {
-              const encoder = new TextEncoder();
-              const decoder = new TextDecoder();
-              let readAttempts = 0;
-              let writeAttempts = 0;
-              class FakeSerialPort {
-                readable: ReadableStream<Uint8Array>;
-                writable: WritableStream<Uint8Array>;
-                private controller!: ReadableStreamDefaultController<Uint8Array>;
-
-                constructor() {
-                  this.readable = new ReadableStream<Uint8Array>({
-                    start: (controller) => {
-                      this.controller = controller;
-                    },
-                  });
-                  this.writable = new WritableStream<Uint8Array>({
-                    write: (chunk) => {
-                      const text = decoder.decode(chunk);
-                      for (const line of text.split('\n')) {
-                        if (!line.trim()) continue;
-                        const command = JSON.parse(line) as { id: number; cmd: string };
-                        if (command.cmd === 'nfc.read') readAttempts += 1;
-                        if (command.cmd === 'nfc.write') writeAttempts += 1;
-                        const payload =
-                          command.cmd === 'info'
-                            ? {
-                                id: command.id,
-                                ok: true,
-                                result: {
-                                  protocol: 2,
-                                  firmware: 'test',
-                                  deviceId: 'esp32-test',
-                                  chipId: 'test',
-                                  nfcReady: true,
-                                  nfcFirmware: 0x32010607,
-                                  uptimeMs: 1,
-                                },
-                              }
-                            : command.cmd === 'nfc.read' &&
-                                (readAttempts === 1 ||
-                                  (window as unknown as { __lifted?: boolean }).__lifted)
-                              ? { id: command.id, ok: false, error: 'no_card' }
-                              : command.cmd === 'nfc.read'
-                                ? { id: command.id, ok: true, result: { uri: fixtureCardUrl } }
-                                : command.cmd === 'nfc.write' && writeAttempts === 1
-                                  ? { id: command.id, ok: false, error: 'no_card' }
-                                  : { id: command.id, ok: true, result: {} };
-                        this.controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
-                      }
-                    },
-                  });
-                }
-
-                async open() {}
-                async close() {}
-                getInfo() {
-                  return { usbVendorId: 0x10c4, usbProductId: 0xea60 };
-                }
-              }
-
-              const port = new FakeSerialPort();
-              Object.defineProperty(navigator, 'serial', {
-                configurable: true,
-                value: { requestPort: async () => port },
-              });
-            },
-            { cardUrl },
-          );
-
+          // The card that was written is what the reader gives back.
           await page.goto('/admin/cards');
-          await expect(page.getByRole('heading', { name: 'Cards', exact: true })).toBeVisible();
-          await page.getByRole('button', { name: 'Connect lane' }).click();
-          await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
-
-          await page.getByRole('button', { name: 'Read card' }).click();
-          await expect(page.getByText('Card read.')).toBeVisible({ timeout: 10_000 });
-          await expect(page.locator('p.break-all')).toHaveText(cardUrl);
-
-          await page.getByLabel('NDEF URI').fill(cardUrl);
-          await page.getByRole('button', { name: 'Write and verify' }).click();
-          await expect(page.getByText('Write completed and read back.')).toBeVisible({
-            timeout: 10_000,
-          });
+          await page.getByRole('button', { name: 'Connect reader' }).click();
+          await expect(page.getByText('Reader connected')).toBeVisible({ timeout: 15_000 });
+          await page.getByText('Reader tools').click();
+          await page.getByRole('button', { name: 'Read a card' }).click();
+          await expect(page.locator('p.break-all')).toHaveText(cardUrl, { timeout: 10_000 });
 
           await page.goto('/admin/kiosk');
           await expect(page.getByRole('heading', { name: 'Kiosk' })).toBeVisible();
@@ -585,19 +584,22 @@ test.describe('admin invitation and member setup', () => {
 
       await test.step('superadmin-only navigation and pages', async () => {
         await page.goto('/admin');
-        await expect(page.getByRole('link', { name: 'Users', exact: true })).toBeVisible();
-        await expect(page.getByRole('link', { name: 'Audit', exact: true })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'People', exact: true })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Full audit log' })).toBeVisible();
         await expect(page.getByRole('link', { name: 'Devices', exact: true })).toHaveCount(0);
 
         await page.goto('/admin/users');
-        await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
         await expect(page.getByText(superEmail).first()).toBeVisible();
-        await expect(page.getByText('Superadmin', { exact: true }).first()).toBeVisible();
+        await expect(
+          page
+            .getByRole('row')
+            .filter({ hasText: superEmail })
+            .getByText('Superadmin', { exact: true }),
+        ).toBeVisible();
 
         await page.goto('/admin/invitations');
-        await expect(
-          page.getByRole('heading', { name: 'Invite an admin or superadmin' }),
-        ).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Invite an organizer' })).toBeVisible();
         await expect(page.getByLabel('Role')).toBeVisible();
 
         await page.goto('/admin/audit');
@@ -612,7 +614,7 @@ test.describe('admin invitation and member setup', () => {
         const inviteForm = page.locator('form').filter({ has: page.getByLabel('Role') });
         await inviteForm.getByLabel('Email').fill(invitedEmail);
         await inviteForm.getByLabel('Role').selectOption('admin');
-        await inviteForm.getByRole('button', { name: 'Generate staff invite link' }).click();
+        await inviteForm.getByRole('button', { name: 'Make an organizer invite link' }).click();
 
         const ready = page.getByRole('status').filter({ hasText: 'Admin invite link ready' });
         await expect(ready).toBeVisible({ timeout: 20_000 });
@@ -623,7 +625,7 @@ test.describe('admin invitation and member setup', () => {
         // A lost or burned link can be replaced for the same person.
         await inviteForm.getByLabel('Email').fill(invitedEmail);
         await inviteForm.getByLabel('Role').selectOption('admin');
-        await inviteForm.getByRole('button', { name: 'Generate staff invite link' }).click();
+        await inviteForm.getByRole('button', { name: 'Make an organizer invite link' }).click();
         await expect(linkField).not.toHaveValue(lostLink, { timeout: 20_000 });
 
         const inviteLink = await linkField.inputValue();

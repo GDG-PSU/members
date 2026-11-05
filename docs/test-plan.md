@@ -1,6 +1,6 @@
 # Test plan and results
 
-## Verified on 2026-11-04
+## Verified on 2026-11-05
 
 Environment: a production build (`next start`) on `http://localhost:3100` against
 a local Supabase stack with every migration applied, plus one physical ESP32 +
@@ -10,9 +10,9 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | ------------------- | ----------------------------- | ---------------------------------------------- |
 | Formatting          | `pnpm format:check`           | Pass                                           |
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 67/67 pass                                     |
+| Unit tests          | `pnpm test`                   | 80/80 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
-| Browser E2E         | `pnpm e2e`                    | 53 pass, 33 skipped; 43/43 on desktop Chromium |
+| Browser E2E         | `pnpm e2e`                    | 55 pass, 35 skipped; 45/45 on desktop Chromium |
 | Database/RLS/ledger | `pnpm db:verify`              | 83/83 pass on the local Supabase stack         |
 | Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
 | Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
@@ -20,7 +20,7 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | Camera QR scan      | Simulated camera, one-off     | Pass; check-in recorded as `qr`                |
 | Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
 
-The 33 skips are the signed-in specs on the mobile project, which run on desktop
+The 35 skips are the signed-in specs on the mobile project, which run on desktop
 only. On mobile, the 10 public specs pass, and one desktop test checks that member
 and admin pages fit a phone-width viewport.
 
@@ -32,12 +32,16 @@ disposable accounts it creates and removes:
 - **Access:** public sign-up refused, API keys refused on privileged functions,
   staff sign-in with TOTP, returning TOTP, HttpOnly cookies, cross-site session
   posts refused, normal-admin limits, and the login rate limit.
+- **Navigation:** the five admin tabs and four member tabs, which tab each page
+  lights, and the old invitation and privacy addresses leading to their new homes.
 - **Invitations and accounts:** revoke, re-issue, expired, and replayed links; links
   surviving simulated chat previews and repeat opens until Continue is pressed;
   setup validation; routing after sign-in and sign-out; session survival across a
-  token refresh; signing out one device; recovery; suspension; user type changes.
-- **Members:** profile, photo and links, privacy settings, and forms keeping their
-  values after a validation error.
+  token refresh; signing out one device; recovery; suspension; and user type
+  changes made from a person's manage page, behind a confirmation that names them.
+- **Members:** profile, photo and links, privacy switches that save as they are
+  flipped, the ID button on Home, the activity page saying why a session gave no
+  points, and forms keeping their values after a validation error.
 - **Organizers:** a new admin setting up their profile after the authenticator,
   editing it, the public page with its Organizer badge, user type changes keeping
   the profile and card, and organizers being refused points and check-in.
@@ -49,11 +53,14 @@ disposable accounts it creates and removes:
   preview, reader errors, duplicate scans, a legacy minimum stay, and check-in by
   name or by a typed QR link with the method recorded.
 - **Corrections:** every attendance correction a superadmin can make.
-- **Cards:** pending, active, replacement and revoked cards, and batches of cards.
-- **Rewards:** request, cancel, re-request, approve, fulfil, and reject, with the
-  point balance checked after each step.
-- **Audit and browser:** audit contents, phone-width layout, the CSP, and uncaught
-  page errors.
+- **Cards:** one button preparing, writing, reading back and switching a card on;
+  a spoiled write leaving the old card working; a replacement; a card switched
+  off; and several cards written in a row.
+- **Rewards:** request, cancel, re-request, approve, hand over, and reject with a
+  required reason, with the point balance checked after each step and handled
+  requests staying on the page as history.
+- **Audit and browser:** audit entries shown as sentences and filtered by topic,
+  audit contents, phone-width layout, the CSP, and uncaught page errors.
 
 These specs use a fake Web Serial port, which also returns `no_card` on first reads
 to prove that the wait loops recover when a card appears. `admin-invitation.spec.ts`

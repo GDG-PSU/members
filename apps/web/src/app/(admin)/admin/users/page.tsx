@@ -9,25 +9,23 @@ import {
   Input,
   MemberAvatar,
   PageShell,
-  Select,
   StatusChip,
 } from '@gdg/ui';
 import { requireAdmin, type StaffRole } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate, formatDateTime } from '@/lib/format';
-import {
-  changeUserRoleAction,
-  revokeInvitationAction,
-  revokeUserAccessAction,
-} from '@/app/(admin)/admin/actions';
-import { Flash, SubmitButton } from '@/components/admin/ui';
+import { revokeInvitationAction, revokeUserAccessAction } from '@/app/(admin)/admin/actions';
+import { Flash } from '@/components/admin/ui';
+import { AdminInviteForm } from '@/components/admin/admin-invite-form';
+import { ConfirmAction } from '@/components/admin/confirm-action';
+import { InviteForm } from '@/components/admin/invite-form';
 import { RegenerateInvitationLink } from '@/components/admin/regenerate-invitation-link';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Users',
+  title: 'People',
   robots: { index: false, follow: false },
 };
 
@@ -69,10 +67,10 @@ function roleRank(row: UserRow): number {
 export default async function UsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; notice?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; invite?: string; notice?: string; error?: string }>;
 }) {
   const viewer = await requireAdmin();
-  const { q = '', notice, error } = await searchParams;
+  const { q = '', invite, notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
   const isSuperadmin = viewer.isSuperadmin;
 
@@ -118,7 +116,6 @@ export default async function UsersPage({
       staffByAuth.set(authUserId, { role, grantedAt: row.granted_at as string });
     }
   }
-  const superadminCount = activeRoles.filter((row) => row.role === 'superadmin').length;
   const memberAuthIds = new Set((memberRows ?? []).map((row) => row.auth_user_id as string));
   const staffOnlyAuthIds = [...staffByAuth.keys()].filter((id) => !memberAuthIds.has(id));
 
@@ -259,127 +256,152 @@ export default async function UsersPage({
     )
     .sort((a, b) => roleRank(a) - roleRank(b) || a.name.localeCompare(b.name));
 
+  // Each person has one page where everything about them is managed. Only
+  // superadmins can open it; an organizer's own row leads to their profile.
+  const manageHref = (row: UserRow): string | null => {
+    if (!isSuperadmin || row.kind === 'invite') return null;
+    if (row.memberId) return `/admin/members/${row.memberId}`;
+    if (!row.authUserId) return null;
+    return row.authUserId === viewer.user.id ? '/admin/profile' : `/admin/staff/${row.authUserId}`;
+  };
+
   return (
     <PageShell className="pb-10">
       <Flash notice={notice} error={error} />
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="type-overline text-primary">People</p>
-          <h1 className="type-h2 mt-1">Users</h1>
+          <h1 className="type-h2 mt-1">People</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {isSuperadmin
-              ? 'Members, staff and pending invitations in one place.'
-              : 'Members and the invitations you created. Invite or revoke member access.'}
+              ? 'Members, organizers and invitations that are still waiting.'
+              : 'Members, and the invitations you sent that are still waiting.'}
           </p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <form method="get" className="flex w-full gap-2 sm:w-auto">
-            <Input
-              name="q"
-              defaultValue={q}
-              placeholder="Search name, email, member no."
-              aria-label="Search users"
-              className="h-10 sm:w-72"
-            />
-            <Button type="submit" variant="secondary" size="sm" className="h-10 shrink-0">
-              Search
-            </Button>
-          </form>
-          <Link href="/admin/invitations" className={buttonVariants({ variant: 'secondary' })}>
-            Invite user
-          </Link>
-        </div>
+        <form method="get" className="flex w-full gap-2 sm:w-auto">
+          <Input
+            name="q"
+            defaultValue={q}
+            placeholder="Name, email or GDG number"
+            aria-label="Search people"
+            className="h-10 sm:w-72"
+          />
+          <Button type="submit" variant="secondary" size="sm" className="h-10 shrink-0">
+            Search
+          </Button>
+        </form>
       </div>
+
+      <details
+        open={invite === '1'}
+        className="mb-6 border border-border bg-card open:pb-5 [&[open]>summary]:border-b"
+      >
+        <summary className="cursor-pointer border-border px-5 py-3 text-sm font-semibold text-primary">
+          Invite someone
+        </summary>
+        <div className="grid gap-6 px-5 pt-5 md:grid-cols-2 md:gap-8">
+          <div>
+            <h2 className="type-h3">Invite a member</h2>
+            <p className="mb-4 mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              For someone who has paid. You get a link to send them yourself.
+            </p>
+            <InviteForm />
+          </div>
+          {isSuperadmin ? (
+            <div>
+              <h2 className="type-h3">Invite an organizer</h2>
+              <p className="mb-4 mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                An admin runs events, cards and rewards. A superadmin can also manage organizers.
+              </p>
+              <AdminInviteForm />
+            </div>
+          ) : null}
+        </div>
+      </details>
 
       {users.length === 0 ? (
         <EmptyState
-          title={needle ? 'No matches' : 'No users yet'}
+          title={needle ? 'Nobody matches' : 'Nobody here yet'}
           description={
             needle
-              ? 'Try a different name, email, member number, role or invite stage.'
-              : 'Accepted members, pending invitations and active staff accounts appear here.'
+              ? 'Try a different name, email or GDG number.'
+              : 'Invite someone and they appear here.'
           }
         />
       ) : (
         <DataTable
-          caption="Members, staff and invitations"
+          caption="Members, organizers and invitations"
           rows={users}
           getRowKey={(row) => row.key}
           columns={[
             {
               key: 'user',
-              header: 'User',
-              render: (row) => (
-                <span className="flex items-center gap-3">
-                  <MemberAvatar name={row.name} photoUrl={row.photo} size={38} />
-                  <span className="min-w-0">
-                    {row.memberId && isSuperadmin ? (
-                      <Link
-                        href={`/admin/members/${row.memberId}`}
-                        className="block truncate text-sm font-semibold underline-offset-2 hover:text-primary hover:underline"
-                      >
-                        {row.name}
-                      </Link>
-                    ) : (
-                      <span className="block truncate text-sm font-semibold">
-                        {row.kind === 'invite' ? row.email : row.name}
+              header: 'Person',
+              render: (row) => {
+                const href = manageHref(row);
+                return (
+                  <span className="flex items-center gap-3">
+                    <MemberAvatar name={row.name} photoUrl={row.photo} size={38} />
+                    <span className="min-w-0">
+                      {href ? (
+                        <Link
+                          href={href}
+                          className="block truncate text-sm font-semibold underline-offset-2 hover:text-primary hover:underline"
+                        >
+                          {row.name}
+                        </Link>
+                      ) : (
+                        <span className="block truncate text-sm font-semibold">
+                          {row.kind === 'invite' ? row.email : row.name}
+                        </span>
+                      )}
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {row.kind === 'invite'
+                          ? `Invited ${formatDate(row.invitedAt ?? '')}`
+                          : row.email}
                       </span>
-                    )}
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {row.kind === 'invite'
-                        ? `Invite sent ${formatDate(row.invitedAt ?? '')}`
-                        : row.email}
-                    </span>
-                    <span className="mt-1 flex flex-wrap gap-1.5">
-                      {row.staffRole === 'superadmin' ? (
-                        <Badge variant="primary">Superadmin</Badge>
-                      ) : row.staffRole === 'admin' ? (
-                        <Badge variant="outline">Admin</Badge>
-                      ) : null}
-                      {row.kind === 'member' ? <Badge variant="neutral">Member</Badge> : null}
-                      {row.staffInvited ? <Badge variant="warning">Invited</Badge> : null}
-                      {row.kind === 'invite' ? (
-                        <Badge variant="warning">Invite pending</Badge>
-                      ) : null}
-                      {row.authUserId === viewer.user.id ? (
-                        <Badge variant="outline">You</Badge>
-                      ) : null}
+                      <span className="mt-1 flex flex-wrap gap-1.5">
+                        {row.staffRole === 'superadmin' ? (
+                          <Badge variant="primary">Superadmin</Badge>
+                        ) : row.staffRole === 'admin' ? (
+                          <Badge variant="outline">Admin</Badge>
+                        ) : null}
+                        {row.kind === 'member' ? <Badge variant="neutral">Member</Badge> : null}
+                        {row.staffInvited ? <Badge variant="warning">Invited</Badge> : null}
+                        {row.kind === 'invite' ? (
+                          <Badge variant="warning">Invite pending</Badge>
+                        ) : null}
+                        {row.authUserId === viewer.user.id ? (
+                          <Badge variant="outline">You</Badge>
+                        ) : null}
+                      </span>
                     </span>
                   </span>
-                </span>
-              ),
+                );
+              },
             },
             {
-              key: 'member',
-              header: 'Member',
+              key: 'details',
+              header: 'Details',
               render: (row) =>
                 row.kind === 'invite' ? (
-                  <div>
-                    <p className="text-xs">Not accepted yet</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {row.inviteExpiresAt
-                        ? `expires ${formatDateTime(row.inviteExpiresAt)}`
-                        : 'pending'}
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {row.inviteExpiresAt
+                      ? `Link works until ${formatDateTime(row.inviteExpiresAt)}`
+                      : 'Not accepted yet'}
+                  </p>
                 ) : row.memberNumber ? (
                   <div>
                     <p className="font-mono text-xs">{row.memberNumber}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      since {row.memberSince ? formatDate(row.memberSince) : 'unknown'}
+                      Member since {row.memberSince ? formatDate(row.memberSince) : 'unknown'}
                     </p>
                   </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                ),
-            },
-            {
-              key: 'staff',
-              header: 'Staff since',
-              render: (row) =>
-                row.staffSince ? (
-                  <span className="text-xs">{formatDate(row.staffSince)}</span>
+                ) : row.staffSince ? (
+                  <p className="text-xs text-muted-foreground">
+                    Organizer since {formatDate(row.staffSince)}
+                  </p>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 ),
@@ -389,11 +411,14 @@ export default async function UsersPage({
               header: 'Status',
               render: (row) =>
                 row.kind === 'invite' ? (
-                  <Badge variant="outline">Invite stage</Badge>
+                  <StatusChip status="pending" label="Waiting" />
                 ) : row.memberStatus ? (
                   <StatusChip status={row.memberStatus} />
                 ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <StatusChip
+                    status={row.staffInvited ? 'pending' : 'active'}
+                    label={row.staffInvited ? 'Setting up' : 'Active'}
+                  />
                 ),
             },
             {
@@ -401,98 +426,50 @@ export default async function UsersPage({
               header: '',
               align: 'right',
               render: (row) => {
-                const lastSuperadmin = row.staffRole === 'superadmin' && superadminCount <= 1;
-                const canChangeRole =
-                  isSuperadmin &&
-                  Boolean(row.authUserId) &&
-                  row.authUserId !== viewer.user.id &&
-                  !lastSuperadmin;
-                const canRevoke =
-                  Boolean(row.authUserId) &&
-                  row.authUserId !== viewer.user.id &&
-                  (!row.staffRole || isSuperadmin) &&
-                  !lastSuperadmin;
-
                 if (row.kind === 'invite' && row.invitationId) {
                   return (
                     <div className="flex flex-col items-end gap-1.5">
                       <RegenerateInvitationLink invitationId={row.invitationId} />
-                      <form action={revokeInvitationAction}>
-                        <input type="hidden" name="returnTo" value="/admin/users" />
-                        <input type="hidden" name="invitationId" value={row.invitationId} />
-                        <SubmitButton
-                          size="small"
-                          variant="text"
-                          color="error"
-                          confirmMessage="Revoke this invitation? The link stops working."
-                        >
-                          Revoke invite
-                        </SubmitButton>
-                      </form>
+                      <ConfirmAction
+                        action={revokeInvitationAction}
+                        fields={{ returnTo: '/admin/users', invitationId: row.invitationId }}
+                        label="Cancel invitation"
+                        variant="ghost"
+                        destructive
+                        title={`Cancel the invitation for ${row.email}?`}
+                        description="Their link stops working. You can invite them again later."
+                        confirmLabel="Yes, cancel it"
+                      />
                     </div>
                   );
                 }
 
-                return (
-                  <div className="flex flex-col items-end gap-1.5">
-                    {row.memberId && isSuperadmin ? (
-                      <Link
-                        href={`/admin/members/${row.memberId}`}
-                        className={buttonVariants({ size: 'sm', variant: 'secondary' })}
-                      >
-                        Manage
-                      </Link>
-                    ) : null}
-                    {canChangeRole ? (
-                      <form
-                        action={changeUserRoleAction}
-                        className="flex flex-wrap items-center justify-end gap-1.5"
-                      >
-                        <input type="hidden" name="returnTo" value="/admin/users" />
-                        <input type="hidden" name="authUserId" value={row.authUserId ?? ''} />
-                        <Select
-                          name="role"
-                          aria-label={`User type for ${row.name}`}
-                          defaultValue={row.staffRole ?? 'member'}
-                          className="h-8 w-[8.75rem] text-xs"
-                        >
-                          <option value="superadmin">Superadmin</option>
-                          <option value="admin">Admin</option>
-                          <option value="member">Member</option>
-                        </Select>
-                        <SubmitButton
-                          size="small"
-                          variant="outlined"
-                          pendingLabel="Saving…"
-                          confirmMessage="Change this user's type? Making a member staff permanently deletes their member profile, cards, attendance, points and rewards. Making staff a member opens member setup on their next sign-in."
-                        >
-                          Save
-                        </SubmitButton>
-                      </form>
-                    ) : null}
-                    {canRevoke ? (
-                      <form action={revokeUserAccessAction}>
-                        <input type="hidden" name="returnTo" value="/admin/users" />
-                        <input type="hidden" name="authUserId" value={row.authUserId ?? ''} />
-                        <SubmitButton
-                          size="small"
-                          variant="text"
-                          color="error"
-                          confirmMessage={
-                            row.kind === 'member'
-                              ? 'Revoke this member access? The account is archived and cannot sign in.'
-                              : 'Revoke this staff access? They lose admin access immediately.'
-                          }
-                        >
-                          Revoke access
-                        </SubmitButton>
-                      </form>
-                    ) : null}
-                    {lastSuperadmin ? (
-                      <span className="text-[0.7rem] text-muted-foreground">Last superadmin</span>
-                    ) : null}
-                  </div>
-                );
+                const href = manageHref(row);
+                if (href) {
+                  return (
+                    <Link
+                      href={href}
+                      className={buttonVariants({ size: 'sm', variant: 'secondary' })}
+                    >
+                      {row.authUserId === viewer.user.id ? 'My profile' : 'Manage'}
+                    </Link>
+                  );
+                }
+                // An admin cannot open a member's page, but can remove their access.
+                return row.kind === 'member' &&
+                  row.authUserId &&
+                  row.memberStatus !== 'archived' ? (
+                  <ConfirmAction
+                    action={revokeUserAccessAction}
+                    fields={{ returnTo: '/admin/users', authUserId: row.authUserId }}
+                    label="Remove access"
+                    variant="ghost"
+                    destructive
+                    title={`Remove ${row.name}'s access?`}
+                    description="They can no longer sign in, and their profile and card stop working. Their history is kept."
+                    confirmLabel="Yes, remove access"
+                  />
+                ) : null;
               },
             },
           ]}
@@ -501,8 +478,8 @@ export default async function UsersPage({
 
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
         {isSuperadmin
-          ? 'Invited staff have a role but have not finished setting a password. Superadmins can change any user type. Promoting a member deletes their member profile, cards, attendance, points and rewards. Demoting staff to member keeps their password and creates an invitation for member setup. Normal admins can invite and revoke members only.'
-          : 'You can invite members and revoke member access. Staff accounts, user-type changes and the audit log are superadmin-only.'}
+          ? 'Select Manage to change someone’s type, give points, reset a password or remove access.'
+          : 'Organizers, type changes and the audit log are for superadmins.'}
       </p>
     </PageShell>
   );
