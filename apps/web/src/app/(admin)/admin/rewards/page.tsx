@@ -13,8 +13,9 @@ import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
 import { RewardForm } from '@/components/admin/reward-form';
-import { decideRedemptionAction } from '@/app/(admin)/admin/actions';
+import { decideRedemptionAction, deleteRecordAction } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { ConfirmAction } from '@/components/admin/confirm-action';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,7 +129,7 @@ export default async function AdminRewardsPage({
 }: {
   searchParams: Promise<{ notice?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  const viewer = await requireAdmin();
   const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
   const returnTo = '/admin/rewards';
@@ -295,6 +296,18 @@ export default async function AdminRewardsPage({
                       </p>
                     </div>
                     <StatusChip status={row.status} label={STATUS_LABELS[row.status]} />
+                    {viewer.isSuperadmin ? (
+                      <ConfirmAction
+                        action={deleteRecordAction}
+                        fields={{ kind: 'redemption', id: row.id, returnTo }}
+                        label="Delete"
+                        variant="ghost"
+                        destructive
+                        title="Delete this request for good?"
+                        description={`${row.title}. It is removed from this list and from the member's rewards page. Their points are not changed.`}
+                        confirmLabel="Yes, delete it for good"
+                      />
+                    ) : null}
                   </li>
                 ))}
               </ul>

@@ -566,9 +566,8 @@ Last updated 2026-11-05.
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`. The Supabase GitHub integration applies new
-  migrations when `main` is pushed. 0019 (permanent delete) is pushed ahead of the app code that
-  uses it; check that it is applied before relying on a Delete button.
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0019 applied. The
+  Supabase GitHub integration applies new migrations when `main` is pushed.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
   test members exist. Nothing here was read from it after that.
 - **Latest stage:** the kiosk reads continuously and can check a member in by name, GDG number, or
@@ -581,7 +580,7 @@ Last updated 2026-11-05.
   page says why a session gave no points; and the audit log reads as sentences. That part is
   deployed in `214b981`. Last, a superadmin can delete an event, reward, reward request, card,
   attendance record, invitation or account for good, and the audit log can no longer be changed by
-  anything. See `docs/test-plan.md`.
+  anything. Its schema went ahead in `f187f33`. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
@@ -634,6 +633,14 @@ On the physical ESP32 + PN532 with firmware 2.0.2:
 - Earlier the same day, with the old Read button: the app passed invitation, setup, prepare, write,
   read back, activate, the card URL resolving, check-in, check-out, and the points grant. Only
   `navigator.serial` was bridged to COM3, because its picker cannot be automated.
+
+On production, read-only, after `f187f33` was pushed on 2026-11-05:
+
+- Migration 0019 is applied. `delete_record` can be executed by `service_role` only, and the guard
+  on `audit_log` is the one with no exception.
+- `anon` can still execute no public function, and `authenticated` only the three RLS helpers.
+- `214b981` passed CI and its Vercel deployment is live. Signed out, the old invitation and privacy
+  addresses and the new organizer page all redirect to `/login`.
 
 On production, read-only, after `2df3898` was pushed on 2026-11-05:
 

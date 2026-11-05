@@ -25,7 +25,7 @@ export default async function AuditPage({
 
   let query = admin
     .from('audit_log')
-    .select('id, actor_auth_id, action, target_type, target_id, reason, after, created_at')
+    .select('id, actor_auth_id, action, target_type, target_id, reason, before, after, created_at')
     .order('created_at', { ascending: false })
     .limit(200);
   if (topic) {

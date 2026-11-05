@@ -10,17 +10,17 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | ------------------- | ----------------------------- | ---------------------------------------------- |
 | Formatting          | `pnpm format:check`           | Pass                                           |
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 80/80 pass                                     |
+| Unit tests          | `pnpm test`                   | 81/81 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
-| Browser E2E         | `pnpm e2e`                    | 55 pass, 35 skipped; 45/45 on desktop Chromium |
-| Database/RLS/ledger | `pnpm db:verify`              | 83/83 pass on the local Supabase stack         |
+| Browser E2E         | `pnpm e2e`                    | 56 pass, 36 skipped; 46/46 on desktop Chromium |
+| Database/RLS/ledger | `pnpm db:verify`              | 103/103 pass on the local Supabase stack       |
 | Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
 | Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
 | Physical end to end | Browser app + real reader     | Pass on 2.0.2; see Hardware coverage           |
 | Camera QR scan      | Simulated camera, one-off     | Pass; check-in recorded as `qr`                |
 | Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
 
-The 35 skips are the signed-in specs on the mobile project, which run on desktop
+The 36 skips are the signed-in specs on the mobile project, which run on desktop
 only. On mobile, the 10 public specs pass, and one desktop test checks that member
 and admin pages fit a phone-width viewport.
 
@@ -59,6 +59,11 @@ disposable accounts it creates and removes:
 - **Rewards:** request, cancel, re-request, approve, hand over, and reject with a
   required reason, with the point balance checked after each step and handled
   requests staying on the page as history.
+- **Permanent delete:** a normal admin not being offered it; a superadmin deleting
+  an invitation with its unused account, a handled reward request, a reward, a
+  card, an event with its attendance while the member's points stay, and a
+  member's account with its photos and sign-in; each delete appearing in the
+  audit log; and the audit log refusing a delete or an update from the service key.
 - **Audit and browser:** audit entries shown as sentences and filtered by topic,
   audit contents, phone-width layout, the CSP, and uncaught page errors.
 

@@ -60,7 +60,7 @@ export default async function AdminHomePage({
 
   let auditQuery = admin
     .from('audit_log')
-    .select('id, actor_auth_id, action, target_type, target_id, reason, after, created_at')
+    .select('id, actor_auth_id, action, target_type, target_id, reason, before, after, created_at')
     .order('created_at', { ascending: false })
     .limit(8);
   if (!viewer.isSuperadmin) {

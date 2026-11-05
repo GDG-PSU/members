@@ -3,8 +3,13 @@ import { DataTable, EmptyState, PageShell, SectionHeading, StatusChip } from '@g
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { formatDateTime } from '@/lib/format';
-import { findCardHolderAction, revokeCardAction } from '@/app/(admin)/admin/actions';
+import {
+  deleteRecordAction,
+  findCardHolderAction,
+  revokeCardAction,
+} from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { ConfirmAction } from '@/components/admin/confirm-action';
 import { CardWriter } from '@/components/admin/card-writer';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +32,7 @@ export default async function CardsPage({
 }: {
   searchParams: Promise<{ notice?: string; error?: string; member?: string }>;
 }) {
-  await requireAdmin();
+  const viewer = await requireAdmin();
   const { notice, error, member } = await searchParams;
   const returnTo = '/admin/cards';
 
@@ -117,26 +122,52 @@ export default async function CardsPage({
               key: 'actions',
               header: '',
               align: 'right',
-              render: (row) =>
-                row.status === 'active' ? (
-                  <form action={revokeCardAction}>
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <input type="hidden" name="cardId" value={row.id as string} />
-                    <input
-                      type="hidden"
-                      name="reason"
-                      value="Reported lost or replaced by organizer"
-                    />
-                    <SubmitButton
-                      size="small"
-                      variant="text"
-                      color="error"
-                      confirmMessage="Switch this card off? It stops working straight away. Use this when a card is lost."
-                    >
-                      Switch off
-                    </SubmitButton>
-                  </form>
-                ) : null,
+              render: (row) => {
+                const holder = Array.isArray(row.members) ? row.members[0] : row.members;
+                const profile = Array.isArray(holder?.member_profiles)
+                  ? holder.member_profiles[0]
+                  : holder?.member_profiles;
+                const holderName = (profile?.display_name as string | undefined) ?? 'this person';
+                return (
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {row.status === 'active' ? (
+                      <form action={revokeCardAction}>
+                        <input type="hidden" name="returnTo" value={returnTo} />
+                        <input type="hidden" name="cardId" value={row.id as string} />
+                        <input
+                          type="hidden"
+                          name="reason"
+                          value="Reported lost or replaced by organizer"
+                        />
+                        <SubmitButton
+                          size="small"
+                          variant="text"
+                          color="error"
+                          confirmMessage="Switch this card off? It stops working straight away. Use this when a card is lost."
+                        >
+                          Switch off
+                        </SubmitButton>
+                      </form>
+                    ) : null}
+                    {viewer.isSuperadmin ? (
+                      <ConfirmAction
+                        action={deleteRecordAction}
+                        fields={{ kind: 'card', id: row.id as string, returnTo }}
+                        label="Delete"
+                        variant="ghost"
+                        destructive
+                        title={`Delete ${holderName}'s card for good?`}
+                        description={
+                          row.status === 'active'
+                            ? 'The card stops working and its record is removed. To keep the record, switch it off instead.'
+                            : 'The record of this card is removed and cannot be brought back.'
+                        }
+                        confirmLabel="Yes, delete it for good"
+                      />
+                    ) : null}
+                  </div>
+                );
+              },
             },
           ]}
         />

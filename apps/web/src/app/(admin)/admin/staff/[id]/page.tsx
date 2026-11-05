@@ -19,6 +19,7 @@ import { auditSentence } from '@/lib/audit/describe';
 import { loadAuditNames } from '@/lib/audit/names';
 import {
   changeUserRoleAction,
+  deleteRecordAction,
   revokeCardAction,
   revokeUserAccessAction,
 } from '@/app/(admin)/admin/actions';
@@ -96,7 +97,9 @@ export default async function AdminStaffDetailPage({
       .eq('target_id', id),
     admin
       .from('audit_log')
-      .select('id, actor_auth_id, action, target_type, target_id, reason, after, created_at')
+      .select(
+        'id, actor_auth_id, action, target_type, target_id, reason, before, after, created_at',
+      )
       .eq('actor_auth_id', id)
       .order('created_at', { ascending: false })
       .limit(8),
@@ -310,6 +313,26 @@ export default async function AdminStaffDetailPage({
                 title={`Remove ${name}'s access?`}
                 description="They are signed out of the admin area straight away, and their profile and card stop working."
                 confirmLabel="Yes, remove access"
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5">
+              <h2 className="mb-1 text-sm font-bold">Delete account</h2>
+              <p className="mb-3 text-[0.78rem] leading-relaxed text-muted-foreground">
+                Removes their sign-in, profile, photo and card. To end their access but keep the
+                account, use Remove access instead.
+              </p>
+              <ConfirmAction
+                action={deleteRecordAction}
+                fields={{ kind: 'user', id, returnTo: '/admin/users', failTo: returnTo }}
+                label="Delete for good"
+                variant="destructive"
+                destructive
+                title={`Delete ${name}'s account for good?`}
+                description="Their sign-in, profile, photo and card are removed and cannot be brought back. What they did stays in the audit log, without their name."
+                confirmLabel="Yes, delete the account"
               />
             </CardContent>
           </Card>

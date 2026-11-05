@@ -31,14 +31,14 @@ The NFC card stores only an HTTPS link (`/c/<opaque-token>`), which redirects to
 
 ## Your choices
 
-- Hide any profile field, or make the entire profile private, at any time in **Member → Privacy**.
-- Hide your email during setup or at any time in Privacy settings.
+- Hide any profile field, or make the entire profile private, at any time under **Profile → What others can see**. Each switch saves as you flip it.
+- Hide your email during setup or at any time on your profile page.
 - Cancel a pending reward request; points are refunded through an audited ledger entry.
 - Request a correction to attendance by emailing **gdg@psu.edu** from your registered address. Corrections require an organizer reason and are audited; history is not deleted, it is compensated.
 
 ## Retention and deletion
 
-Attendance and ledger records are retained while your membership is active and for the period needed to resolve disputes. Archiving or suspending an account removes it from public views immediately but keeps records for dispute resolution. To close your account or correct your data, email **gdg@psu.edu** from your registered address; account deletion is a reviewed operator action because it also removes your ledger history.
+Attendance and ledger records are retained while your membership is active and for the period needed to resolve disputes. Archiving or suspending an account removes it from public views immediately but keeps records for dispute resolution. To close your account or correct your data, email **gdg@psu.edu** from your registered address; account deletion is a reviewed action by a superadmin because it also removes your points history. It removes your sign-in, profile, photo, card, attendance and points. The audit log keeps a record that an account was deleted, without your name or email.
 
 ## Contact
 

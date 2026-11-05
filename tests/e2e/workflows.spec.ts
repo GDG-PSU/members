@@ -76,6 +76,8 @@ test.describe('every member and organizer workflow', () => {
   // The web address is made from the name, so the name carries the run's stamp.
   const eventName = `Workflow Event ${stamp}`;
   const eventSlug = `workflow-event-${stamp}`;
+  // Invited only to be deleted again.
+  const strayEmail = `wf-stray-${stamp}@example.com`;
   let mainSessionId = '';
   let bonusSessionId = '';
   let firstCardUrl = '';
@@ -291,7 +293,7 @@ test.describe('every member and organizer workflow', () => {
     await client
       .from('member_invitations')
       .delete()
-      .in('email', [people.member.email, people.second.email]);
+      .in('email', [people.member.email, people.second.email, strayEmail]);
   });
 
   test('public signup is refused by the auth API', async ({ request }) => {
@@ -1928,6 +1930,183 @@ test.describe('every member and organizer workflow', () => {
       '/admin/audit',
     ]);
     await checkFit(anonPage, ['/', '/events', `/events/${eventSlug}`, '/leaderboard', '/privacy']);
+  });
+
+  test('a superadmin deletes things for good, and the audit log keeps the record', async ({
+    browser,
+  }) => {
+    const client = supabase();
+    const auditCount = async () => {
+      const { count } = await client.from('audit_log').select('id', { count: 'exact', head: true });
+      return count ?? 0;
+    };
+    const auditBefore = await auditCount();
+    // Every delete asks first, in a dialog that names what is about to go.
+    const confirmDelete = async (title: string | RegExp, button = 'Yes, delete it for good') => {
+      const dialog = superPage.getByRole('dialog');
+      await expect(dialog).toContainText(title);
+      await dialog.getByRole('button', { name: button }).click();
+    };
+
+    // A normal admin is not offered any of it.
+    await adminPage.goto(`/admin/events/${eventId}`);
+    await expect(adminPage.getByRole('heading', { name: eventName })).toBeVisible();
+    await expect(adminPage.getByRole('button', { name: 'Delete for good' })).toHaveCount(0);
+    await adminPage.goto('/admin/cards');
+    await expect(adminPage.getByRole('heading', { name: 'Cards issued' })).toBeVisible();
+    await expect(adminPage.getByRole('table').getByRole('row').nth(1)).toBeVisible();
+    await expect(adminPage.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
+    await adminPage.goto('/admin/rewards');
+    await expect(adminPage.getByRole('list', { name: 'Recently handled' })).toBeVisible();
+    await expect(adminPage.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
+
+    // An invitation goes with the unused account that was made for it.
+    await invite(superPage, strayEmail);
+    const { data: stray } = await client
+      .from('member_invitations')
+      .select('id, auth_user_id')
+      .eq('email', strayEmail)
+      .single();
+    const strayAuthId = stray?.auth_user_id as string;
+    fixtureAuthIds.add(strayAuthId);
+    await superPage.goto('/admin/users');
+    const strayRow = superPage.getByRole('row').filter({ hasText: strayEmail });
+    await strayRow.getByRole('button', { name: 'Delete for good' }).click();
+    await confirmDelete(`Delete the invitation for ${strayEmail} for good?`);
+    await expect(superPage.getByText('Invitation deleted for good.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(strayRow).toHaveCount(0);
+    expect((await client.auth.admin.getUserById(strayAuthId)).data.user).toBeNull();
+    fixtureAuthIds.delete(strayAuthId);
+
+    // A handled reward request, then a reward.
+    await superPage.goto('/admin/rewards');
+    const handled = superPage.getByRole('list', { name: 'Recently handled' }).locator('li');
+    const handledBefore = await handled.count();
+    expect(handledBefore).toBeGreaterThan(0);
+    await handled.first().getByRole('button', { name: 'Delete', exact: true }).click();
+    await confirmDelete('Delete this request for good?');
+    await expect(superPage.getByText('Request deleted for good.')).toBeVisible({ timeout: 15_000 });
+    await expect(handled).toHaveCount(handledBefore - 1);
+
+    const doomedReward = `WF ${stamp} Doomed`;
+    const { data: reward } = await client
+      .from('rewards')
+      .insert({ name: doomedReward, description: 'Deleted by the suite', cost_points: 1 })
+      .select('id')
+      .single();
+    await superPage.goto(`/admin/rewards/${reward?.id as string}`);
+    await superPage.getByRole('button', { name: 'Delete for good' }).click();
+    await confirmDelete(`Delete ${doomedReward} for good?`);
+    await expect(superPage).toHaveURL(/\/admin\/rewards\?notice=/, { timeout: 15_000 });
+    await expect(superPage.getByText('Reward deleted for good.')).toBeVisible();
+    await expect(superPage.getByText(doomedReward)).toHaveCount(0);
+
+    // A card record.
+    const cardCount = async () => {
+      const { count } = await client
+        .from('card_credentials')
+        .select('id', { count: 'exact', head: true });
+      return count ?? 0;
+    };
+    const cardsBefore = await cardCount();
+    await superPage.goto('/admin/cards');
+    await superPage.getByRole('button', { name: 'Delete', exact: true }).first().click();
+    await confirmDelete(/Delete .+ card for good\?/);
+    await expect(superPage.getByText('Card deleted for good.')).toBeVisible({ timeout: 15_000 });
+    expect(await cardCount()).toBe(cardsBefore - 1);
+
+    // An event goes with its sessions and attendance. What members earned stays.
+    const balance = async () => {
+      const { data } = await client
+        .from('member_balances')
+        .select('points, stars')
+        .eq('member_id', memberId)
+        .single();
+      return data;
+    };
+    const balanceBefore = await balance();
+    expect(balanceBefore?.stars).toBeGreaterThan(0);
+    await superPage.goto(`/admin/events/${eventId}`);
+    await superPage.getByRole('button', { name: 'Delete for good' }).click();
+    await expect(superPage.getByRole('dialog')).toContainText(
+      'Members keep the points they earned from it.',
+    );
+    await confirmDelete(`Delete ${eventName} for good?`);
+    await expect(superPage).toHaveURL(/\/admin\/events\?notice=/, { timeout: 15_000 });
+    await expect(superPage.getByText('Event deleted for good.')).toBeVisible();
+    await expect(superPage.getByRole('link', { name: eventName })).toHaveCount(0);
+    expect(await balance()).toEqual(balanceBefore);
+    const { count: attendanceLeft } = await client
+      .from('attendance_records')
+      .select('id', { count: 'exact', head: true })
+      .in('session_id', [mainSessionId, bonusSessionId]);
+    expect(attendanceLeft).toBe(0);
+    expect((await anonPage.goto(`/events/${eventSlug}`))?.status()).toBe(404);
+    await memberPage.goto('/member/activity');
+    await expect(memberPage.getByRole('heading', { name: 'Points history' })).toBeVisible();
+
+    // A person goes with everything about them, and cannot sign in again.
+    const { data: secondPrivate } = await client
+      .from('member_private')
+      .select('member_id')
+      .eq('email', people.second.email)
+      .single();
+    const secondMemberId = secondPrivate?.member_id as string;
+    const { data: secondMember } = await client
+      .from('members')
+      .select('auth_user_id, member_profiles(profile_slug)')
+      .eq('id', secondMemberId)
+      .single();
+    const secondAuthId = secondMember?.auth_user_id as string;
+    const secondSlug = (secondMember?.member_profiles as unknown as { profile_slug: string })
+      .profile_slug;
+    await superPage.goto(`/admin/members/${secondMemberId}`);
+    await superPage.getByRole('button', { name: 'Delete for good' }).click();
+    await confirmDelete("Delete Second Member's account for good?", 'Yes, delete the account');
+    await expect(superPage).toHaveURL(/\/admin\/users\?notice=/, { timeout: 20_000 });
+    await expect(superPage.getByText('Account deleted for good.')).toBeVisible();
+    await expect(superPage.getByRole('row').filter({ hasText: people.second.email })).toHaveCount(
+      0,
+    );
+    const { count: membersLeft } = await client
+      .from('members')
+      .select('id', { count: 'exact', head: true })
+      .eq('id', secondMemberId);
+    expect(membersLeft).toBe(0);
+    expect((await client.auth.admin.getUserById(secondAuthId)).data.user).toBeNull();
+    const { data: photosLeft } = await client.storage
+      .from('avatars')
+      .list(`member/${secondAuthId}`);
+    expect(photosLeft ?? []).toHaveLength(0);
+    expect((await anonPage.goto(`/m/${secondSlug}`))?.status()).toBe(404);
+    const gone = await newPage(browser, 'deleted member');
+    await signIn(gone, people.second.email, people.second.password);
+    await expect(gone.getByText('Email or password is incorrect')).toBeVisible({ timeout: 15_000 });
+
+    // Each delete is in the audit log, by name for things and never for people.
+    expect(await auditCount()).toBeGreaterThanOrEqual(auditBefore + 6);
+    await superPage.goto('/admin/audit');
+    await expect(superPage.getByText(`You deleted the event ${eventName} for good.`)).toBeVisible();
+    await expect(
+      superPage.getByText(`You deleted the reward ${doomedReward} for good.`),
+    ).toBeVisible();
+    await expect(superPage.getByText("You deleted a member's account for good.")).toBeVisible();
+    await expect(superPage.getByText('You deleted an invitation for good.')).toBeVisible();
+    await expect(superPage.getByText('Second Member')).toHaveCount(0);
+    await expect(superPage.getByRole('button', { name: /delete/i })).toHaveCount(0);
+
+    // And nothing deletes or rewrites the log itself, whatever key is used.
+    const auditAfter = await auditCount();
+    const { error: auditDelete } = await client.from('audit_log').delete().gt('id', 0);
+    expect(auditDelete?.message).toContain('audit_log_is_permanent');
+    const { error: auditEdit } = await client
+      .from('audit_log')
+      .update({ reason: 'rewritten' })
+      .gt('id', 0);
+    expect(auditEdit?.message).toContain('audit_log_is_permanent');
+    expect(await auditCount()).toBe(auditAfter);
   });
 
   test('repeated bad passwords are slowed down', async ({ browser }) => {

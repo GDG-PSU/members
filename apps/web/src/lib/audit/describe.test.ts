@@ -45,6 +45,25 @@ describe('describeAudit', () => {
     );
   });
 
+  it('names a deleted record from the entry itself, and never a deleted person', () => {
+    expect(describeAudit({ action: 'event.deleted', before: { name: 'Kickoff' } })).toBe(
+      'deleted the event Kickoff for good',
+    );
+    expect(describeAudit({ action: 'reward.deleted', before: { name: 'Mug' } })).toBe(
+      'deleted the reward Mug for good',
+    );
+    expect(describeAudit({ action: 'card.deleted' }, 'Ada')).toBe("deleted Ada's card for good");
+    expect(
+      describeAudit({ action: 'attendance.deleted', before: { name: 'Kickoff' } }, 'Ada'),
+    ).toBe("deleted Ada's attendance at Kickoff for good");
+    expect(describeAudit({ action: 'user.deleted', before: { kind: 'member' } }, 'Ada')).toBe(
+      "deleted a member's account for good",
+    );
+    expect(describeAudit({ action: 'user.deleted', before: { kind: 'organizer' } })).toBe(
+      "deleted an organizer's account for good",
+    );
+  });
+
   it('keeps an unknown code readable instead of hiding it', () => {
     expect(describeAudit({ action: 'thing.was_done' })).toBe('recorded "thing was done"');
   });

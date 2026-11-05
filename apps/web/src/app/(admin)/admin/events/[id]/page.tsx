@@ -13,8 +13,9 @@ import {
 } from '@/lib/events/attendance-rules';
 import { formatDateTime, formatTime } from '@/lib/format';
 import { EventForm, type EventValues } from '@/components/admin/event-form';
-import { setEventStatusAction } from '@/app/(admin)/admin/actions';
+import { deleteRecordAction, setEventStatusAction } from '@/app/(admin)/admin/actions';
 import { Flash, SubmitButton } from '@/components/admin/ui';
+import { ConfirmAction } from '@/components/admin/confirm-action';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,7 +89,7 @@ export default async function EditEventPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ notice?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  const viewer = await requireAdmin();
   const { id } = await params;
   const { notice, error } = await searchParams;
   const loaded = await loadEvent(id);
@@ -213,6 +214,20 @@ export default async function EditEventPage({
               </SubmitButton>
             </form>
           ))}
+          {viewer.isSuperadmin ? (
+            <ConfirmAction
+              action={deleteRecordAction}
+              fields={{ kind: 'event', id, returnTo: '/admin/events', failTo: returnTo }}
+              label="Delete for good"
+              variant="ghost"
+              destructive
+              title={`Delete ${event.name as string} for good?`}
+              description={`The event, its sessions and its ${rows.length} attendance ${
+                rows.length === 1 ? 'record' : 'records'
+              } are removed and cannot be brought back. Members keep the points they earned from it. To hide it but keep it, cancel it instead.`}
+              confirmLabel="Yes, delete it for good"
+            />
+          ) : null}
         </div>
       </div>
 

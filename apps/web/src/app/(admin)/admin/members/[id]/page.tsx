@@ -25,6 +25,7 @@ import {
   adjustMemberPointsAction,
   changeUserRoleAction,
   correctAttendanceAction,
+  deleteRecordAction,
   revokeCardAction,
   setMemberStatusAction,
 } from '@/app/(admin)/admin/actions';
@@ -230,6 +231,18 @@ export default async function AdminMemberDetailPage({
                             Apply
                           </SubmitButton>
                         </form>
+                        {record.qualified ? null : (
+                          <ConfirmAction
+                            action={deleteRecordAction}
+                            fields={{ kind: 'attendance', id: record.id as string, returnTo }}
+                            label="Delete record"
+                            variant="ghost"
+                            destructive
+                            title={`Delete ${name}'s attendance at ${(event?.name as string) ?? 'this event'} for good?`}
+                            description="The record is removed and cannot be brought back. It gave no points, so their balance stays the same."
+                            confirmLabel="Yes, delete it for good"
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -447,6 +460,31 @@ export default async function AdminMemberDetailPage({
                   confirmLabel="Yes, make them a superadmin"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-5">
+              <h2 className="mb-1 text-sm font-bold">Delete account</h2>
+              <p className="mb-3 text-[0.72rem] leading-relaxed text-muted-foreground">
+                Removes everything about them. To stop them signing in but keep their history, set
+                the status to Archived instead.
+              </p>
+              <ConfirmAction
+                action={deleteRecordAction}
+                fields={{
+                  kind: 'user',
+                  id: row.auth_user_id as string,
+                  returnTo: '/admin/users',
+                  failTo: returnTo,
+                }}
+                label="Delete for good"
+                variant="destructive"
+                destructive
+                title={`Delete ${name}'s account for good?`}
+                description="Their sign-in, profile, photo, card, attendance, points and reward requests are removed and cannot be brought back. The audit log keeps a record that an account was deleted, without their name."
+                confirmLabel="Yes, delete the account"
+              />
             </CardContent>
           </Card>
         </div>

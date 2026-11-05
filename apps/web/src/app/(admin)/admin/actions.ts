@@ -136,6 +136,87 @@ async function audit(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Permanent delete                                                           */
+/* -------------------------------------------------------------------------- */
+
+const DELETE_ERRORS: Record<string, string> = {
+  not_found: 'That has already been deleted.',
+  auth_user_not_found: 'That account has already been deleted.',
+  superadmin_required: 'Only superadmins can delete things for good.',
+  reward_has_open_requests: 'Decide the requests still waiting for this reward, then delete it.',
+  redemption_still_open: 'Decide this request before deleting it.',
+  attendance_has_points:
+    'This attendance gave points. Disqualify it first so the points are taken back, then delete it.',
+  invitation_in_use: 'That invitation was accepted. Delete the member instead.',
+  cannot_delete_self: 'You cannot delete your own account.',
+};
+
+const DELETED: Record<string, string> = {
+  event: 'Event deleted for good.',
+  reward: 'Reward deleted for good.',
+  redemption: 'Request deleted for good.',
+  card: 'Card deleted for good.',
+  attendance: 'Attendance record deleted for good.',
+  invitation: 'Invitation deleted for good.',
+  user: 'Account deleted for good.',
+};
+
+/**
+ * Superadmin-only. The database function checks the actor again, deletes, and
+ * writes the audit entry in one transaction; the audit log itself has no delete.
+ * `failTo` is where an error is shown, because after a successful delete the
+ * page the button was on no longer exists.
+ */
+export async function deleteRecordAction(formData: FormData) {
+  const { user } = await requireSuperadminActor();
+  const returnTo = readReturnTo(formData);
+  const failValue = readString(formData, 'failTo');
+  const failTo = failValue.startsWith('/admin') ? failValue : returnTo;
+  const parsed = z
+    .object({
+      kind: z.enum(['event', 'reward', 'redemption', 'card', 'attendance', 'invitation', 'user']),
+      id: z.uuid(),
+    })
+    .safeParse({ kind: formData.get('kind'), id: formData.get('id') });
+  if (!parsed.success) fail(failTo, 'That could not be deleted.');
+
+  const admin = createSupabaseAdmin();
+  const { error } = await admin.rpc('delete_record', {
+    p_kind: parsed.data.kind,
+    p_id: parsed.data.id,
+    p_actor: user.id,
+  });
+  if (error) {
+    const code = Object.keys(DELETE_ERRORS).find((key) => error.message.includes(key));
+    if (!code) console.error('[delete]', parsed.data.kind, error.message);
+    fail(failTo, code ? (DELETE_ERRORS[code] ?? '') : 'That could not be deleted. Try again.');
+  }
+
+  if (parsed.data.kind === 'user') {
+    // Photos live in storage, which the database function cannot reach.
+    const folder = `member/${parsed.data.id}`;
+    const { data: files } = await admin.storage.from('avatars').list(folder, { limit: 100 });
+    const paths = (files ?? []).map((file) => `${folder}/${file.name}`);
+    if (paths.length > 0) {
+      const { error: removeError } = await admin.storage.from('avatars').remove(paths);
+      if (removeError) console.error('[delete] photo cleanup failed', removeError.message);
+    }
+  }
+
+  succeed(returnTo, DELETED[parsed.data.kind] ?? 'Deleted for good.', [
+    '/admin',
+    '/admin/users',
+    '/admin/events',
+    '/admin/rewards',
+    '/admin/cards',
+    '/events',
+    '/leaderboard',
+    '/member',
+    '/member/rewards',
+  ]);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Invitations                                                                */
 /* -------------------------------------------------------------------------- */
 

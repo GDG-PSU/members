@@ -63,6 +63,22 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 3. Write a replacement as above; the previous card is marked replaced.
 4. Tell the member their digital ID is the fallback until the new card is active.
 
+## Deleting for good (superadmins)
+
+Normal organizers hide things: an event is cancelled, a reward switched off, a card switched off, a member archived. A superadmin can also delete them for good with **Delete for good**. Every delete asks first and names what will go, and none can be undone.
+
+| What           | Where                                   | What goes with it                                                                 |
+| -------------- | --------------------------------------- | --------------------------------------------------------------------------------- |
+| Event          | The event's page                        | Its sessions and attendance records. Members keep the points they earned from it. |
+| Reward         | The reward's edit page                  | Its handled requests. Refused while a request is still waiting.                   |
+| Reward request | **Recently handled** on Rewards         | Only the request. The member's points are not changed.                            |
+| Card           | **Cards issued** on Cards               | The card stops working and its record is removed.                                 |
+| Attendance     | The member's page                       | One record that gave no points. Disqualify it first if it did.                    |
+| Invitation     | The invitation's row on People          | The unused account that was made for it.                                          |
+| Account        | The member's or organizer's manage page | Their sign-in, profile, photo, card, attendance, points and reward requests.      |
+
+The audit log records each delete: by name for an event or reward, and without a name for a person. Nobody can delete or change the audit log, a superadmin included.
+
 ## Attendance correction
 
 Corrections are admin-only, require a reason, and are audited.
@@ -98,7 +114,7 @@ Corrections are admin-only, require a reason, and are audited.
 2. Organizer verifies the sender against the member record; never disclose account details to a different address.
 3. Password reset: a superadmin opens the person from **People**, chooses **Make a password reset link** (audited), copies the one-time link and sends it from their own mailbox. Never email a password. Links expire per the project's Auth OTP setting; regenerate if needed.
 4. Attendance/points issue: inspect attendance + ledger + audit; correct with a reason if warranted; reply with the outcome, not ledger internals.
-5. Privacy/account closure: confirm identity, explain retention, follow `PRIVACY.md`; account deletion is reviewed because member ledger/attendance history is removed. Audit rows remain, retaining the actor UUID as an opaque historical identifier (migration 0005). Run the reviewed erasure as a service role or the `postgres` role, using the Auth user id from `auth.users`:
+5. Privacy/account closure: confirm identity, explain retention, follow `PRIVACY.md`; account deletion is reviewed because member ledger/attendance history is removed. Audit rows remain, retaining the actor UUID as an opaque historical identifier (migration 0005). A superadmin does this with **Delete for good** on the person's manage page, which also removes their photos. Without the app, run the reviewed erasure as a service role or the `postgres` role, using the Auth user id from `auth.users`:
 
    ```sql
    select public.erase_member('AUTH_USER_ID_HERE');

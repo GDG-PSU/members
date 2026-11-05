@@ -15,7 +15,11 @@ import { requireAdmin, type StaffRole } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate, formatDateTime } from '@/lib/format';
-import { revokeInvitationAction, revokeUserAccessAction } from '@/app/(admin)/admin/actions';
+import {
+  deleteRecordAction,
+  revokeInvitationAction,
+  revokeUserAccessAction,
+} from '@/app/(admin)/admin/actions';
 import { Flash } from '@/components/admin/ui';
 import { AdminInviteForm } from '@/components/admin/admin-invite-form';
 import { ConfirmAction } from '@/components/admin/confirm-action';
@@ -440,6 +444,22 @@ export default async function UsersPage({
                         description="Their link stops working. You can invite them again later."
                         confirmLabel="Yes, cancel it"
                       />
+                      {isSuperadmin ? (
+                        <ConfirmAction
+                          action={deleteRecordAction}
+                          fields={{
+                            kind: 'invitation',
+                            id: row.invitationId,
+                            returnTo: '/admin/users',
+                          }}
+                          label="Delete for good"
+                          variant="ghost"
+                          destructive
+                          title={`Delete the invitation for ${row.email} for good?`}
+                          description="The invitation and the unused account made for it are removed. You can invite them again later."
+                          confirmLabel="Yes, delete it for good"
+                        />
+                      ) : null}
                     </div>
                   );
                 }

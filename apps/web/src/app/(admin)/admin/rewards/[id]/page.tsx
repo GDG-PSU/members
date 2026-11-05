@@ -6,7 +6,9 @@ import { Card, CardContent, PageShell } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { RewardForm, type RewardValues } from '@/components/admin/reward-form';
+import { deleteRecordAction } from '@/app/(admin)/admin/actions';
 import { Flash } from '@/components/admin/ui';
+import { ConfirmAction } from '@/components/admin/confirm-action';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +24,7 @@ export default async function EditRewardPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ notice?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  const viewer = await requireAdmin();
   const { id } = await params;
   const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
@@ -64,6 +66,32 @@ export default async function EditRewardPage({
           <RewardForm reward={reward} returnTo={`/admin/rewards/${id}`} />
         </CardContent>
       </Card>
+
+      {viewer.isSuperadmin ? (
+        <Card className="mt-5">
+          <CardContent className="pt-5">
+            <h2 className="text-sm font-bold">Delete this reward</h2>
+            <p className="mb-3 mt-1 text-xs leading-relaxed text-muted-foreground">
+              To stop offering it but keep its history, switch it off above instead.
+            </p>
+            <ConfirmAction
+              action={deleteRecordAction}
+              fields={{
+                kind: 'reward',
+                id,
+                returnTo: '/admin/rewards',
+                failTo: `/admin/rewards/${id}`,
+              }}
+              label="Delete for good"
+              variant="destructive"
+              destructive
+              title={`Delete ${reward.name} for good?`}
+              description="The reward and the requests already handled for it are removed and cannot be brought back. Points members spent on it stay spent."
+              confirmLabel="Yes, delete it for good"
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </PageShell>
   );
 }

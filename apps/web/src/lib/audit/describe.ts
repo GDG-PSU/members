@@ -40,6 +40,8 @@ export function describeAudit(
   const whose = name ? `${name}'s` : "someone's";
   const titled = (kind: string) =>
     name ? `the ${kind} ${name}` : `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`;
+  // A deleted record cannot be looked up any more, so its entry carries the name.
+  const gone = field(entry.before, 'name');
   const email = field(entry.after, 'email');
   const status = field(entry.after, 'status');
   const method = METHODS[field(entry.after, 'method') ?? ''] ?? '';
@@ -126,6 +128,28 @@ export function describeAudit(
       return `checked ${whose} PSU ID`;
     case 'scan.rejected':
       return 'had a scan refused at the kiosk';
+    case 'event.deleted':
+      return gone ? `deleted the event ${gone} for good` : 'deleted an event for good';
+    case 'reward.deleted':
+      return gone ? `deleted the reward ${gone} for good` : 'deleted a reward for good';
+    case 'redemption.deleted':
+      return `deleted ${whose} request for ${gone ?? 'a reward'} for good`;
+    case 'card.deleted':
+      return `deleted ${whose} card for good`;
+    case 'attendance.deleted':
+      return gone
+        ? `deleted ${whose} attendance at ${gone} for good`
+        : `deleted ${whose} attendance record for good`;
+    case 'invitation.deleted':
+      return 'deleted an invitation for good';
+    case 'user.deleted': {
+      const kind = field(entry.before, 'kind');
+      return kind === 'member'
+        ? "deleted a member's account for good"
+        : kind === 'organizer'
+          ? "deleted an organizer's account for good"
+          : 'deleted an account for good';
+    }
     default:
       // A code nobody has written a sentence for yet still has to be readable.
       return `recorded "${entry.action.replace(/[._]+/g, ' ')}"`;
