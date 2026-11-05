@@ -45,6 +45,7 @@ export function AdminInviteForm() {
         <LinkPanel
           link={state.link}
           email={state.email}
+          hours={state.hours}
           title={
             state.role === 'superadmin' ? 'Superadmin invite link ready' : 'Admin invite link ready'
           }
@@ -52,8 +53,9 @@ export function AdminInviteForm() {
       ) : null}
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        No email is sent, so copy the link and send it yourself. They choose a password, then set up
-        an authenticator app and their profile.
+        No email is sent, so copy the link and send it yourself. It works for 72 hours; invite them
+        again for a new one. They choose a password, then set up an authenticator app and their
+        profile.
       </p>
     </div>
   );

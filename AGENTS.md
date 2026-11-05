@@ -576,7 +576,7 @@ Last updated 2026-11-05.
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0019 applied. The
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0020 applied. The
   Supabase GitHub integration applies new migrations when `main` is pushed.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
   test members exist. Nothing here was read from it after that.
@@ -592,8 +592,8 @@ Last updated 2026-11-05.
   attendance record, invitation or account for good, and the audit log can no longer be changed by
   anything. Its schema went ahead in `f187f33` and the app followed in `e18f987`. Since then
   invitation links work for 72 hours and password reset links for 48, an invitation nobody used
-  shows as not accepted, and the links are the app's own instead of Supabase tokens. That needs
-  migration 0020, which goes ahead of the app code. See `docs/test-plan.md`.
+  shows as not accepted, and the links are the app's own instead of Supabase tokens. Its schema
+  went ahead in `8bd6160`. See `docs/test-plan.md`.
 
 ### Approved and not built yet
 
@@ -651,6 +651,13 @@ On the physical ESP32 + PN532 with firmware 2.0.2:
 - Earlier the same day, with the old Read button: the app passed invitation, setup, prepare, write,
   read back, activate, the card URL resolving, check-in, check-out, and the points grant. Only
   `navigator.serial` was bridged to COM3, because its picker cannot be automated.
+
+On production, read-only, after `8bd6160` was pushed on 2026-11-05:
+
+- Migration 0020 is applied. `sign_in_links` has RLS on and cannot be read by `anon` or
+  `authenticated`, its two functions can be executed by `service_role` only, and a new invitation
+  defaults to 72 hours.
+- `anon` can still execute no public function.
 
 On production, read-only, after `f187f33` was pushed on 2026-11-05:
 

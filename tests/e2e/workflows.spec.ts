@@ -81,6 +81,8 @@ test.describe('every member and organizer workflow', () => {
   let mainSessionId = '';
   let bonusSessionId = '';
   let firstCardUrl = '';
+  // The second member's first invitation link, kept to show what expiry looks like.
+  let staleInviteLink = '';
   let activeCardUrl = '';
   let origin = '';
 
@@ -140,6 +142,32 @@ test.describe('every member and organizer workflow', () => {
       { timeout: 20_000 },
     );
     return page.getByLabel('One-time sign-in link').inputValue();
+  }
+
+  /** Moves a person's link back in time, as if it had been made that long ago. */
+  async function ageLink(authUserId: string, hoursAgo: number, lifetimeHours: number) {
+    const { error } = await supabase()
+      .from('sign_in_links')
+      .update({
+        created_at: new Date(Date.now() - hoursAgo * HOUR).toISOString(),
+        expires_at: new Date(Date.now() - (hoursAgo - lifetimeHours) * HOUR).toISOString(),
+      })
+      .eq('auth_user_id', authUserId);
+    expect(error).toBeNull();
+  }
+
+  /** How many hours a person's current link was made to last. */
+  async function linkLifetime(authUserId: string): Promise<number> {
+    const { data } = await supabase()
+      .from('sign_in_links')
+      .select('created_at, expires_at')
+      .eq('auth_user_id', authUserId)
+      .single();
+    return Math.round(
+      (new Date(data?.expires_at as string).getTime() -
+        new Date(data?.created_at as string).getTime()) /
+        HOUR,
+    );
   }
 
   async function useLink(page: Page, link: string) {
@@ -426,6 +454,11 @@ test.describe('every member and organizer workflow', () => {
   }) => {
     const firstLink = await invite(adminPage, people.member.email);
     expect(new URL(firstLink).origin).toBe(origin);
+    // The link carries the app's own token, and says how long it works.
+    expect(new URL(firstLink).pathname).toBe('/auth/confirm');
+    expect(new URL(firstLink).searchParams.get('link')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(firstLink).not.toContain('token_hash');
+    await expect(adminPage.getByText('The link works once, for 72 hours from now.')).toBeVisible();
 
     await adminPage.goto('/admin/users?invite=1');
     await adminPage.locator('#invite-email').fill(people.member.email);
@@ -435,7 +468,7 @@ test.describe('every member and organizer workflow', () => {
 
     await superPage.goto('/admin/users');
     await expect(superPage.getByRole('row').filter({ hasText: people.member.email })).toBeVisible();
-    await invite(superPage, people.second.email);
+    staleInviteLink = await invite(superPage, people.second.email);
     await adminPage.goto('/admin/users?invite=1');
     await expect(adminPage.getByText(people.second.email)).toHaveCount(0);
 
@@ -446,6 +479,9 @@ test.describe('every member and organizer workflow', () => {
     await expect(confirm).toContainText(`Cancel the invitation for ${people.member.email}?`);
     await confirm.getByRole('button', { name: 'Yes, cancel it' }).click();
     await expect(adminPage.getByText('Invitation cancelled.')).toBeVisible({ timeout: 15_000 });
+    // A cancelled invitation's link is gone, not merely turned away later.
+    await memberPage.goto(firstLink);
+    await expect(memberPage).toHaveURL(/\/login\?notice=invalid-link/);
 
     const secondLink = await invite(adminPage, people.member.email);
 
@@ -559,6 +595,9 @@ test.describe('every member and organizer workflow', () => {
 
     await stranger.goto('/auth/confirm?token_hash=not-a-real-token&type=not-a-type');
     await expect(stranger).toHaveURL(/\/login\?notice=invalid-link/);
+    // A made-up token of the right shape is turned away before any button is shown.
+    await stranger.goto(`/auth/confirm?link=${'x'.repeat(43)}`);
+    await expect(stranger).toHaveURL(/\/login\?notice=invalid-link/);
   });
 
   test('an expired invitation is explained and can be replaced', async ({ browser }) => {
@@ -569,12 +608,48 @@ test.describe('every member and organizer workflow', () => {
       .eq('email', people.second.email)
       .eq('status', 'pending')
       .single();
-    fixtureAuthIds.add(pending?.auth_user_id as string);
+    const secondAuthId = pending?.auth_user_id as string;
+    fixtureAuthIds.add(secondAuthId);
+    // An invitation link is made to last 72 hours.
+    expect(await linkLifetime(secondAuthId)).toBe(72);
+
+    // 73 hours on, nobody has used it.
+    await ageLink(secondAuthId, 73, 72);
     await client
       .from('member_invitations')
       .update({ expires_at: new Date(Date.now() - HOUR).toISOString() })
       .eq('id', pending?.id);
 
+    // The People page shows it as not accepted instead of still waiting.
+    await superPage.goto('/admin/users');
+    const staleRow = superPage.getByRole('row').filter({ hasText: people.second.email });
+    await expect(staleRow.getByText('Not accepted').first()).toBeVisible();
+    await expect(staleRow.getByText('Link stopped working')).toBeVisible();
+    await expect(staleRow.getByText('Invite pending')).toHaveCount(0);
+    await expect(staleRow.getByText('Waiting')).toHaveCount(0);
+    // Whoever opens the link is told why, and is offered nothing to press.
+    const late = await newPage(browser, 'late invitee');
+    await late.goto(staleInviteLink);
+    await expect(late.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
+    await expect(late.getByText('An invitation link works for 72 hours.')).toBeVisible();
+    await expect(late.getByRole('button', { name: 'Continue' })).toHaveCount(0);
+    await late.context().close();
+
+    // New link reopens it for another 72 hours and replaces the old link.
+    await staleRow.getByRole('button', { name: 'New link' }).click();
+    const reopened = await superPage.getByLabel('One-time sign-in link').inputValue();
+    expect(reopened).not.toBe(staleInviteLink);
+    await superPage.getByRole('button', { name: 'Done' }).click();
+    await expect(staleRow.getByText('Invite pending')).toBeVisible();
+    await expect(staleRow.getByText('Not accepted')).toHaveCount(0);
+    expect(await linkLifetime(secondAuthId)).toBe(72);
+
+    // Left again past its time, a fresh invitation takes its place.
+    await ageLink(secondAuthId, 73, 72);
+    await client
+      .from('member_invitations')
+      .update({ expires_at: new Date(Date.now() - HOUR).toISOString() })
+      .eq('id', pending?.id);
     const freshLink = await invite(superPage, people.second.email);
     const { data: rows } = await client
       .from('member_invitations')
@@ -1451,8 +1526,11 @@ test.describe('every member and organizer workflow', () => {
     await superPage.getByRole('button', { name: 'Make a password reset link' }).click();
     const link = await superPage.getByLabel('One-time sign-in link').inputValue();
     expect(new URL(link).origin).toBe(origin);
-    expect(new URL(link).searchParams.get('next')).toBe('/account/password');
+    expect(new URL(link).searchParams.get('link')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    await expect(superPage.getByText('The link works once, for 48 hours from now.')).toBeVisible();
     await superPage.getByRole('button', { name: 'Done' }).click();
+    // A password reset link is made to last 48 hours.
+    expect(await linkLifetime(memberAuthId)).toBe(48);
 
     const recovery = await newPage(browser, 'recovery');
     await useLink(recovery, link);
@@ -1469,8 +1547,19 @@ test.describe('every member and organizer workflow', () => {
     await expect(recovery).toHaveURL(/\/member$/, { timeout: 20_000 });
 
     const replay = await newPage(browser, 'replayed recovery');
-    await useLink(replay, link);
-    await expect(replay).toHaveURL(/\/login\?notice=invalid-link/, { timeout: 20_000 });
+    await replay.goto(link);
+    await expect(replay.getByRole('heading', { name: 'This link was already used' })).toBeVisible();
+    await expect(replay.getByRole('button', { name: 'Continue' })).toHaveCount(0);
+
+    // A reset link nobody uses for 48 hours simply stops working.
+    await superPage.getByRole('button', { name: 'Make a password reset link' }).click();
+    const unused = await superPage.getByLabel('One-time sign-in link').inputValue();
+    await superPage.getByRole('button', { name: 'Done' }).click();
+    await ageLink(memberAuthId, 49, 48);
+    await replay.goto(unused);
+    await expect(replay.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
+    await expect(replay.getByText('A password reset link works for 48 hours.')).toBeVisible();
+    await expect(replay.getByRole('button', { name: 'Continue' })).toHaveCount(0);
 
     const oldLogin = await newPage(browser, 'old password');
     await signIn(oldLogin, people.member.email, people.member.password);
@@ -1879,6 +1968,7 @@ test.describe('every member and organizer workflow', () => {
       .limit(200);
     const serialized = JSON.stringify(rows);
     expect(serialized, 'no one-time link in the audit log').not.toContain('token_hash');
+    expect(serialized, 'no one-time link in the audit log').not.toContain('/auth/confirm');
     expect(serialized, 'no card URL in the audit log').not.toContain('/c/');
     const recovery = rows?.find((row) => row.action === 'member.recovery_link_generated');
     expect(recovery?.target_id).toBe(memberAuthId);

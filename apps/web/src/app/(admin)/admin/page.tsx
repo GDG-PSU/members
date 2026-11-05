@@ -53,7 +53,8 @@ export default async function AdminHomePage({
   let invitesQuery = admin
     .from('member_invitations')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'pending');
+    .eq('status', 'pending')
+    .gt('expires_at', nowIso());
   if (!viewer.isSuperadmin) {
     invitesQuery = invitesQuery.eq('created_by', viewer.user.id);
   }

@@ -30,6 +30,7 @@ export function RegenerateInvitationLink({ invitationId }: { invitationId: strin
         onClose={() => setDismissed(state.link ?? null)}
         link={state.link}
         email={state.email}
+        hours={state.hours}
         title="New invitation link"
       />
     </div>

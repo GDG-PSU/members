@@ -26,13 +26,14 @@ export function RecoveryForm({ email }: { email: string }) {
         </Alert>
       ) : null}
       <p className="mt-2 text-[0.78rem] leading-relaxed text-muted-foreground">
-        No email is sent. Copy the link and send it to them privately.
+        No email is sent. Copy the link and send it to them privately. It works for 48 hours.
       </p>
       <LinkDialog
         open={open}
         onClose={() => setDismissed(state.link ?? null)}
         link={state.link}
         email={state.email}
+        hours={state.hours}
         title="Password reset link"
       />
     </div>

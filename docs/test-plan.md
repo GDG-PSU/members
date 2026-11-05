@@ -10,10 +10,10 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | ------------------- | ----------------------------- | ---------------------------------------------- |
 | Formatting          | `pnpm format:check`           | Pass                                           |
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 81/81 pass                                     |
+| Unit tests          | `pnpm test`                   | 91/91 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
 | Browser E2E         | `pnpm e2e`                    | 56 pass, 36 skipped; 46/46 on desktop Chromium |
-| Database/RLS/ledger | `pnpm db:verify`              | 103/103 pass on the local Supabase stack       |
+| Database/RLS/ledger | `pnpm db:verify`              | 114/114 pass on the local Supabase stack       |
 | Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
 | Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
 | Physical end to end | Browser app + real reader     | Pass on 2.0.2; see Hardware coverage           |
@@ -34,6 +34,10 @@ disposable accounts it creates and removes:
   posts refused, normal-admin limits, and the login rate limit.
 - **Navigation:** the five admin tabs and four member tabs, which tab each page
   lights, and the old invitation and privacy addresses leading to their new homes.
+- **Link lifetimes:** an invitation link lasting 72 hours and a password reset link
+  48; a link aged past its time showing a page that says so, with nothing to press;
+  the People page showing Not accepted for a member and an organizer; New link
+  reopening an invitation; and a cancelled, replaced or used link no longer working.
 - **Invitations and accounts:** revoke, re-issue, expired, and replayed links; links
   surviving simulated chat previews and repeat opens until Continue is pressed;
   setup validation; routing after sign-in and sign-out; session survival across a

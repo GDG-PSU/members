@@ -30,12 +30,17 @@ export function InviteForm() {
 
       {state.error ? <Alert variant="danger">{state.error}</Alert> : null}
       {state.link ? (
-        <LinkPanel link={state.link} email={state.email} title="Invitation link ready" />
+        <LinkPanel
+          link={state.link}
+          email={state.email}
+          title="Invitation link ready"
+          hours={state.hours}
+        />
       ) : null}
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        No email is sent, so copy the link and send it yourself. The invitation stays open for 14
-        days. If the link stops working before then, select New link next to their name.
+        No email is sent, so copy the link and send it yourself. It works for 72 hours. After that
+        the invitation shows as not accepted, and New link next to their name makes another.
       </p>
     </div>
   );

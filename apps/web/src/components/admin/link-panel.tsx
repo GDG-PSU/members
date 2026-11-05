@@ -13,17 +13,19 @@ import {
 } from '@gdg/ui';
 
 /**
- * Displays a one-time Supabase action link. No email is sent by the app; the
- * admin copies the link into their own mail client.
+ * Displays a one-time link. No email is sent by the app; the admin copies the
+ * link into their own mail client.
  */
 export function LinkPanel({
   link,
   email,
   title,
+  hours,
 }: {
   link: string;
   email?: string;
   title?: string;
+  hours?: number;
 }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -58,7 +60,7 @@ export function LinkPanel({
           {copied ? 'Copied' : 'Copy link'}
         </Button>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          The link works once and expires after about an hour.
+          {hours ? `The link works once, for ${hours} hours from now.` : 'The link works once.'}
         </p>
       </div>
       {copyError ? (
@@ -76,12 +78,14 @@ export function LinkDialog({
   link,
   email,
   title = 'One-time link',
+  hours,
 }: {
   open: boolean;
   onClose: () => void;
   link?: string;
   email?: string;
   title?: string;
+  hours?: number;
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
@@ -89,7 +93,7 @@ export function LinkDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        {link ? <LinkPanel link={link} email={email} title="Copy this link" /> : null}
+        {link ? <LinkPanel link={link} email={email} title="Copy this link" hours={hours} /> : null}
         <DialogFooter>
           <Button variant="secondary" onClick={onClose}>
             Done

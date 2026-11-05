@@ -15,6 +15,7 @@ import { requireAdmin, type StaffRole } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { inviteExpired, staffInviteExpiry } from '@/lib/auth/link-rules';
 import {
   deleteRecordAction,
   revokeInvitationAction,
@@ -52,6 +53,8 @@ type UserRow = {
   staffInvited: boolean;
   invitedAt: string | null;
   inviteExpiresAt: string | null;
+  /** Invited, but the link stopped working before it was used. */
+  notAccepted: boolean;
 };
 
 type StaffDetails = { role: StaffRole; grantedAt: string };
@@ -59,6 +62,10 @@ type StaffDetails = { role: StaffRole; grantedAt: string };
 function metadataName(metadata: Record<string, unknown> | undefined): string | null {
   const value = metadata?.full_name ?? metadata?.name;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function currentTime(): number {
+  return Date.now();
 }
 
 function roleRank(row: UserRow): number {
@@ -77,6 +84,7 @@ export default async function UsersPage({
   const { q = '', invite, notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
   const isSuperadmin = viewer.isSuperadmin;
+  const now = currentTime();
 
   let inviteQuery = admin
     .from('member_invitations')
@@ -130,10 +138,30 @@ export default async function UsersPage({
     staffOnlyAuthIds.length > 0
       ? await admin
           .from('audit_log')
-          .select('action, target_id')
+          .select('action, target_id, created_at')
           .in('action', ['admin.invited', 'auth.password_updated'])
           .in('target_id', staffOnlyAuthIds)
       : { data: [] };
+  // When each organizer's invitation stops working: their link's own expiry, or
+  // for one invited before links were stored, the same time after the invite.
+  const { data: staffLinks } =
+    staffOnlyAuthIds.length > 0
+      ? await admin
+          .from('sign_in_links')
+          .select('auth_user_id, expires_at')
+          .eq('purpose', 'staff_invite')
+          .in('auth_user_id', staffOnlyAuthIds)
+      : { data: [] };
+  const staffInviteEnds = new Map<string, string>();
+  for (const row of staffAudit ?? []) {
+    if (row.action !== 'admin.invited' || !row.target_id) continue;
+    const ends = staffInviteExpiry(row.created_at as string);
+    const known = staffInviteEnds.get(row.target_id as string);
+    if (!known || ends > known) staffInviteEnds.set(row.target_id as string, ends);
+  }
+  for (const row of staffLinks ?? []) {
+    staffInviteEnds.set(row.auth_user_id as string, row.expires_at as string);
+  }
   const invitedStaffAuthIds = new Set(
     (staffAudit ?? [])
       .filter((row) => row.action === 'admin.invited' && row.target_id)
@@ -169,6 +197,10 @@ export default async function UsersPage({
       const authUser = data.user;
       const staff = staffByAuth.get(authUserId);
       const organizer = organizerByAuth.get(authUserId);
+      const staffInvited =
+        Boolean(authUser) &&
+        invitedStaffAuthIds.has(authUserId) &&
+        !passwordSetStaffAuthIds.has(authUserId);
       return {
         key: `user:${authUserId}`,
         kind: 'staff' as const,
@@ -188,12 +220,10 @@ export default async function UsersPage({
         memberStatus: null,
         staffRole: staff?.role ?? null,
         staffSince: staff?.grantedAt ?? null,
-        staffInvited:
-          Boolean(authUser) &&
-          invitedStaffAuthIds.has(authUserId) &&
-          !passwordSetStaffAuthIds.has(authUserId),
+        staffInvited,
         invitedAt: null,
-        inviteExpiresAt: null,
+        inviteExpiresAt: staffInvited ? (staffInviteEnds.get(authUserId) ?? null) : null,
+        notAccepted: staffInvited && inviteExpired(staffInviteEnds.get(authUserId), now),
       };
     }),
   );
@@ -222,6 +252,7 @@ export default async function UsersPage({
       staffInvited: false,
       invitedAt: null,
       inviteExpiresAt: null,
+      notAccepted: false,
     };
   });
 
@@ -242,6 +273,7 @@ export default async function UsersPage({
     staffInvited: false,
     invitedAt: row.created_at as string,
     inviteExpiresAt: row.expires_at as string,
+    notAccepted: inviteExpired(row.expires_at as string, now),
   }));
 
   const needle = q.trim().toLowerCase();
@@ -254,7 +286,7 @@ export default async function UsersPage({
             row.memberNumber ?? '',
             row.staffRole ?? '',
             row.staffInvited ? 'invited' : '',
-            row.kind === 'invite' ? 'invite pending' : '',
+            row.notAccepted ? 'not accepted' : row.kind === 'invite' ? 'invite pending' : '',
           ].some((value) => value.toLowerCase().includes(needle))
         : true,
     )
@@ -372,10 +404,13 @@ export default async function UsersPage({
                           <Badge variant="outline">Admin</Badge>
                         ) : null}
                         {row.kind === 'member' ? <Badge variant="neutral">Member</Badge> : null}
-                        {row.staffInvited ? <Badge variant="warning">Invited</Badge> : null}
-                        {row.kind === 'invite' ? (
+                        {row.staffInvited && !row.notAccepted ? (
+                          <Badge variant="warning">Invited</Badge>
+                        ) : null}
+                        {row.kind === 'invite' && !row.notAccepted ? (
                           <Badge variant="warning">Invite pending</Badge>
                         ) : null}
+                        {row.notAccepted ? <Badge variant="neutral">Not accepted</Badge> : null}
                         {row.authUserId === viewer.user.id ? (
                           <Badge variant="outline">You</Badge>
                         ) : null}
@@ -391,9 +426,11 @@ export default async function UsersPage({
               render: (row) =>
                 row.kind === 'invite' ? (
                   <p className="text-xs text-muted-foreground">
-                    {row.inviteExpiresAt
-                      ? `Link works until ${formatDateTime(row.inviteExpiresAt)}`
-                      : 'Not accepted yet'}
+                    {row.notAccepted
+                      ? `Link stopped working ${formatDateTime(row.inviteExpiresAt ?? '')}`
+                      : row.inviteExpiresAt
+                        ? `Link works until ${formatDateTime(row.inviteExpiresAt)}`
+                        : 'Not accepted yet'}
                   </p>
                 ) : row.memberNumber ? (
                   <div>
@@ -402,6 +439,12 @@ export default async function UsersPage({
                       Member since {row.memberSince ? formatDate(row.memberSince) : 'unknown'}
                     </p>
                   </div>
+                ) : row.staffInvited && row.inviteExpiresAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    {row.notAccepted
+                      ? `Link stopped working ${formatDateTime(row.inviteExpiresAt)}`
+                      : `Link works until ${formatDateTime(row.inviteExpiresAt)}`}
+                  </p>
                 ) : row.staffSince ? (
                   <p className="text-xs text-muted-foreground">
                     Organizer since {formatDate(row.staffSince)}
@@ -414,7 +457,9 @@ export default async function UsersPage({
               key: 'status',
               header: 'Status',
               render: (row) =>
-                row.kind === 'invite' ? (
+                row.notAccepted ? (
+                  <StatusChip status="draft" label="Not accepted" />
+                ) : row.kind === 'invite' ? (
                   <StatusChip status="pending" label="Waiting" />
                 ) : row.memberStatus ? (
                   <StatusChip status={row.memberStatus} />

@@ -125,7 +125,7 @@ test.describe('admin invitation and member setup', () => {
         invitationLink = await page.getByLabel('One-time sign-in link').inputValue();
         expect(new URL(invitationLink).origin).toBe(origin);
         expect(new URL(invitationLink).pathname).toBe('/auth/confirm');
-        expect(new URL(invitationLink).searchParams.get('next')).toBe('/invite/accept');
+        expect(new URL(invitationLink).searchParams.get('link')).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
         await page.getByRole('button', { name: 'Copy link' }).click();
@@ -621,8 +621,29 @@ test.describe('admin invitation and member setup', () => {
         await expect(ready).toContainText(invitedEmail);
         const linkField = page.getByLabel('One-time sign-in link');
         const lostLink = await linkField.inputValue();
+        await expect(page.getByText('The link works once, for 72 hours from now.')).toBeVisible();
 
-        // A lost or burned link can be replaced for the same person.
+        // Left unused for 72 hours, the organizer shows as not accepted.
+        invitedUserId = await findInvitedUserId(invitedEmail);
+        if (!invitedUserId) throw new Error('The staff invite audit entry was not found.');
+        const hour = 3_600_000;
+        const { error: ageError } = await supabase
+          .from('sign_in_links')
+          .update({
+            created_at: new Date(Date.now() - 73 * hour).toISOString(),
+            expires_at: new Date(Date.now() - hour).toISOString(),
+          })
+          .eq('auth_user_id', invitedUserId);
+        expect(ageError).toBeNull();
+        await page.goto('/admin/users');
+        const lapsedRow = page.getByRole('row').filter({ hasText: invitedEmail });
+        await expect(lapsedRow.getByText('Not accepted').first()).toBeVisible();
+        await expect(lapsedRow.getByText('Invited', { exact: true })).toHaveCount(0);
+        await page.goto(lostLink);
+        await expect(page.getByRole('heading', { name: 'This link has expired' })).toBeVisible();
+
+        // A lost, burned or expired link is replaced by inviting the same person again.
+        await page.goto('/admin/invitations');
         await inviteForm.getByLabel('Email').fill(invitedEmail);
         await inviteForm.getByLabel('Role').selectOption('admin');
         await inviteForm.getByRole('button', { name: 'Make an organizer invite link' }).click();
@@ -631,7 +652,7 @@ test.describe('admin invitation and member setup', () => {
         const inviteLink = await linkField.inputValue();
         expect(new URL(inviteLink).origin).toBe(origin);
         expect(new URL(inviteLink).pathname).toBe('/auth/confirm');
-        expect(new URL(inviteLink).searchParams.get('next')).toBe('/account/password');
+        expect(new URL(inviteLink).searchParams.get('link')).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
         invitedUserId = await findInvitedUserId(invitedEmail);
         if (!invitedUserId) throw new Error('The staff invite audit entry was not found.');

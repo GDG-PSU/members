@@ -16,7 +16,7 @@
 import process from 'node:process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Client } from 'pg';
 import { loadEnv } from './lib/env.mjs';
 
@@ -140,51 +140,29 @@ await client.query(
    values (null, 'admin.bootstrap_granted', 'user', $1, jsonb_build_object('role', $2::text))`,
   [user.id, role],
 );
+// The link is the app's own, like the ones made in the admin area: a random
+// token whose hash is stored, working once, for 72 hours.
+const linkToken = randomBytes(32).toString('base64url');
+await client.query(`select public.issue_sign_in_link($1, 'staff_invite', $2, 72, null)`, [
+  createHash('sha256').update(linkToken, 'utf8').digest('hex'),
+  user.id,
+]);
 await client.query('commit');
 await client.end();
 
-const recovery = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
-  method: 'POST',
-  headers,
-  body: JSON.stringify({
-    type: 'recovery',
-    email,
-  }),
-});
-
 console.log(`Granted ${role} role to ${email}.`);
-if (recovery.ok) {
-  const body = await recovery.json();
-  const properties = body.properties ?? body;
-  // Confirm on our own origin: Supabase rewrites redirect_to to its allowlisted
-  // Site URL, which breaks links when the deployment uses a custom domain.
-  const link = properties?.hashed_token
-    ? (() => {
-        const url = new URL('/auth/confirm', siteUrl);
-        url.searchParams.set('token_hash', properties.hashed_token);
-        url.searchParams.set('type', properties.verification_type ?? 'recovery');
-        url.searchParams.set('next', '/account/password');
-        return url.toString();
-      })()
-    : (body.action_link ?? properties?.action_link);
-  const outIndex = process.argv.indexOf('--out');
-  const outPath = outIndex >= 0 ? process.argv[outIndex + 1] : '';
-  if (link && outPath) {
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, `${link}\n`, { mode: 0o600 });
-    console.log(`Recovery link written to ${outPath}. Send it privately, then delete the file.`);
-    console.log(`It opens ${new URL(link).origin} and works once, within the OTP window.`);
-  } else if (link) {
-    console.log('Recovery link generated but not printed. Re-run with --out <path> to save it.');
-  } else {
-    console.log(
-      'No recovery link was returned. Generate one from the admin member page once signed in.',
-    );
-  }
+const linkUrl = new URL('/auth/confirm', siteUrl);
+linkUrl.searchParams.set('link', linkToken);
+const link = linkUrl.toString();
+const outIndex = process.argv.indexOf('--out');
+const outPath = outIndex >= 0 ? process.argv[outIndex + 1] : '';
+if (outPath) {
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, `${link}\n`, { mode: 0o600 });
+  console.log(`Sign-in link written to ${outPath}. Send it privately, then delete the file.`);
+  console.log(`It opens ${linkUrl.origin} and works once, for 72 hours.`);
 } else {
-  console.log(
-    'Role granted, but the recovery link could not be generated. Re-run this command to try again.',
-  );
+  console.log('A sign-in link was made but not printed. Re-run with --out <path> to save it.');
 }
 console.log(
   'The user sets a password, enrolls TOTP at /admin-mfa, then sets up their profile before /admin opens.',

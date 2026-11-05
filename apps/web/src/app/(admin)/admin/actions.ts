@@ -30,6 +30,7 @@ import {
 } from '@/lib/events/attendance-rules';
 import { newYorkInputToIso } from '@/lib/format';
 import { SITE_URL } from '@/lib/env';
+import { issueSignInLink } from '@/lib/auth/sign-in-links';
 
 async function requireAdminActor() {
   const viewer = await getViewer();
@@ -90,25 +91,6 @@ function readString(formData: FormData, key: string): string {
 function readReturnTo(formData: FormData): string {
   const value = readString(formData, 'returnTo');
   return value.startsWith('/admin') ? value : '/admin';
-}
-
-/**
- * Builds an origin-owned confirmation link from a Supabase generated link.
- * Supabase only returns the redirect target it was willing to allowlist, so
- * relying on `action_link` breaks on custom domains; `hashed_token` lets the
- * app confirm the token itself at /auth/confirm.
- */
-function confirmLink(
-  properties:
-    { hashed_token?: string; verification_type?: string; action_link?: string } | null | undefined,
-  next: string,
-): string | undefined {
-  if (!properties?.hashed_token || !properties.verification_type) return properties?.action_link;
-  const url = new URL('/auth/confirm', SITE_URL);
-  url.searchParams.set('token_hash', properties.hashed_token);
-  url.searchParams.set('type', properties.verification_type);
-  url.searchParams.set('next', next);
-  return url.toString();
 }
 
 async function audit(
@@ -226,12 +208,15 @@ export type LinkState = {
   link?: string;
   email?: string;
   role?: 'admin' | 'superadmin';
+  /** How long the link works, for the person copying it. */
+  hours?: number;
 };
 
 /**
  * Email is intentionally manual: this deployment has no transactional mail
- * provider. Supabase generates a one-time link and the admin copies it into
- * their own mail client. Nothing is sent by the app.
+ * provider. The app makes a one-time link and the admin copies it into their
+ * own mail client. Nothing is sent by the app. The Supabase calls below only
+ * create or find the account; the token they return is not used.
  */
 export async function createInvitationAction(
   _prev: LinkState,
@@ -286,7 +271,6 @@ export async function createInvitationAction(
 
   const redirectTo = `${SITE_URL}/auth/callback?next=/invite/accept`;
   let authUser: { id: string } | null = null;
-  let link: string | undefined;
   let createdUser = false;
 
   const invited = await admin.auth.admin.generateLink({
@@ -297,7 +281,6 @@ export async function createInvitationAction(
 
   if (!invited.error && invited.data?.user) {
     authUser = invited.data.user;
-    link = confirmLink(invited.data.properties, '/invite/accept');
     createdUser = true;
   } else if (invited.error && /already|registered|exists/i.test(invited.error.message)) {
     // An Auth user from an earlier invite/revoked invitation: issue a fresh
@@ -313,15 +296,14 @@ export async function createInvitationAction(
       };
     }
     authUser = recovery.data.user;
-    link = confirmLink(recovery.data.properties, '/invite/accept');
   } else {
     return {
       error: `Could not create the invitation: ${invited.error?.message ?? 'unknown error'}`,
     };
   }
 
-  if (!authUser || !link) {
-    return { error: 'Supabase did not return an invitation link.' };
+  if (!authUser) {
+    return { error: 'The account for this invitation could not be created.' };
   }
 
   const { data: activeStaffRoles } = await admin
@@ -355,6 +337,22 @@ export async function createInvitationAction(
     return { error: 'The invitation could not be recorded. Nothing was changed.' };
   }
 
+  const issued = await issueSignInLink({
+    purpose: 'member_invite',
+    authUserId: authUser.id,
+    createdBy: user.id,
+  });
+  if (!issued) {
+    await admin.from('member_invitations').delete().eq('id', invitation.id);
+    if (createdUser) await admin.auth.admin.deleteUser(authUser.id).catch(() => {});
+    return { error: 'The invitation link could not be made. Nothing was changed.' };
+  }
+  // The invitation is open exactly as long as its link works.
+  await admin
+    .from('member_invitations')
+    .update({ expires_at: issued.expiresAt })
+    .eq('id', invitation.id);
+
   await audit(user.id, 'invitation.created', 'member_invitation', invitation.id, null, null, {
     email: parsed.data.email,
     paid_since: parsed.data.paidSince,
@@ -362,7 +360,7 @@ export async function createInvitationAction(
   });
   revalidatePath('/admin/invitations');
   revalidatePath('/admin/users');
-  return { ok: true, email: parsed.data.email, link };
+  return { ok: true, email: parsed.data.email, link: issued.link, hours: issued.hours };
 }
 
 /**
@@ -402,9 +400,8 @@ export async function inviteAdministratorAction(
     email,
     options: { redirectTo: `${SITE_URL}/auth/callback?next=/admin-mfa` },
   });
-  const link = confirmLink(recovery.data?.properties, '/account/password');
   const authUserId = recovery.data?.user?.id ?? createdUserId;
-  if (recovery.error || !link || !authUserId) {
+  if (recovery.error || !authUserId) {
     if (createdUserId) await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
     createdUserId = null;
     return {
@@ -485,7 +482,16 @@ export async function inviteAdministratorAction(
   });
   revalidatePath('/admin/invitations');
   revalidatePath('/admin/users');
-  return { ok: true, email, link, role };
+
+  const issued = await issueSignInLink({
+    purpose: 'staff_invite',
+    authUserId,
+    createdBy: user.id,
+  });
+  if (!issued) {
+    return { error: 'Their access is set up, but the link could not be made. Invite them again.' };
+  }
+  return { ok: true, email, link: issued.link, role, hours: issued.hours };
 }
 
 /**
@@ -681,7 +687,7 @@ export async function regenerateInvitationLinkAction(
   const admin = createSupabaseAdmin();
   const { data: invitation } = await admin
     .from('member_invitations')
-    .select('id, email, status, created_by')
+    .select('id, email, status, created_by, auth_user_id')
     .eq('id', invitationId.data)
     .maybeSingle();
   if (!invitation) return { error: 'Invitation not found.' };
@@ -691,18 +697,19 @@ export async function regenerateInvitationLinkAction(
   if (invitation.status !== 'pending') {
     return { error: 'Only pending invitations can get a new link.' };
   }
-
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'recovery',
-    email: invitation.email,
-    options: { redirectTo: `${SITE_URL}/auth/callback?next=/invite/accept` },
-  });
-  const link = confirmLink(data?.properties, '/invite/accept');
-  if (error || !link) {
-    return { error: `Could not generate a link: ${error?.message ?? 'unknown error'}` };
+  if (!invitation.auth_user_id) {
+    return { error: 'This invitation has no account. Cancel it and invite them again.' };
   }
 
-  const expiresAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
+  // A new link reopens an invitation that was not accepted in time.
+  const issued = await issueSignInLink({
+    purpose: 'member_invite',
+    authUserId: invitation.auth_user_id as string,
+    createdBy: user.id,
+  });
+  if (!issued) return { error: 'A new link could not be made. Try again.' };
+
+  const expiresAt = issued.expiresAt;
   await admin.from('member_invitations').update({ expires_at: expiresAt }).eq('id', invitation.id);
   await audit(
     user.id,
@@ -717,7 +724,7 @@ export async function regenerateInvitationLinkAction(
   );
   revalidatePath('/admin/invitations');
   revalidatePath('/admin/users');
-  return { ok: true, email: invitation.email, link };
+  return { ok: true, email: invitation.email, link: issued.link, hours: issued.hours };
 }
 
 export async function revokeInvitationAction(formData: FormData) {
@@ -730,7 +737,7 @@ export async function revokeInvitationAction(formData: FormData) {
   const admin = createSupabaseAdmin();
   const { data: invitation } = await admin
     .from('member_invitations')
-    .select('id, status, created_by')
+    .select('id, status, created_by, auth_user_id')
     .eq('id', invitationId.data)
     .maybeSingle();
   if (!invitation) fail(returnTo, 'Invitation not found.');
@@ -740,6 +747,14 @@ export async function revokeInvitationAction(formData: FormData) {
   if (invitation.status !== 'pending') fail(returnTo, 'Only pending invitations can be revoked.');
 
   await admin.from('member_invitations').update({ status: 'revoked' }).eq('id', invitation.id);
+  // The link would otherwise still sign the person in, to a page that turns them away.
+  if (invitation.auth_user_id) {
+    await admin
+      .from('sign_in_links')
+      .delete()
+      .eq('auth_user_id', invitation.auth_user_id)
+      .eq('purpose', 'member_invite');
+  }
   await audit(
     user.id,
     'invitation.revoked',
@@ -848,15 +863,21 @@ export async function sendRecoveryAction(_prev: LinkState, formData: FormData): 
     email: email.data,
     options: { redirectTo: `${SITE_URL}/auth/callback?next=/account/password` },
   });
-  const link = confirmLink(data?.properties, '/account/password');
-  if (error || !link || !data.user) {
-    return { error: `Could not generate a recovery link: ${error?.message ?? 'unknown error'}` };
+  // Only used to find the account; the link people get is the app's own.
+  if (error || !data.user) {
+    return { error: `Could not make a password reset link: ${error?.message ?? 'unknown error'}` };
   }
+  const issued = await issueSignInLink({
+    purpose: 'recovery',
+    authUserId: data.user.id,
+    createdBy: user.id,
+  });
+  if (!issued) return { error: 'The password reset link could not be made. Try again.' };
 
   await audit(user.id, 'member.recovery_link_generated', 'user', data.user.id, null, null, {
     delivery: 'manual',
   });
-  return { ok: true, email: email.data, link };
+  return { ok: true, email: email.data, link: issued.link, hours: issued.hours };
 }
 
 /* -------------------------------------------------------------------------- */

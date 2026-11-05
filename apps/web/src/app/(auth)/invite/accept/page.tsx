@@ -66,7 +66,7 @@ export default async function InviteAcceptPage() {
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           Signed in as <span className="font-semibold text-foreground">{viewer.user.email}</span>.
-          Invitations are single-use and expire after 14 days.
+          An invitation works once, for 72 hours.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Email <span className="font-semibold text-foreground">{SUPPORT_EMAIL}</span> for a fresh

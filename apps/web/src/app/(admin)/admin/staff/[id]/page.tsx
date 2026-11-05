@@ -15,6 +15,7 @@ import { requireSuperadmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { profilePhotoUrl } from '@/lib/profile/photo';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { inviteExpired, staffInviteExpiry } from '@/lib/auth/link-rules';
 import { auditSentence } from '@/lib/audit/describe';
 import { loadAuditNames } from '@/lib/audit/names';
 import {
@@ -35,6 +36,10 @@ export const metadata: Metadata = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function currentTime(): number {
+  return Date.now();
+}
 
 /** Everything a superadmin can do to another organizer, in one place. */
 export default async function AdminStaffDetailPage({
@@ -82,32 +87,51 @@ export default async function AdminStaffDetailPage({
   const email = authData.user?.email ?? '';
   const name = (profile?.display_name as string | undefined) ?? (email || 'This organizer');
 
-  const [{ data: cards }, { data: setupAudit }, { data: recent }] = await Promise.all([
-    member
-      ? admin
-          .from('card_credentials')
-          .select('id, status, issued_at')
-          .eq('member_id', member.id)
-          .order('created_at', { ascending: false })
-      : Promise.resolve({ data: [] as { id: string; status: string; issued_at: string | null }[] }),
-    admin
-      .from('audit_log')
-      .select('action')
-      .in('action', ['admin.invited', 'auth.password_updated'])
-      .eq('target_id', id),
-    admin
-      .from('audit_log')
-      .select(
-        'id, actor_auth_id, action, target_type, target_id, reason, before, after, created_at',
-      )
-      .eq('actor_auth_id', id)
-      .order('created_at', { ascending: false })
-      .limit(8),
-  ]);
+  const [{ data: cards }, { data: setupAudit }, { data: recent }, { data: inviteLink }] =
+    await Promise.all([
+      member
+        ? admin
+            .from('card_credentials')
+            .select('id, status, issued_at')
+            .eq('member_id', member.id)
+            .order('created_at', { ascending: false })
+        : Promise.resolve({
+            data: [] as { id: string; status: string; issued_at: string | null }[],
+          }),
+      admin
+        .from('audit_log')
+        .select('action, created_at')
+        .in('action', ['admin.invited', 'auth.password_updated'])
+        .eq('target_id', id),
+      admin
+        .from('audit_log')
+        .select(
+          'id, actor_auth_id, action, target_type, target_id, reason, before, after, created_at',
+        )
+        .eq('actor_auth_id', id)
+        .order('created_at', { ascending: false })
+        .limit(8),
+      admin
+        .from('sign_in_links')
+        .select('expires_at')
+        .eq('auth_user_id', id)
+        .eq('purpose', 'staff_invite')
+        .limit(1)
+        .maybeSingle(),
+    ]);
   // The same signal the People page uses: invited, and no password set since.
   const settingUp =
     (setupAudit ?? []).some((row) => row.action === 'admin.invited') &&
     !(setupAudit ?? []).some((row) => row.action === 'auth.password_updated');
+  const invitedAt = (setupAudit ?? [])
+    .filter((row) => row.action === 'admin.invited')
+    .map((row) => row.created_at as string)
+    .sort()
+    .at(-1);
+  const inviteEnds =
+    (inviteLink?.expires_at as string | undefined) ??
+    (invitedAt ? staffInviteExpiry(invitedAt) : null);
+  const notAccepted = settingUp && inviteExpired(inviteEnds, currentTime());
   const actions = recent ?? [];
   const names = await loadAuditNames(admin, actions);
   const typeChange = { returnTo: '/admin/users', authUserId: id };
@@ -146,7 +170,11 @@ export default async function AdminStaffDetailPage({
                     <Badge variant={role === 'superadmin' ? 'primary' : 'outline'}>
                       {role === 'superadmin' ? 'Superadmin' : 'Admin'}
                     </Badge>
-                    {settingUp ? <Badge variant="warning">Still setting up</Badge> : null}
+                    {notAccepted ? (
+                      <Badge variant="neutral">Invitation not accepted</Badge>
+                    ) : settingUp ? (
+                      <Badge variant="warning">Still setting up</Badge>
+                    ) : null}
                     {profile?.profile_slug ? (
                       <Link href={`/m/${profile.profile_slug as string}`} className="rounded-full">
                         <Badge

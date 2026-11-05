@@ -35,7 +35,7 @@ Only the current `main` branch is supported. There are no maintained release bra
 ## Known limitations (not a clean bill of health)
 
 - The SSR client uses the publishable key, so user/anonymous queries are bound by RLS. A server compromise can still reach the secret key used for admin operations (auth-admin link generation, cross-member reads, device jobs).
-- Invitations and recovery are delivered manually: an admin copies a one-time Supabase link into their own mail client. The link is as sensitive as a password until used and expires per the project's Auth OTP setting.
+- Invitations and recovery are delivered manually: an admin copies a one-time link into their own mail client. The link is as sensitive as a password until used. It is the app's own: only the hash of its token is stored, an invitation works for 72 hours and a password reset for 48, and a new link replaces the old one. It no longer depends on the project's Auth OTP setting.
 - The device middleware API is auth-tested, but the firmware build and hardware behavior are not verified in this environment.
 - No production deployment, custom domain, dependency audit, secret scan or backup/restore drill has been completed.
 - The authenticated invitation and member-setup flow is automated end to end. Remaining admin surfaces (cards, kiosk, events, devices), accessibility and load tests have not been run.

@@ -112,7 +112,7 @@ Corrections are admin-only, require a reason, and are audited.
 
 1. Member emails **gdg@psu.edu** from their registered address.
 2. Organizer verifies the sender against the member record; never disclose account details to a different address.
-3. Password reset: a superadmin opens the person from **People**, chooses **Make a password reset link** (audited), copies the one-time link and sends it from their own mailbox. Never email a password. Links expire per the project's Auth OTP setting; regenerate if needed.
+3. Password reset: a superadmin opens the person from **People**, chooses **Make a password reset link** (audited), copies the one-time link and sends it from their own mailbox. Never email a password. A password reset link works for 48 hours and an invitation link for 72; make a new one if it has lapsed. An invitation nobody used in time shows as **Not accepted** on People, where **New link** reopens it.
 4. Attendance/points issue: inspect attendance + ledger + audit; correct with a reason if warranted; reply with the outcome, not ledger internals.
 5. Privacy/account closure: confirm identity, explain retention, follow `PRIVACY.md`; account deletion is reviewed because member ledger/attendance history is removed. Audit rows remain, retaining the actor UUID as an opaque historical identifier (migration 0005). A superadmin does this with **Delete for good** on the person's manage page, which also removes their photos. Without the app, run the reviewed erasure as a service role or the `postgres` role, using the Auth user id from `auth.users`:
 

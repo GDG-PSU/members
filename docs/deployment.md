@@ -94,8 +94,7 @@ one-time link goes to a gitignored `.local/` file and is never printed:
 pnpm db:bootstrap-admin --email <you>@psu.edu --role superadmin --site-url https://mempass.vercel.app --out .local/superadmin-link.txt
 ```
 
-The link works once and expires with the project's OTP window, so generate it when
-it will be used. Open it, press Continue, set a password, enroll TOTP at
+The link works once, for 72 hours. Open it, press Continue, set a password, enroll TOTP at
 `/admin-mfa`, set up the profile your card will open, and confirm the hosted admin
 dashboard opens. Delete the file afterward, and do not send the
 link through this repository or chat.
