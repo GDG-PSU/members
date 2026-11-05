@@ -580,14 +580,15 @@ Last updated 2026-11-05.
   page says why a session gave no points; and the audit log reads as sentences. That part is
   deployed in `214b981`. Last, a superadmin can delete an event, reward, reward request, card,
   attendance record, invitation or account for good, and the audit log can no longer be changed by
-  anything. Its schema went ahead in `f187f33`. See `docs/test-plan.md`.
+  anything. Its schema went ahead in `f187f33` and the app followed in `e18f987`. See
+  `docs/test-plan.md`.
 
 ### Approved and not built yet
 
-Nothing is waiting. These were left out of permanent delete on purpose and need a decision:
+Nothing is waiting. The owner confirmed on 2026-11-05 that deleting an event keeps the points and
+stars it gave; do not add a way to take them back with the delete. These were left out of permanent
+delete on purpose and still need a decision:
 
-- A delete keeps the points and stars an event gave. Taking them back as well would be a second,
-  separate choice in the dialog.
 - A bonus session that people attended is still only switched off; it goes when its event is deleted.
 - An organizer's point award cannot be removed, only outweighed, because the ledgers are append-only.
 
@@ -641,6 +642,7 @@ On production, read-only, after `f187f33` was pushed on 2026-11-05:
 - `anon` can still execute no public function, and `authenticated` only the three RLS helpers.
 - `214b981` passed CI and its Vercel deployment is live. Signed out, the old invitation and privacy
   addresses and the new organizer page all redirect to `/login`.
+- `e18f987` passed CI and its Vercel deployment is live. No delete was run on production.
 
 On production, read-only, after `2df3898` was pushed on 2026-11-05:
 
