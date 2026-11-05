@@ -8,7 +8,7 @@ import {
   MemberAvatar,
   SectionHeading,
 } from '@gdg/ui';
-import { listLeaderboard, listPublicEvents } from '@/lib/public/queries';
+import { listLeaderboard, listUpcomingPublicEvents } from '@/lib/public/queries';
 import { getViewer } from '@/lib/auth/viewer';
 import { formatDate, formatTime } from '@/lib/format';
 import { SUPPORT_EMAIL } from '@/lib/env';
@@ -45,7 +45,7 @@ export default async function HomePage() {
 
   const [leaders, events] = await Promise.all([
     listLeaderboard(5, 0).catch(() => []),
-    listPublicEvents(3).catch(() => []),
+    listUpcomingPublicEvents(3).catch(() => []),
   ]);
   const podium = leaders.slice(0, 3);
 
@@ -98,12 +98,12 @@ export default async function HomePage() {
               <p className="mt-4 font-mono text-[0.68rem] tracking-[0.18em] text-white/50">
                 GDG @ PENN STATE
               </p>
-              <p className="mt-1 text-sm font-semibold text-white/90">Semester leaderboard</p>
+              <p className="mt-1 text-sm font-semibold text-white/90">Leaderboard</p>
             </div>
 
             <div className="p-4">
               <div className="mb-2 flex items-center justify-between">
-                <p className="type-overline text-muted-foreground">This semester</p>
+                <p className="type-overline text-muted-foreground">All time</p>
                 <Trophy className="size-4 text-star" aria-hidden />
               </div>
 
@@ -136,7 +136,7 @@ export default async function HomePage() {
                         </span>
                       </span>
                       <span className="shrink-0 bg-layer-accent px-2 py-0.5 text-xs tabular-nums text-foreground">
-                        {entry.points} pts
+                        {entry.stars} stars
                       </span>
                     </li>
                   ))}

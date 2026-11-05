@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowRight, CalendarDays, Link2, Lock, Star, Trophy } from 'lucide-react';
 import { buttonVariants, Card, CardContent, MemberAvatar, PageShell } from '@gdg/ui';
+import { getViewer } from '@/lib/auth/viewer';
 import { getProfileState, getPublicProfile } from '@/lib/public/queries';
 import { formatDate } from '@/lib/format';
 
@@ -42,7 +43,10 @@ export default async function MemberProfilePage({
   if (!profile) {
     const state = await getProfileState(profileSlug);
     if (state !== 'private') notFound();
-    return <PrivateProfile />;
+    // The owner reaches this page from their own dashboard and digital ID, and
+    // should be told why it is empty rather than that "this member" is private.
+    const viewer = await getViewer();
+    return <PrivateProfile isOwner={viewer.member?.slug === profileSlug} />;
   }
 
   const name = profile.displayName ?? 'GDG@PSU member';
@@ -164,7 +168,7 @@ export default async function MemberProfilePage({
 }
 
 /** Neutral state for an existing profile the member has made private. */
-function PrivateProfile() {
+function PrivateProfile({ isOwner }: { isOwner: boolean }) {
   return (
     <PageShell width="sm" className="py-14 sm:py-20">
       <Card>
@@ -173,12 +177,19 @@ function PrivateProfile() {
             <Lock className="size-5" aria-hidden />
           </span>
           <p className="type-overline text-muted-foreground">Member profile</p>
-          <h1 className="type-h3 mt-2">This profile is private</h1>
+          <h1 className="type-h3 mt-2">
+            {isOwner ? 'Your profile is private' : 'This profile is private'}
+          </h1>
           <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            This member keeps their profile private. Ask them directly if you need to reach them.
+            {isOwner
+              ? 'Nobody else can see your profile, and your card and QR code lead here. Organizers can still check you in.'
+              : 'This member keeps their profile private. Ask them directly if you need to reach them.'}
           </p>
-          <Link href="/" className={buttonVariants({ variant: 'secondary', className: 'mt-6' })}>
-            Back to the hub
+          <Link
+            href={isOwner ? '/member/privacy' : '/'}
+            className={buttonVariants({ variant: 'secondary', className: 'mt-6' })}
+          >
+            {isOwner ? 'Change privacy settings' : 'Back to the hub'}
           </Link>
         </CardContent>
       </Card>

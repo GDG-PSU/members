@@ -73,7 +73,9 @@ test.describe('every member and organizer workflow', () => {
   let memberSlug = '';
   const memberName = 'Workflow Member';
   let eventId = '';
-  const eventSlug = `wf-event-${stamp}`;
+  // The web address is made from the name, so the name carries the run's stamp.
+  const eventName = `Workflow Event ${stamp}`;
+  const eventSlug = `workflow-event-${stamp}`;
   let mainSessionId = '';
   let bonusSessionId = '';
   let firstCardUrl = '';
@@ -235,10 +237,22 @@ test.describe('every member and organizer workflow', () => {
     await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
   }
 
-  async function setCard(page: Page, uri: string) {
+  async function setCard(page: Page, uri: string | null) {
     await page.evaluate((value) => {
-      (window as unknown as { __cardUri: string }).__cardUri = value;
+      (window as unknown as { __cardUri: string | null }).__cardUri = value;
     }, uri);
+  }
+
+  async function connectReader(page: Page) {
+    await page.getByRole('button', { name: 'Connect reader' }).click();
+    await expect(page.getByText('Waiting for a card')).toBeVisible({ timeout: 15_000 });
+  }
+
+  /** Lifts whatever is on the kiosk reader, then puts this card down. */
+  async function tapCard(page: Page, uri: string) {
+    await setCard(page, null);
+    await expect(page.getByText('Waiting for a card')).toBeVisible({ timeout: 15_000 });
+    await setCard(page, uri);
   }
 
   test.beforeAll(async ({ browser, baseURL }, testInfo) => {
@@ -707,117 +721,153 @@ test.describe('every member and organizer workflow', () => {
     await expect(memberPage.getByText('Privacy settings saved.')).toBeVisible({ timeout: 15_000 });
   });
 
-  test('events are created, validated, published and edited without shifting times', async () => {
+  test('events are created from the short form, published and edited without shifting times', async () => {
     const now = Date.now();
-    await adminPage.goto('/admin/events');
-    const fillEvent = async (name: string, slug: string) => {
-      await adminPage.locator('#event-name').fill(name);
-      await adminPage.locator('#event-slug').fill(slug);
-      await adminPage.locator('#event-summary').fill('A workflow test event.');
-      await adminPage.locator('#event-location').fill('Westgate 101');
-      await adminPage.locator('#event-starts').fill(newYorkInput(now - HOUR));
-      await adminPage.locator('#event-ends').fill(newYorkInput(now + 3 * HOUR));
-      await adminPage.locator('#mainName').fill('Main hall');
-      await adminPage.locator('#mainMinDuration').fill('0');
-      await adminPage.locator('#mainReward').fill('20');
-      await adminPage.locator('#mainStartsAt').fill(newYorkInput(now - HOUR));
-      await adminPage.locator('#mainEndsAt').fill(newYorkInput(now + 3 * HOUR));
-      await adminPage.locator('#mainCheckInOpensAt').fill(newYorkInput(now - HOUR));
-      await adminPage.locator('#mainCheckInClosesAt').fill(newYorkInput(now + 2 * HOUR));
-      await adminPage.locator('#mainCheckOutOpensAt').fill(newYorkInput(now - HOUR));
-      await adminPage.locator('#mainCheckOutClosesAt').fill(newYorkInput(now + 3 * HOUR));
+    const client = supabase();
+    type StoredSession = {
+      id: string;
+      kind: string;
+      minimum_duration_minutes: number;
+      reward_points: number;
+      check_in_opens_at: string;
+      check_in_closes_at: string;
+      check_out_opens_at: string;
+      check_out_closes_at: string;
     };
+    const sessionColumns =
+      'id, kind, minimum_duration_minutes, reward_points, check_in_opens_at, check_in_closes_at, check_out_opens_at, check_out_closes_at';
+    const at = (value: string | undefined) => new Date(value ?? 0).getTime();
 
-    await fillEvent('Workflow Event', 'Bad Slug!');
+    await adminPage.goto('/admin/events');
+    await adminPage.getByRole('link', { name: 'New event' }).click();
+    await expect(adminPage).toHaveURL(/\/admin\/events\/new$/);
+
+    await adminPage.locator('#event-name').fill(eventName);
+    await adminPage.locator('#event-summary').fill('A workflow test event.');
+    await adminPage.locator('#event-location').fill('Westgate 101');
+    await adminPage.locator('#event-starts').fill(newYorkInput(now - HOUR));
+    await adminPage.locator('#event-ends').fill(newYorkInput(now - 2 * HOUR));
+    await adminPage.locator('#event-points').fill('20');
+    await adminPage.getByText('Attendance rules', { exact: true }).click();
+    await adminPage.locator('#event-arrive-by').selectOption('end');
+    await adminPage.locator('#event-leave-from').selectOption('start');
+
     await adminPage.getByRole('button', { name: 'Create event' }).click();
-    await expect(adminPage.getByText('Use lowercase words separated by dashes')).toBeVisible({
+    await expect(adminPage.getByText('The event must end after it starts')).toBeVisible({
       timeout: 15_000,
     });
-
     // A validation error must not throw away what was typed.
-    await expect(adminPage.locator('#event-name')).toHaveValue('Workflow Event');
-    await expect(adminPage.locator('#mainCheckOutClosesAt')).toHaveValue(
-      newYorkInput(now + 3 * HOUR),
-    );
+    await expect(adminPage.locator('#event-name')).toHaveValue(eventName);
+    await expect(adminPage.locator('#event-arrive-by')).toHaveValue('end');
 
-    await adminPage.locator('#event-slug').fill(eventSlug);
+    await adminPage.locator('#event-ends').fill(newYorkInput(now + 3 * HOUR));
     await adminPage.getByRole('button', { name: 'Create event' }).click();
-    await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
-    // A saved event must not leave its values behind in the "new event" form.
-    await expect(adminPage.locator('#event-name')).toHaveValue('');
-    await expect(adminPage.locator('#mainName')).toHaveValue('');
+    await expect(adminPage.getByText('Event saved as a draft.')).toBeVisible({ timeout: 15_000 });
+    await expect(adminPage).toHaveURL(/\/admin\/events\/[0-9a-f-]{36}/);
 
-    await fillEvent('Duplicate Slug Event', eventSlug);
-    await adminPage.getByRole('button', { name: 'Create event' }).click();
-    await expect(adminPage.getByText(/already (used|in use)/i)).toBeVisible({ timeout: 15_000 });
-    await expect(adminPage.getByText(/duplicate key|violates|constraint/i)).toHaveCount(0);
-    await expect(adminPage.locator('#event-name')).toHaveValue('Duplicate Slug Event');
-
-    const client = supabase();
+    // The web address comes from the name, and a new event is always a draft.
     const { data: event } = await client
       .from('events')
-      .select('id, starts_at, ends_at, status, event_sessions(id, kind, check_in_opens_at)')
+      .select(`id, starts_at, ends_at, status, event_sessions(${sessionColumns})`)
       .eq('slug', eventSlug)
       .single();
     eventId = event?.id as string;
     expect(event?.status).toBe('draft');
-    const sessions = event?.event_sessions as unknown as {
-      id: string;
-      kind: string;
-      check_in_opens_at: string;
-    }[];
-    mainSessionId = sessions.find((session) => session.kind === 'main')?.id as string;
+    const sessions = event?.event_sessions as unknown as StoredSession[];
+    expect(sessions).toHaveLength(1);
+    const main = sessions[0] as StoredSession;
+    mainSessionId = main.id;
+    expect(main).toMatchObject({ kind: 'main', reward_points: 20, minimum_duration_minutes: 0 });
+
+    // The two attendance rules became the four stored times.
+    const start = at(event?.starts_at);
+    const end = at(event?.ends_at);
+    expect(at(main.check_in_opens_at)).toBe(start - HOUR / 2);
+    expect(at(main.check_in_closes_at)).toBe(end);
+    expect(at(main.check_out_opens_at)).toBe(start);
+    expect(at(main.check_out_closes_at)).toBe(end + HOUR);
+
+    // The same name again gets its own address instead of an error.
+    await adminPage.goto('/admin/events/new');
+    await adminPage.locator('#event-name').fill(eventName);
+    await adminPage.locator('#event-starts').fill(newYorkInput(now + 24 * HOUR));
+    await adminPage.locator('#event-ends').fill(newYorkInput(now + 26 * HOUR));
+    await adminPage.getByRole('button', { name: 'Create event' }).click();
+    await expect(adminPage.getByText('Event saved as a draft.')).toBeVisible({ timeout: 15_000 });
+    const { data: twins } = await client
+      .from('events')
+      .select('slug')
+      .like('slug', `${eventSlug}%`)
+      .order('created_at');
+    expect(twins?.map((row) => row.slug)).toEqual([eventSlug, `${eventSlug}-2`]);
+    await client.from('events').delete().eq('slug', `${eventSlug}-2`);
 
     // Drafts stay private.
     await anonPage.goto(`/events/${eventSlug}`);
     await expect(anonPage.getByRole('heading', { name: 'Workflow Event' })).toHaveCount(0);
 
-    // Saving without touching anything must not move any time.
+    // Saving without touching anything must not move any time or the address.
     await adminPage.goto(`/admin/events/${eventId}`);
     await adminPage.getByRole('button', { name: 'Save changes' }).click();
     await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
     const { data: resaved } = await client
       .from('events')
-      .select('starts_at, ends_at, event_sessions(check_in_opens_at)')
+      .select(`slug, starts_at, ends_at, event_sessions(${sessionColumns})`)
       .eq('id', eventId)
       .single();
-    expect(new Date(resaved?.starts_at).getTime()).toBe(new Date(event?.starts_at).getTime());
-    expect(new Date(resaved?.ends_at).getTime()).toBe(new Date(event?.ends_at).getTime());
-    const resavedSessions = resaved?.event_sessions as unknown as { check_in_opens_at: string }[];
-    expect(new Date(resavedSessions[0]?.check_in_opens_at).getTime()).toBe(
-      new Date(sessions[0]?.check_in_opens_at ?? 0).getTime(),
-    );
+    expect(resaved?.slug).toBe(eventSlug);
+    expect(at(resaved?.starts_at)).toBe(start);
+    expect(at(resaved?.ends_at)).toBe(end);
+    const resavedMain = (resaved?.event_sessions as unknown as StoredSession[])[0] as StoredSession;
+    for (const column of [
+      'check_in_opens_at',
+      'check_in_closes_at',
+      'check_out_opens_at',
+      'check_out_closes_at',
+    ] as const) {
+      expect(at(resavedMain[column])).toBe(at(main[column]));
+    }
 
-    await adminPage.getByRole('button', { name: 'Mark published' }).click();
-    await expect(adminPage.getByText('Event marked published.')).toBeVisible({ timeout: 15_000 });
+    await adminPage.getByRole('button', { name: 'Publish' }).click();
+    await expect(adminPage.getByText('Event published.')).toBeVisible({ timeout: 15_000 });
     await anonPage.goto('/events');
     await expect(anonPage.getByText('Workflow Event')).toBeVisible();
     await anonPage.goto(`/events/${eventSlug}`);
     await expect(anonPage.getByRole('heading', { name: 'Workflow Event' })).toBeVisible();
+    // Members are told the rule in plain words.
+    await expect(anonPage.getByText(/Check in by .+ · check out from .+/)).toBeVisible();
     const api = await anonPage.request.get('/api/public/events');
     expect(JSON.stringify(await api.json())).toContain(eventSlug);
 
     // A bonus session is added by editing the event.
-    await adminPage.goto(`/admin/events/${eventId}`);
-    await adminPage.locator('#bonusName').fill('Bonus lab');
-    await adminPage.locator('#bonusMinDuration').fill('30');
-    await adminPage.locator('#bonusReward').fill('15');
-    await adminPage.locator('#bonusStartsAt').fill(newYorkInput(now - HOUR));
-    await adminPage.locator('#bonusEndsAt').fill(newYorkInput(now + 3 * HOUR));
-    await adminPage.locator('#bonusCheckInOpensAt').fill(newYorkInput(now - HOUR));
-    await adminPage.locator('#bonusCheckInClosesAt').fill(newYorkInput(now + 2 * HOUR));
-    await adminPage.locator('#bonusCheckOutOpensAt').fill(newYorkInput(now - HOUR));
-    await adminPage.locator('#bonusCheckOutClosesAt').fill(newYorkInput(now + 3 * HOUR));
-    await adminPage.getByRole('button', { name: 'Save changes' }).click();
-    await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
-    const { data: bonus } = await client
-      .from('event_sessions')
-      .select('id, minimum_duration_minutes, reward_points')
-      .eq('event_id', eventId)
-      .eq('kind', 'bonus')
-      .single();
-    expect(bonus?.reward_points).toBe(15);
-    bonusSessionId = bonus?.id as string;
+    const saveBonus = async (name: string) => {
+      await adminPage.goto(`/admin/events/${eventId}`);
+      const section = adminPage.locator('details').filter({ hasText: 'Bonus session (optional)' });
+      if ((await section.getAttribute('open')) === null) {
+        await adminPage.getByText('Bonus session (optional)', { exact: true }).click();
+      }
+      await adminPage.locator('#bonus-name').fill(name);
+      await adminPage.locator('#bonus-starts').fill(newYorkInput(now - HOUR));
+      await adminPage.locator('#bonus-ends').fill(newYorkInput(now + 3 * HOUR));
+      await adminPage.locator('#bonus-points').fill('15');
+      await adminPage.getByRole('button', { name: 'Save changes' }).click();
+      await expect(adminPage.getByText('Event saved.')).toBeVisible({ timeout: 15_000 });
+      return client
+        .from('event_sessions')
+        .select('id, minimum_duration_minutes, reward_points')
+        .eq('event_id', eventId)
+        .eq('kind', 'bonus');
+    };
+    const { data: added } = await saveBonus('Bonus lab');
+    expect(added).toHaveLength(1);
+    expect(added?.[0]).toMatchObject({ reward_points: 15, minimum_duration_minutes: 0 });
+
+    // Emptying its name removes a bonus session nobody has attended.
+    const { data: removed } = await saveBonus('');
+    expect(removed).toHaveLength(0);
+
+    const { data: bonus } = await saveBonus('Bonus lab');
+    bonusSessionId = bonus?.[0]?.id as string;
   });
 
   test('cards go pending, active and replaced, and several can be written in a row', async () => {
@@ -876,46 +926,42 @@ test.describe('every member and organizer workflow', () => {
     activeCardUrl = replacementUrl;
   });
 
-  test('the kiosk runs check-in and check-out and enforces the PSU ID rule', async () => {
+  test('the kiosk reads by itself, checks people in and out, and enforces the PSU ID rule', async () => {
     const client = supabase();
     await adminPage.goto('/admin/kiosk');
     await adminPage.locator('#kiosk-session').selectOption(mainSessionId);
-    await connectLane(adminPage);
+    await connectReader(adminPage);
 
-    const readCard = async () => {
-      await adminPage.getByRole('button', { name: 'Read card' }).click();
-      await expect(adminPage.getByRole('heading', { name: memberName })).toBeVisible({
-        timeout: 20_000,
-      });
-    };
+    // There is no Read button: a card is read as soon as it is on the reader.
+    await expect(adminPage.getByRole('button', { name: 'Read card' })).toHaveCount(0);
+    const expectPerson = (name = memberName) =>
+      expect(adminPage.getByRole('heading', { name })).toBeVisible({ timeout: 20_000 });
 
-    // Reader problems are explained in words, and do not stop the next read.
+    // Reader problems are explained in words, and reading carries on afterwards.
     await setCard(adminPage, 'error:nfc_not_ready');
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
     await expect(adminPage.getByText('The NFC module is not responding.')).toBeVisible({
       timeout: 15_000,
     });
-    await setCard(adminPage, 'error:ndef_record_missing');
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await tapCard(adminPage, 'error:ndef_record_missing');
     await expect(adminPage.getByText('This card has no readable URL on it.')).toBeVisible({
       timeout: 15_000,
     });
 
     // A card that is not ours is refused with a clear message.
-    await setCard(adminPage, 'https://example.com/not-a-card');
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await tapCard(adminPage, 'https://example.com/not-a-card');
     await expect(
       adminPage.getByText('That tag does not contain a valid GDG card URL.'),
     ).toBeVisible({ timeout: 15_000 });
 
-    // A replaced card is refused too.
-    await setCard(adminPage, firstCardUrl);
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    // A replaced card is refused too, and is not read again while it stays put.
+    await tapCard(adminPage, firstCardUrl);
     await expect(adminPage.getByText('That card is not active.')).toBeVisible({ timeout: 15_000 });
+    await expect(adminPage.getByText('Lift the card off the reader').first()).toBeVisible();
 
     // A read alone records nothing, and a dismissed scan stays that way.
-    await setCard(adminPage, activeCardUrl);
-    await readCard();
+    await tapCard(adminPage, activeCardUrl);
+    await expectPerson();
+    await expect(adminPage.getByText('Identified by: Card')).toBeVisible();
     await adminPage.getByRole('button', { name: 'Dismiss scan' }).click();
     await expect(adminPage.getByText('Scan dismissed. Nothing was recorded.')).toBeVisible({
       timeout: 15_000,
@@ -927,7 +973,8 @@ test.describe('every member and organizer workflow', () => {
     expect(none).toHaveLength(0);
 
     // The photo is new, so the server refuses confirmation without an ID check.
-    await readCard();
+    await tapCard(adminPage, activeCardUrl);
+    await expectPerson();
     await expect(adminPage.getByRole('button', { name: 'PSU ID required' })).toBeDisabled();
     const { data: scan } = await client
       .from('device_scans')
@@ -945,17 +992,25 @@ test.describe('every member and organizer workflow', () => {
     expect((await skipped.json()).error.message).toContain('PSU ID');
 
     await adminPage.getByLabel("I checked this member's PSU ID").check();
-    await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
+    // The confirm button is the big one: it used to collapse to a sliver.
+    const confirm = adminPage.getByRole('button', { name: 'Confirm check-in' });
+    expect((await confirm.boundingBox())?.height).toBeGreaterThanOrEqual(56);
+    await confirm.click();
     await expect(adminPage.getByText(`${memberName} checked in.`)).toBeVisible({ timeout: 20_000 });
 
     const { data: checkedIn } = await client
       .from('attendance_records')
-      .select('state')
+      .select('state, check_in_method')
       .eq('member_id', memberId)
       .eq('session_id', mainSessionId)
       .single();
-    expect(checkedIn?.state).toBe('checked_in');
+    expect(checkedIn).toEqual({ state: 'checked_in', check_in_method: 'card' });
     await expect.poll(async () => (await balance()).points).toBe(0);
+
+    // The card is still on the reader, and it is not read again as the next person.
+    await adminPage.waitForTimeout(1_000);
+    await expect(adminPage.getByRole('heading', { name: memberName })).toHaveCount(0);
+    await expect(adminPage.getByText('Lift the card off the reader').first()).toBeVisible();
 
     // An older photo needs no ID check.
     await client
@@ -963,7 +1018,8 @@ test.describe('every member and organizer workflow', () => {
       .update({ photo_changed_at: new Date(Date.now() - 72 * HOUR).toISOString() })
       .eq('member_id', memberId);
 
-    await readCard();
+    await tapCard(adminPage, activeCardUrl);
+    await expectPerson();
     await expect(adminPage.getByText('Photo changed in the last 48 hours')).toHaveCount(0);
     await adminPage.getByRole('button', { name: 'Confirm check-out' }).click();
     await expect(adminPage.getByText(`${memberName} checked out.`)).toBeVisible({
@@ -972,17 +1028,24 @@ test.describe('every member and organizer workflow', () => {
     await expectBalance(20, 20);
 
     // A finished attendance cannot be repeated.
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
+    await tapCard(adminPage, activeCardUrl);
     await expect(adminPage.getByText('already has a completed attendance record')).toBeVisible({
       timeout: 15_000,
     });
 
-    // A short stay in a session with a minimum earns nothing.
+    // The form no longer sets a minimum stay, but an older event can still carry
+    // one, and a short stay there earns nothing.
+    await client
+      .from('event_sessions')
+      .update({ minimum_duration_minutes: 30 })
+      .eq('id', bonusSessionId);
     await adminPage.locator('#kiosk-session').selectOption(bonusSessionId);
-    await readCard();
+    await tapCard(adminPage, activeCardUrl);
+    await expectPerson();
     await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
     await expect(adminPage.getByText(`${memberName} checked in.`)).toBeVisible({ timeout: 20_000 });
-    await readCard();
+    await tapCard(adminPage, activeCardUrl);
+    await expectPerson();
     await adminPage.getByRole('button', { name: 'Confirm check-out' }).click();
     await expect(adminPage.getByText(`${memberName} checked out.`)).toBeVisible({
       timeout: 20_000,
@@ -1001,6 +1064,85 @@ test.describe('every member and organizer workflow', () => {
     await expect(adminPage.getByRole('row').filter({ hasText: memberName })).toHaveCount(2);
   });
 
+  test('a member without their card is found by name or by their QR code', async () => {
+    const client = supabase();
+    const { data: secondPrivate } = await client
+      .from('member_private')
+      .select('member_id')
+      .eq('email', people.second.email)
+      .single();
+    const secondId = secondPrivate?.member_id as string;
+    const { data: secondProfile } = await client
+      .from('member_profiles')
+      .select('profile_slug')
+      .eq('member_id', secondId)
+      .single();
+
+    // No reader is connected here: these check-ins do not need one.
+    await adminPage.goto(`/admin/kiosk?session=${mainSessionId}`);
+    await expect(adminPage.locator('#kiosk-session')).toHaveValue(mainSessionId);
+
+    await adminPage.locator('#kiosk-search').fill('zzz-nobody');
+    await expect(adminPage.getByText('No active member matches.')).toBeVisible({ timeout: 15_000 });
+
+    await adminPage.locator('#kiosk-search').fill('second mem');
+    await adminPage
+      .getByRole('list', { name: 'Members found' })
+      .getByRole('button', { name: /Second Member/ })
+      .click();
+    await expect(adminPage.getByRole('heading', { name: 'Second Member' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(adminPage.getByText('Identified by: Found by organizer')).toBeVisible();
+
+    // The same photo rule applies however the member was identified.
+    await expect(adminPage.getByRole('button', { name: 'PSU ID required' })).toBeDisabled();
+    await adminPage.getByLabel("I checked this member's PSU ID").check();
+    await adminPage.getByRole('button', { name: 'Confirm check-in' }).click();
+    await expect(adminPage.getByText('Second Member checked in.')).toBeVisible({ timeout: 20_000 });
+
+    // The QR code on their digital ID is their profile link. A handheld scanner
+    // types it and presses Enter; the camera hands over the same text.
+    await adminPage.locator('#kiosk-search').fill(`${origin}/m/${secondProfile?.profile_slug}`);
+    await adminPage.locator('#kiosk-search').press('Enter');
+    await expect(adminPage.getByRole('heading', { name: 'Second Member' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(adminPage.getByText('Identified by: QR code')).toBeVisible();
+    await adminPage.getByLabel("I checked this member's PSU ID").check();
+    await adminPage.getByRole('button', { name: 'Confirm check-out' }).click();
+    await expect(adminPage.getByText('Second Member checked out.')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // The record shows how each step was done, and the points still land.
+    const { data: record } = await client
+      .from('attendance_records')
+      .select('state, qualified, reward_points, check_in_method, check_out_method')
+      .eq('member_id', secondId)
+      .eq('session_id', mainSessionId)
+      .single();
+    expect(record).toEqual({
+      state: 'completed',
+      qualified: true,
+      reward_points: 20,
+      check_in_method: 'manual',
+      check_out_method: 'qr',
+    });
+    await adminPage.goto(`/admin/events/${eventId}`);
+    const row = adminPage.getByRole('row').filter({ hasText: 'Second Member' });
+    await expect(row).toContainText('found by organizer');
+    await expect(row).toContainText('QR code');
+
+    // A GDG number works typed in full, and nonsense is refused in words.
+    await adminPage.goto(`/admin/kiosk?session=${mainSessionId}`);
+    await adminPage.locator('#kiosk-search').fill('https://example.com/not-a-member');
+    await adminPage.locator('#kiosk-search').press('Enter');
+    await expect(adminPage.getByText('That is not a member QR code or GDG number.')).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
   test('a session outside its window and a cancelled event are refused', async () => {
     const client = supabase();
     await client
@@ -1009,8 +1151,9 @@ test.describe('every member and organizer workflow', () => {
       .eq('id', bonusSessionId);
     await client.from('attendance_records').select('id').eq('session_id', bonusSessionId);
 
-    await adminPage.getByRole('button', { name: 'Mark cancelled' }).click();
-    await expect(adminPage.getByText('Event marked cancelled.')).toBeVisible({ timeout: 15_000 });
+    await adminPage.goto(`/admin/events/${eventId}`);
+    await adminPage.getByRole('button', { name: 'Cancel event' }).click();
+    await expect(adminPage.getByText('Event cancelled.')).toBeVisible({ timeout: 15_000 });
     await anonPage.goto(`/events/${eventSlug}`);
     await expect(anonPage.getByRole('heading', { name: 'Workflow Event' })).toHaveCount(0);
     await adminPage.goto('/admin/kiosk');
@@ -1018,9 +1161,14 @@ test.describe('every member and organizer workflow', () => {
       0,
     );
 
+    // A cancelled event comes back as a draft, to be published again on purpose.
     await adminPage.goto(`/admin/events/${eventId}`);
-    await adminPage.getByRole('button', { name: 'Mark published' }).click();
-    await expect(adminPage.getByText('Event marked published.')).toBeVisible({ timeout: 15_000 });
+    await adminPage.getByRole('button', { name: 'Restore as draft' }).click();
+    await expect(adminPage.getByText('Event moved back to drafts.')).toBeVisible({
+      timeout: 15_000,
+    });
+    await adminPage.getByRole('button', { name: 'Publish' }).click();
+    await expect(adminPage.getByText('Event published.')).toBeVisible({ timeout: 15_000 });
     await client
       .from('event_sessions')
       .update({ check_in_opens_at: new Date(Date.now() - HOUR).toISOString() })
@@ -1052,6 +1200,9 @@ test.describe('every member and organizer workflow', () => {
       await form.locator('input[name="reason"]').fill(reason);
       await form.locator('select[name="action"]').selectOption(action);
       await form.getByRole('button', { name: 'Apply' }).click();
+      // The banner from the previous correction is still on screen, so wait for
+      // this one to finish before the next form is filled in.
+      await superPage.waitForLoadState('networkidle');
     };
 
     await correct('qualify', 'Stayed the full session');
@@ -1316,7 +1467,6 @@ test.describe('every member and organizer workflow', () => {
   test('a revoked card stops working, including for a scan already on screen', async () => {
     await adminPage.goto('/admin/kiosk');
     await adminPage.locator('#kiosk-session').selectOption(bonusSessionId);
-    await connectLane(adminPage);
 
     // The bonus attendance is complete, so start from a fresh session for this.
     const client = supabase();
@@ -1340,9 +1490,8 @@ test.describe('every member and organizer workflow', () => {
       .single();
     await adminPage.reload();
     await adminPage.locator('#kiosk-session').selectOption(session?.id as string);
-    await connectLane(adminPage);
+    await connectReader(adminPage);
     await setCard(adminPage, activeCardUrl);
-    await adminPage.getByRole('button', { name: 'Read card' }).click();
     await expect(adminPage.getByRole('heading', { name: memberName })).toBeVisible({
       timeout: 20_000,
     });

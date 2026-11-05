@@ -140,7 +140,8 @@ export interface LeaderboardEntry {
   displayName: string;
   photoUrl: string | null;
   memberNumber: string | null;
-  points: number;
+  /** Lifetime stars: every point ever earned, which spending never reduces. */
+  stars: number;
 }
 
 export const leaderboardQuerySchema = z.object({
@@ -220,6 +221,54 @@ export const eventInputSchema = z
   .refine((value) => value.sessions.filter((s) => s.kind === 'main').length === 1, {
     message: 'An event needs exactly one main session',
     path: ['sessions'],
+  });
+
+const pointsSchema = z
+  .number({ error: 'Enter the points as a whole number' })
+  .int('Enter the points as a whole number')
+  .min(0, 'Points cannot be negative')
+  .max(10_000, 'Points cannot be more than 10,000');
+
+/**
+ * What an organizer fills in for an event. The session rows, and their check-in
+ * and check-out times, are derived from this on the server. `keep` leaves
+ * hand-set times from an older event as they are.
+ */
+export const eventFormSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(3, 'Give the event a name of at least 3 characters')
+      .max(120, 'Keep the event name under 120 characters'),
+    summary: z.string().trim().max(400, 'Keep the description under 400 characters'),
+    location: z.string().trim().max(160, 'Keep the location under 160 characters'),
+    startsAt: isoDateTimeSchema,
+    endsAt: isoDateTimeSchema,
+    isPublic: z.boolean(),
+    points: pointsSchema,
+    arriveBy: z.enum(['15', '30', '45', '60', 'end', 'keep']),
+    leaveFrom: z.enum(['0', '15', '30', 'start', 'keep']),
+    bonus: z
+      .object({
+        name: z
+          .string()
+          .trim()
+          .min(2, 'Give the bonus session a name')
+          .max(80, 'Keep the bonus session name under 80 characters'),
+        startsAt: isoDateTimeSchema,
+        endsAt: isoDateTimeSchema,
+        points: pointsSchema,
+      })
+      .refine((value) => new Date(value.endsAt) > new Date(value.startsAt), {
+        message: 'The bonus session must end after it starts',
+        path: ['endsAt'],
+      })
+      .nullable(),
+  })
+  .refine((value) => new Date(value.endsAt) > new Date(value.startsAt), {
+    message: 'The event must end after it starts',
+    path: ['endsAt'],
   });
 
 export const scanConfirmSchema = z.object({

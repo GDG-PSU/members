@@ -35,6 +35,8 @@ type SerialPortLike = {
 
 type SerialLike = {
   requestPort(): Promise<SerialPortLike>;
+  /** Ports this site was already allowed to use, so no picker is needed. */
+  getPorts?(): Promise<SerialPortLike[]>;
 };
 
 type Pending = {
@@ -55,7 +57,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-export function useUsbLane() {
+export function useUsbLane({ autoConnect = false }: { autoConnect?: boolean } = {}) {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [info, setInfo] = useState<UsbDeviceInfo | null>(null);
@@ -171,7 +173,7 @@ export function useUsbLane() {
       timeoutMs = 6000,
     ): Promise<UsbApiResponse> => {
       const writer = writerRef.current;
-      if (!writer) throw new Error('Connect a lane first.');
+      if (!writer) throw new Error('Connect the reader first.');
 
       const id = ++nextIdRef.current;
       const payload = JSON.stringify({ id, cmd, ...extra }) + '\n';
@@ -238,78 +240,102 @@ export function useUsbLane() {
     };
   }, [closePort]);
 
-  const connect = useCallback(async () => {
-    const serial = getSerial();
-    if (!serial) {
-      setError('Web Serial is unavailable. Use Chrome or Edge over HTTPS or localhost.');
-      return;
-    }
-
-    setConnecting(true);
-    setError('');
-    setStatus('');
-    setInfo(null);
-    setLog([]);
-    closingRef.current = false;
-    readFailureRef.current = null;
-
-    try {
-      const port = await serial.requestPort();
-      if (closingRef.current) return;
-
-      setStatus('Opening serial port…');
-      await port.open({ baudRate: 115200 });
-      portRef.current = port;
-      if (closingRef.current) {
-        await closePort(false);
+  const connect = useCallback(
+    async (knownPort?: SerialPortLike) => {
+      const serial = getSerial();
+      if (!serial) {
+        setError('This browser cannot talk to the reader. Use Chrome or Edge on a computer.');
         return;
       }
 
-      // Opening a CP210x toggles the ESP32 reset lines. Give the firmware time
-      // to boot and initialize the PN532 before the first JSON command.
-      setStatus('Waiting for the lane to boot…');
-      await sleep(2200);
-      if (closingRef.current) return;
+      setConnecting(true);
+      setError('');
+      setStatus('');
+      setInfo(null);
+      setLog([]);
+      closingRef.current = false;
+      readFailureRef.current = null;
 
-      const writer = port.writable?.getWriter();
-      if (!writer) throw new Error('The serial port is not writable.');
+      try {
+        const port = knownPort ?? (await serial.requestPort());
+        if (closingRef.current) return;
 
-      writerRef.current = writer;
-      setConnected(true);
-      void readLoop(port);
+        setStatus('Opening serial port…');
+        await port.open({ baudRate: 115200 });
+        portRef.current = port;
+        if (closingRef.current) {
+          await closePort(false);
+          return;
+        }
 
-      let response: UsbApiResponse | null = null;
-      let lastError: unknown = null;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          response = await sendCommand('info', {}, 8000);
-          break;
-        } catch (handshakeError) {
-          lastError = handshakeError;
-          if (attempt < 2) {
-            setStatus(`Lane is still booting; retrying (${attempt + 2}/3)…`);
-            await sleep(1000);
+        // Opening a CP210x toggles the ESP32 reset lines. Give the firmware time
+        // to boot and initialize the PN532 before the first JSON command.
+        setStatus('Waiting for the reader to start…');
+        await sleep(2200);
+        if (closingRef.current) return;
+
+        const writer = port.writable?.getWriter();
+        if (!writer) throw new Error('The serial port is not writable.');
+
+        writerRef.current = writer;
+        setConnected(true);
+        void readLoop(port);
+
+        let response: UsbApiResponse | null = null;
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            response = await sendCommand('info', {}, 8000);
+            break;
+          } catch (handshakeError) {
+            lastError = handshakeError;
+            if (attempt < 2) {
+              setStatus(`The reader is still starting; retrying (${attempt + 2}/3)…`);
+              await sleep(1000);
+            }
           }
         }
-      }
 
-      if (!response) {
-        throw new Error(
-          readFailureRef.current ??
-            errorMessage(lastError ?? new Error('The device did not answer in time.')),
-        );
-      }
+        if (!response) {
+          throw new Error(
+            readFailureRef.current ??
+              errorMessage(lastError ?? new Error('The device did not answer in time.')),
+          );
+        }
 
-      setInfo(response.result ?? null);
-      setStatus('Connected.');
-    } catch (connectError) {
-      const wasClosing = closingRef.current;
-      await closePort();
-      if (!wasClosing) setError(errorMessage(connectError));
-    } finally {
-      setConnecting(false);
-    }
-  }, [closePort, readLoop, sendCommand]);
+        setInfo(response.result ?? null);
+        setStatus('Connected.');
+      } catch (connectError) {
+        const wasClosing = closingRef.current;
+        await closePort();
+        // Closing the browser's port picker is a choice, not a fault.
+        const cancelled = connectError instanceof Error && connectError.name === 'NotFoundError';
+        if (!wasClosing && !cancelled) setError(errorMessage(connectError));
+      } finally {
+        setConnecting(false);
+      }
+    },
+    [closePort, readLoop, sendCommand],
+  );
+
+  // A reader this browser was already allowed to use reconnects by itself, so
+  // the organizer only meets the port picker once.
+  useEffect(() => {
+    if (!autoConnect) return;
+    const serial = getSerial();
+    if (!serial?.getPorts) return;
+    let cancelled = false;
+    void serial
+      .getPorts()
+      .then((ports) => {
+        const [only, ...others] = ports;
+        if (!cancelled && only && others.length === 0 && !portRef.current) void connect(only);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [autoConnect, connect]);
 
   const disconnect = useCallback(async () => {
     await closePort();
@@ -329,7 +355,7 @@ export function useUsbLane() {
     status,
     error,
     log,
-    connect,
+    connect: () => connect(),
     disconnect,
     refresh,
     sendCommand,

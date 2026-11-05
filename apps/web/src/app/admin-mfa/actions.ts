@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getViewer } from '@/lib/auth/viewer';
 import { SITE_URL } from '@/lib/env';
+import { safeReturnPath } from '@/lib/security/request';
 import { withinRateLimit } from '@/lib/security/rate-limit';
 
 export interface MfaState {
@@ -72,5 +73,5 @@ export async function verifyMfaAction(_prev: MfaState, formData: FormData): Prom
     return { error: 'That code did not work. Wait for a new code and try again.', factorId };
   }
 
-  redirect('/admin');
+  redirect(safeReturnPath(formData.get('next'), 'admin') ?? '/admin');
 }

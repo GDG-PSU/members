@@ -42,11 +42,17 @@ export default async function MemberDashboard({
   const { member, supabase, user } = await requireMember();
   const { welcome } = await searchParams;
 
-  const [balances, attendance, ledger, card, nextEvent] = await Promise.all([
+  const [balances, attendance, ledger, card, qualified, nextEvent] = await Promise.all([
     getBalances(supabase, member.id),
     getRecentAttendance(supabase, member.id, 4),
     getLedger(supabase, member.id, 4),
     getCardStatus(supabase, member.id),
+    // Counted in the database: the list above only holds the latest few rows.
+    supabase
+      .from('attendance_records')
+      .select('id', { count: 'exact', head: true })
+      .eq('member_id', member.id)
+      .eq('qualified', true),
     supabase
       .from('events')
       .select('name, slug, starts_at, location')
@@ -57,7 +63,7 @@ export default async function MemberDashboard({
       .maybeSingle(),
   ]);
 
-  const attendedCount = attendance.filter((row) => row.qualified).length;
+  const attendedCount = qualified.count ?? 0;
   const cardLabel =
     card.status === 'active'
       ? 'Active'
@@ -141,9 +147,9 @@ export default async function MemberDashboard({
               icon={<Star />}
             />
             <MetricCard
-              label="Qualified sessions"
+              label="Sessions that earned points"
               value={attendedCount}
-              hint="Recent sessions shown"
+              hint="All time"
               icon={<BadgeCheck />}
             />
           </div>

@@ -34,7 +34,8 @@ export function InviteForm() {
       ) : null}
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        No email is sent. Links expire after 14 days.
+        No email is sent, so copy the link and send it yourself. The invitation stays open for 14
+        days; use New link if the link itself has expired.
       </p>
     </div>
   );

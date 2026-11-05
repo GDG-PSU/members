@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, Clock, MapPin, Star } from 'lucide-react';
 import { Badge, buttonVariants, Card, CardContent, PageShell, cn } from '@gdg/ui';
 import { getPublicEvent } from '@/lib/public/queries';
+import { describeAttendanceRule } from '@/lib/events/attendance-rules';
 import { formatDate, formatTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -68,8 +69,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                       <p className="type-overline text-primary">Main session</p>
                       <h3 className="mt-1 text-base font-bold">{main.name}</h3>
                       <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                        {formatTime(main.startsAt)} – {formatTime(main.endsAt)} · Check out to
-                        qualify
+                        {formatTime(main.startsAt)} – {formatTime(main.endsAt)}
+                        <br />
+                        {describeAttendanceRule(main)}
                       </p>
                     </div>
                     <Badge variant="star" className="shrink-0">
@@ -86,8 +88,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                       <p className="type-overline text-secondary">Bonus session</p>
                       <h3 className="mt-1 text-base font-bold">{session.name}</h3>
                       <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                        {formatTime(session.startsAt)} – {formatTime(session.endsAt)} · Requires its
-                        own check-in and check-out
+                        {formatTime(session.startsAt)} – {formatTime(session.endsAt)}
+                        <br />
+                        {describeAttendanceRule(session)}, separately from the main session
                       </p>
                     </div>
                     <Badge variant="outline" className="shrink-0">
@@ -105,15 +108,15 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             <CardContent className="p-5 sm:p-6">
               <h2 className="text-base font-bold">How attendance works</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                Tap at the kiosk, then confirm with an organizer:
+                Bring your card, or open Digital ID on your phone:
               </p>
 
               <ol className="my-5 space-y-3">
                 {[
-                  'Organizer confirms check-in.',
-                  'Stay for the session.',
-                  'Organizer confirms check-out.',
-                  'Points land after a qualifying stay.',
+                  'Tap in when you arrive. An organizer confirms it is you.',
+                  'Stay for the event.',
+                  'Tap out when you leave.',
+                  'Your points land as soon as you have checked out.',
                 ].map((step, index) => (
                   <li key={step} className="flex items-start gap-3">
                     <span className="grid size-6 shrink-0 place-items-center bg-primary text-[0.7rem] font-semibold text-primary-foreground">
@@ -127,7 +130,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               <div className="h-px bg-border" />
 
               <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                No check-out, no points. Email GDG@PSU if something went wrong.
+                No check-out, no points. Tell an organizer if something went wrong.
               </p>
 
               <Link href="/login" className={cn(buttonVariants({}), 'mt-4 w-full')}>

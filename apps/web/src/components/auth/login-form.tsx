@@ -7,10 +7,11 @@ import { keepValuesOnError } from '@/components/keep-values-on-error';
 
 const initial: LoginState = {};
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState(signInAction, initial);
   return (
     <form action={action} onReset={keepValuesOnError(state)} className="space-y-4" noValidate>
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <Field label="Email" htmlFor="login-email">
         <Input
           id="login-email"

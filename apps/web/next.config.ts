@@ -23,8 +23,11 @@ const nextConfig: NextConfig = {
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'Strict-Transport-Security', value: 'max-age=31536000' },
       {
+        // The kiosk scans a member's QR code with the camera. It is allowed
+        // site-wide because the policy is fixed when a page first loads, and the
+        // kiosk is usually reached by an in-app navigation from another page.
         key: 'Permissions-Policy',
-        value: 'camera=(), microphone=(), geolocation=(), usb=(), serial=(self)',
+        value: 'camera=(self), microphone=(), geolocation=(), usb=(), serial=(self)',
       },
       {
         key: 'Content-Security-Policy',

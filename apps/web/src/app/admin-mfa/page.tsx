@@ -4,6 +4,7 @@ import { ShieldCheck } from 'lucide-react';
 import { Card, CardContent } from '@gdg/ui';
 import { getViewer } from '@/lib/auth/viewer';
 import { MfaPanel } from '@/components/admin/mfa-panel';
+import { safeReturnPath } from '@/lib/security/request';
 import { SUPPORT_EMAIL } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
@@ -13,13 +14,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AdminMfaPage() {
+export default async function AdminMfaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const next = safeReturnPath((await searchParams).next, 'admin');
   const viewer = await getViewer();
   if (!viewer.user) redirect('/login');
   if (!viewer.isAdmin) redirect('/');
 
   const { data: assurance } = await viewer.supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (assurance?.currentLevel === 'aal2') redirect('/admin');
+  if (assurance?.currentLevel === 'aal2') redirect(next ?? '/admin');
 
   const { data: factors } = await viewer.supabase.auth.mfa.listFactors();
   const verified = (factors?.totp ?? []).filter((factor) => factor.status === 'verified');
@@ -35,7 +41,8 @@ export default async function AdminMfaPage() {
             <p className="type-overline mt-4 text-primary">Organizer security</p>
             <h1 className="type-h2 mt-2">Two-factor required</h1>
             <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-              Admin routes require a verified authenticator.
+              Organizer pages need a six-digit code from an authenticator app, such as Google
+              Authenticator.
             </p>
 
             <div className="mt-6">
@@ -43,6 +50,7 @@ export default async function AdminMfaPage() {
                 hasVerifiedFactor={verified.length > 0}
                 email={viewer.user.email ?? ''}
                 verifiedFactorId={verified[0]?.id}
+                next={next ?? undefined}
               />
             </div>
 

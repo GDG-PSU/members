@@ -20,14 +20,16 @@ export interface PublicSession {
   startsAt: string;
   endsAt: string;
   rewardPoints: number;
-  minimumDurationMinutes: number;
+  /** The latest a member may check in, and the earliest they may check out. */
+  checkInClosesAt: string;
+  checkOutOpensAt: string;
 }
 
 export async function listLeaderboard(limit = 25, offset = 0): Promise<LeaderboardEntry[]> {
   const supabase = createSupabaseAdmin();
   const { data, error } = await supabase
     .from('leaderboard')
-    .select('rank, slug, display_name, photo_path, member_number, points')
+    .select('rank, slug, display_name, photo_path, member_number, stars')
     .order('rank', { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw new Error(`leaderboard: ${error.message}`);
@@ -38,7 +40,7 @@ export async function listLeaderboard(limit = 25, offset = 0): Promise<Leaderboa
     displayName: row.display_name as string,
     photoUrl: profilePhotoUrl(row.photo_path as string | null),
     memberNumber: (row.member_number as string | null) ?? null,
-    points: row.points as number,
+    stars: row.stars as number,
   }));
 }
 
@@ -50,15 +52,21 @@ export async function countLeaderboard(): Promise<number> {
   return count ?? 0;
 }
 
-export async function listPublicEvents(limit = 24): Promise<PublicEventSummary[]> {
-  const supabase = createSupabaseAdmin();
-  const { data, error } = await supabase
+async function queryPublicEvents(
+  when: 'upcoming' | 'past',
+  limit: number,
+): Promise<PublicEventSummary[]> {
+  const now = new Date().toISOString();
+  const query = createSupabaseAdmin()
     .from('events')
     .select('id, name, slug, summary, location, starts_at, ends_at')
     .eq('status', 'published')
-    .eq('is_public', true)
-    .order('starts_at', { ascending: true })
-    .limit(limit);
+    .eq('is_public', true);
+  const { data, error } = await (
+    when === 'upcoming'
+      ? query.gte('ends_at', now).order('starts_at', { ascending: true })
+      : query.lt('ends_at', now).order('starts_at', { ascending: false })
+  ).limit(limit);
   if (error) throw new Error(`events: ${error.message}`);
 
   return (data ?? []).map((row) => ({
@@ -72,6 +80,20 @@ export async function listPublicEvents(limit = 24): Promise<PublicEventSummary[]
   }));
 }
 
+/** Events that have not ended, soonest first. */
+export function listUpcomingPublicEvents(limit = 24): Promise<PublicEventSummary[]> {
+  return queryPublicEvents('upcoming', limit);
+}
+
+/** Upcoming events soonest first, then past events with the most recent first. */
+export async function listPublicEvents(limit = 24): Promise<PublicEventSummary[]> {
+  const [upcoming, past] = await Promise.all([
+    queryPublicEvents('upcoming', limit),
+    queryPublicEvents('past', limit),
+  ]);
+  return [...upcoming, ...past].slice(0, limit);
+}
+
 export async function getPublicEvent(
   slug: string,
 ): Promise<{ event: PublicEventSummary; sessions: PublicSession[] } | null> {
@@ -79,7 +101,7 @@ export async function getPublicEvent(
   const { data, error } = await supabase
     .from('events')
     .select(
-      'id, name, slug, summary, location, starts_at, ends_at, event_sessions(id, name, kind, starts_at, ends_at, reward_points, minimum_duration_minutes, is_enabled)',
+      'id, name, slug, summary, location, starts_at, ends_at, event_sessions(id, name, kind, starts_at, ends_at, reward_points, check_in_closes_at, check_out_opens_at, is_enabled)',
     )
     .eq('slug', slug)
     .eq('status', 'published')
@@ -96,7 +118,8 @@ export async function getPublicEvent(
       startsAt: session.starts_at as string,
       endsAt: session.ends_at as string,
       rewardPoints: session.reward_points as number,
-      minimumDurationMinutes: session.minimum_duration_minutes as number,
+      checkInClosesAt: session.check_in_closes_at as string,
+      checkOutOpensAt: session.check_out_opens_at as string,
     }))
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 

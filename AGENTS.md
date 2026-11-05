@@ -121,13 +121,13 @@ their own: route handlers and server actions must re-check the viewer and role.
 
 ## 5. Route map
 
-| Surface    | Routes                                                                                                                                                         |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public     | `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[profileSlug]`, `/c/[cardToken]`, `/card-unavailable`, `/privacy`                                        |
-| Auth       | `/login`, `/forgot-password`, `/account/password`, `/account-suspended`, `/invite/accept`, `/auth/callback`, `/auth/confirm`, `/admin-mfa`                     |
-| Member     | `/member`, `/member/activity`, `/member/id`, `/member/profile`, `/member/privacy`, `/member/rewards`                                                           |
-| Admin      | `/admin`, `/admin/invitations`, `/admin/users`, `/admin/cards`, `/admin/kiosk`, `/admin/events`, `/admin/events/[id]`, `/admin/rewards`, `/admin/rewards/[id]` |
-| Superadmin | `/admin/audit`, `/admin/members/[id]` (and staff-role controls within `/admin/users`)                                                                          |
+| Surface    | Routes                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public     | `/`, `/leaderboard`, `/events`, `/events/[slug]`, `/m/[profileSlug]`, `/c/[cardToken]`, `/card-unavailable`, `/privacy`                                                             |
+| Auth       | `/login`, `/forgot-password`, `/account/password`, `/account-suspended`, `/invite/accept`, `/auth/callback`, `/auth/confirm`, `/admin-mfa`                                          |
+| Member     | `/member`, `/member/activity`, `/member/id`, `/member/profile`, `/member/privacy`, `/member/rewards`                                                                                |
+| Admin      | `/admin`, `/admin/invitations`, `/admin/users`, `/admin/cards`, `/admin/kiosk`, `/admin/events`, `/admin/events/new`, `/admin/events/[id]`, `/admin/rewards`, `/admin/rewards/[id]` |
+| Superadmin | `/admin/audit`, `/admin/members/[id]` (and staff-role controls within `/admin/users`)                                                                                               |
 
 Canonical aliases/redirects:
 
@@ -172,7 +172,8 @@ cloneable; never use a card tap as proof of identity or authorization.
   A source key can only be spent once, so attendance grants use `attendance_grant_key`, which issues
   a new key after a reversal. Reusing the old key silently awards nothing.
 - Stars are lifetime and non-spendable. Positive point grants mirror equal stars; spends do not
-  touch stars; reversals mirror negative stars.
+  touch stars; reversals mirror negative stars. The leaderboard ranks by stars, so redeeming a
+  reward never lowers a rank.
 - Redemptions are transactional and idempotent. A repeated idempotency key returns the same
   redemption. Cancellation/rejection refunds and restocks inventory.
 - Preserve reward/cost snapshots on ledgers, attendance, and redemptions. Do not make historical
@@ -180,14 +181,25 @@ cloneable; never use a card tap as proof of identity or authorization.
 
 ### Attendance
 
-1. A USB read resolves a card/member and creates only a short-lived pending preview.
+1. The kiosk identifies a member by a card read, the QR code on their digital ID, or an organizer
+   finding them by name or GDG number. Each creates only a short-lived pending preview.
 2. A human admin verifies the person and confirms check-in.
-3. Check-out requires a later read and confirmation.
+3. Check-out requires a later identification and confirmation.
 4. Points are granted only on confirmed check-out when the duration meets the session minimum and
-   the session reward is positive.
+   the session reward is positive. The event form sets no minimum: late arrivals are cut off by
+   `check_in_closes_at` and early leavers by `check_out_opens_at`.
 5. Duplicate check-in/check-out, missing check-in, expired scans, out-of-window scans, and duplicate
    session attendance must fail with stable, human-readable errors.
 6. Corrections go through the audited correction path, not direct table edits.
+
+Neither a QR code nor a name proves who is present any more than a card does, so the photo check,
+the 48-hour PSU ID rule, and the confirmation apply to all three. `attendance_records` records the
+method of each step in `check_in_method` and `check_out_method` (`card`, `qr`, `manual`).
+
+An organizer fills in the event's times, its points, and two attendance rules. The four check-in and
+check-out times on each session are derived from those in `lib/events/attendance-rules.ts`; do not
+add them back to the form. A new event is a draft, its web address comes from its name and never
+changes afterwards, and a published event counts as ended once its end time passes.
 
 Attendance is unique per `(member, session)`. Bonus sessions have their own attendance row. All
 instants are stored as `timestamptz`; event wall-clock input and display use
@@ -341,6 +353,8 @@ not assume CI covers those.
   would drop what was typed.
 - Sign out with `signOut({ scope: 'local' })`. The default is global, which ends every device's
   session.
+- A sign-in may continue to the page the person was opening only through `safeReturnPath`, which
+  accepts plain paths inside their own area.
 - Use the existing date helpers; do not hand-roll timezone conversion. Event inputs are
   `America/New_York`; storage is UTC.
 - Keep comments focused on non-obvious reasons and invariants, not restatements of the code.
@@ -446,6 +460,13 @@ permission.
 - `apps/web/tsconfig.json` includes the generated `.next/dev/types`, so after removing a route a stale
   folder fails `pnpm typecheck` and a local `next build` with a missing `route.js`. Regenerate it with
   `next dev` or clear it; Vercel builds from a clean tree.
+- The kiosk reads continuously while the reader is connected. A card stays "on the reader" until a
+  read reports `no_card` (`waitForCardRemoved`), so it is never read twice; a test must lift the
+  fake card before placing the next one.
+- `flex-1` on a fixed-height control inside a column flex container replaces its height with the
+  content height. It made the kiosk confirm button 18px tall.
+- `Permissions-Policy` is fixed when a document loads and client-side navigation keeps it, so the
+  camera the kiosk uses for QR codes is allowed site-wide, not per route.
 - A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
   "Access is denied" until the tab disconnects.
 
@@ -487,68 +508,74 @@ Last updated 2026-11-04.
 - **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
   `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
   still names the old host.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0014 applied.
-- **Data:** production was reset on 2026-11-04. A read-only check afterward found one Auth user, the
-  first superadmin with TOTP verified, and no members, invitations, events, cards, or photos.
-- **Latest stage:** every workflow was tested on a local Supabase stack and a real reader, and the bugs
-  that found were fixed and deployed in `0e2a97f`. Firmware 2.0.2 is flashed to the one reader. See
-  `docs/test-plan.md`.
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`. Production had migrations through 0014 at
+  the last check. 0015 (check-in methods) and 0016 (leaderboard by stars) are in the repo and must be
+  applied with the push that carries this change.
+- **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
+  test members exist. Nothing here was read from it after that.
+- **Latest stage:** the kiosk reads continuously and can check a member in by name, GDG number, or
+  QR code; the event form is cut from 26 fields to 7; and eight bugs from a full UX audit are fixed.
+  All of it is tested on a local stack. See `docs/test-plan.md`.
+
+### Approved and not built yet
+
+The owner approved these on 2026-11-04, in this order:
+
+1. Profiles and cards for admins: staff get the same profile and card records as members, marked as
+   organizers, with no points or leaderboard place. Existing staff get a placeholder profile.
+2. A single guided card-writing flow, fewer navigation tabs, merged Users and Invitations, simpler
+   reward decisions, and plain wording throughout.
+3. Permanent delete for superadmins (events and similar records), with the audit log kept.
 
 ### Waiting on a person
 
 These are hosted settings that an agent should not change. Check current values rather than assuming
 them, and do not record a weak setting here, because this repository is public:
 
+- After the push, confirm migrations 0015 and 0016 are applied to production. Until they are, the
+  leaderboard is empty and check-in methods are not recorded.
 - Set the Site URL in Supabase Auth to the production host, as `docs/deployment.md` says. Agents have
   no way to read it from here.
-- Confirm leaked-password protection is on, where the plan offers it. `get_advisors` reports it.
 - Confirm `NEXT_PUBLIC_SITE_URL` in Vercel matches the production host before writing physical cards,
-  because card URLs are built from it. An agent could not read it; the origin of the first generated
-  member invite shows it.
+  because card URLs are built from it. The origin of a generated invite link shows it.
 
 ### Verification record
 
-On a local Supabase stack with every migration applied, on 2026-11-04:
+On a local Supabase stack with every migration through 0016 applied, on 2026-11-04:
 
-- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 54
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass, and `pnpm test` passes 67
   unit tests.
 - `pnpm db:verify` passes 76/76.
-- `pnpm e2e` passes 51 with 31 skipped: 41/41 on desktop Chromium, and on the mobile project the 10
-  public specs pass while the signed-in specs skip by design.
-- `pnpm db:reset` emptied the stack, kept the schema and privileges, and a bootstrapped superadmin then
-  set a password, enrolled TOTP, and reached `/admin`.
+- `pnpm e2e` passes 52 with 32 skipped: 42/42 on desktop Chromium, and on the mobile project the 10
+  public specs pass while the signed-in specs skip by design. The suite covers the always-on kiosk,
+  check-in by name and by a typed QR link, the short event form, and the bug fixes.
+- A one-off run with Chromium's simulated camera decoded a member's QR code at the kiosk and recorded
+  the check-in as `qr`, with no CSP or permissions-policy violation.
 
 On the physical ESP32 + PN532 with firmware 2.0.2:
 
-- The app, through the real reader and card, passed invitation, setup, prepare, write, read back,
-  activate, the card URL resolving, check-in, check-out, and the points grant. Only
+- Read-only, with nothing on the reader: the always-on kiosk connected and polled about ten times a
+  second for 18 seconds with only `no_card` replies and no errors.
+- Earlier the same day, with the old Read button: the app passed invitation, setup, prepare, write,
+  read back, activate, the card URL resolving, check-in, check-out, and the points grant. Only
   `navigator.serial` was bridged to COM3, because its picker cannot be automated.
-- 17/17 serial robustness checks pass, and a read with the PN532 off reports `nfc_not_ready` in about
-  1.5 s.
 
-On production, read-only, the same day, after a person ran the reset and the bootstrap:
+On production, read-only, earlier on 2026-11-04:
 
-- Only the first superadmin remains: one Auth user, one active role, a verified TOTP factor, an AAL2
-  session, and audit rows for the role grant and the password being set. That shows the invite,
-  password, and TOTP steps completed against production.
-- All 14 migrations are applied, RLS is on for all 20 `public` tables, and the append-only and
-  last-superadmin triggers are in place.
 - `anon` can execute no public function, and `authenticated` can execute only the three RLS helpers.
 - `/auth/v1/settings` reports `disable_signup: true`.
-- `0e2a97f` deployed with a Vercel success status. Public pages load, gated pages redirect to
-  `/login`, an unknown card reaches the neutral page, and the new form code is in the `/login` scripts.
+- Invite links open a Continue page for chat and mail previews without creating a session.
 
 ### Not verified yet
 
-- Member flows on the deployed app: invitations, setup, profiles, events, the kiosk, and rewards. Only
-  the first superadmin's sign-in has run there.
-- A new authenticator enrollment on the deployed app showing the production host as its name.
-- An invite link surviving a real chat or mail preview on the deployed app. Previews were simulated
-  locally with bot user agents.
-- The Chrome or Edge port picker, a Web Serial session on the hosted app, a hosted `/admin/kiosk` read
-  and confirmation, and a production card written for a live member.
-- On real hardware: an empty antenna (the fake port covers `no_card`), a locked or too-small card, a
-  card removed mid-write, a purchased card batch, and two lanes.
+- This change on the deployed app, including the two migrations.
+- A real card read through the always-on kiosk on the physical reader, and the reader reconnecting
+  by itself on a second visit, which needs a real browser's saved port permission.
+- A real camera scanning a real phone screen at the kiosk.
+- The Chrome or Edge port picker, a hosted `/admin/kiosk` session, and a production card written for
+  a live member.
+- On real hardware: a locked or too-small card, a card removed mid-write, a purchased card batch, and
+  two lanes.
 
 ### Known issues and open decisions
 

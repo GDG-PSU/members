@@ -30,7 +30,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 
 ## Preflight (day before / morning of)
 
-1. **Event and sessions:** publish the event with exactly one main session; add bonus sessions only if they need their own check-in/out. Confirm windows, minimum duration and reward points.
+1. **Event:** create the event (it starts as a draft), check its times, points and attendance rules, then publish it. Add a bonus session only if part of the event needs its own check-in and points.
 2. **USB lane:** connect the reader at `/admin/cards` and confirm `info` reports NFC ready. There is no server registration or lane label.
 3. **Pages:** admin and kiosk pages load with AAL2, server time is sane, and the HTTPS certificate is valid. The reader itself does not use the network.
 4. **Test card:** perform a write test only on a non-production test card.
@@ -39,13 +39,14 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 
 ## USB kiosk operation during an event
 
-1. Connect the reader at `/admin/kiosk` and select the event/session. Confirm the connection status shows the expected firmware and NFC readiness.
-2. Tap the member's card. The page shows the member name/photo and current attendance state. **Nothing is awarded yet.** If it says **Photo changed in the last 48 hours**, ask for the member's PSU ID.
+1. Open the event and select **Open kiosk**, or open `/admin/kiosk` and choose the session; the one open now is listed first. Select **Connect reader** once. On later visits the browser reconnects to the reader by itself.
+2. The reader is always on, so there is no read button. Tap the member's card: the page shows their name, photo and whether this is a check-in or a check-out. **Nothing is awarded yet.** If it says **Photo changed in the last 48 hours**, ask for the member's PSU ID. A card must be lifted off the reader before the next one is read.
 3. An organizer compares the person to the photo, and for a recent photo change matches the PSU ID and ticks **I checked this member's PSU ID**. Then press **Confirm check-in**; the server rejects the confirmation if the check is missing. Duplicate reads show a clear "already checked in" state.
-4. At the end, tap the card again; the organizer confirms **Check-out**. The server computes duration. Only at/over the session threshold are points and stars added.
+4. At the end, tap the card again; the organizer confirms **Check-out**. Points and stars are added when the check-out falls inside the event's check-out time.
 5. A member who leaves without checkout gets no attendance. Do not confirm a checkout they did not make.
 6. Bonus sessions are separate: read and confirm them independently. A main-session check-out does not qualify a bonus session.
-7. If the lane is slow or disconnected, reconnect it and retry. Use the digital ID and an audited manual correction rather than inventing a scan.
+7. **No card:** under **No card?**, type the member's name or GDG number and pick them, or select **Scan QR code** and scan the code on their **Digital ID** page. A handheld scanner also works: scan into the search box. The same photo check and confirmation follow, and the attendance record shows that the member was found by an organizer or by QR code.
+8. If the reader is slow or disconnected, reconnect it; details are under **Reader troubleshooting**. Members can still be checked in without a reader, as in step 7.
 
 ### Writing or replacing a card
 

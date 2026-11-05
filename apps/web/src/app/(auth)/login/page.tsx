@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Alert, Card, CardContent } from '@gdg/ui';
 import { LoginForm } from '@/components/auth/login-form';
 import { getViewer } from '@/lib/auth/viewer';
+import { safeReturnPath } from '@/lib/security/request';
 import { SUPPORT_EMAIL } from '@/lib/env';
 
 export const metadata: Metadata = {
@@ -17,10 +18,16 @@ export default async function LoginPage({
   searchParams: Promise<{ notice?: string; next?: string }>;
 }) {
   const viewer = await getViewer();
+  const { notice, next } = await searchParams;
   if (viewer.user) {
-    redirect(viewer.member ? '/member' : viewer.isAdmin ? '/admin' : '/invite/accept');
+    redirect(
+      viewer.member
+        ? (safeReturnPath(next, 'member') ?? '/member')
+        : viewer.isAdmin
+          ? (safeReturnPath(next, 'admin') ?? '/admin')
+          : '/invite/accept',
+    );
   }
-  const { notice } = await searchParams;
 
   return (
     <div>
@@ -44,7 +51,7 @@ export default async function LoginPage({
           </div>
 
           <div className="mt-5">
-            <LoginForm />
+            <LoginForm next={next} />
           </div>
 
           <div className="my-6 border-t border-border" />

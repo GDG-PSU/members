@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   attendanceCorrectionSchema,
-  eventInputSchema,
+  eventFormSchema,
   interactionRewardSchema,
   invitationCreateSchema,
   memberStatusSchema,
@@ -19,6 +19,15 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { photoChangedWithin } from '@/lib/profile/identity';
 import { profilePhotoUrl } from '@/lib/profile/photo';
 import { encryptSecret, generateCardToken, hashToken } from '@/lib/security/tokens';
+import {
+  DEFAULT_ARRIVE_BY,
+  DEFAULT_LEAVE_FROM,
+  KEEP_TIMES,
+  sessionWindows,
+  slugifyEventName,
+  type ArriveBy,
+  type LeaveFrom,
+} from '@/lib/events/attendance-rules';
 import { newYorkInputToIso } from '@/lib/format';
 import { SITE_URL } from '@/lib/env';
 
@@ -403,6 +412,17 @@ export async function changeUserRoleAction(formData: FormData) {
       .is('revoked_at', null),
     admin.from('members').select('id, status').eq('auth_user_id', authUserId.data).maybeSingle(),
   ]);
+  const currentType = beforeRoles?.some((row) => row.role === 'superadmin')
+    ? 'superadmin'
+    : beforeRoles?.length
+      ? 'admin'
+      : beforeMember
+        ? 'member'
+        : null;
+  // The database call reactivates a member's row, so a save that changes
+  // nothing would quietly lift a suspension.
+  if (currentType === role.data) fail(returnTo, 'That is already their user type.');
+
   let beforePhotoPath: string | null = null;
   if (beforeMember) {
     const { data: beforeProfile } = await admin
@@ -751,6 +771,8 @@ export type UsbCardState = {
   activated?: boolean;
 };
 
+export type KioskMethod = 'card' | 'qr' | 'manual';
+
 export type UsbKioskPreview = {
   ok?: boolean;
   error?: string;
@@ -763,6 +785,14 @@ export type UsbKioskPreview = {
   eventName?: string;
   sessionName?: string;
   action?: 'check_in' | 'check_out';
+  method?: KioskMethod;
+};
+
+export type KioskMemberHit = {
+  memberId: string;
+  name: string;
+  number: string;
+  photoUrl: string | null;
 };
 
 function cardTokenFromUri(uri: string): string | null {
@@ -776,44 +806,34 @@ function cardTokenFromUri(uri: string): string | null {
   }
 }
 
-/**
- * Resolves a card URL read over the browser-local USB lane and creates a
- * short-lived pending scan. It deliberately does not require a registered
- * device: the admin's authenticated session and the existing confirmation
- * transaction remain the authority. No attendance is written here.
- */
-export async function previewUsbKioskAction(input: {
-  uri: string;
-  sessionId: string;
-}): Promise<UsbKioskPreview> {
-  const { user } = await requireAdminActor();
-  const parsed = z
-    .object({
-      uri: z.string().trim().min(1).max(2048),
-      sessionId: z.uuid(),
-    })
-    .safeParse(input);
-  if (!parsed.success) return { error: 'Scan a valid card and select an event session.' };
-
-  const token = cardTokenFromUri(parsed.data.uri);
-  if (!token) return { error: 'That tag does not contain a valid GDG card URL.' };
-
-  const admin = createSupabaseAdmin();
-  const { data: card } = await admin
-    .from('card_credentials')
-    .select('id, member_id, status')
-    .eq('token_hash', hashToken(token))
-    .maybeSingle();
-  if (!card || card.status !== 'active') {
-    return { error: 'That card is not active. Use a current member card or issue a replacement.' };
+/** The QR code on a member's digital ID is their profile link. */
+function profileSlugFromCode(code: string): string | null {
+  try {
+    const match = /^\/m\/([A-Za-z0-9_-]{22,64})\/?$/.exec(new URL(code).pathname);
+    return match?.[1] ?? null;
+  } catch {
+    return null;
   }
+}
 
+/**
+ * Every way of identifying a member at the kiosk ends here: a short-lived
+ * pending scan that an organizer still has to confirm. No attendance is written.
+ */
+async function startKioskScan(input: {
+  memberId: string;
+  cardId: string | null;
+  sessionId: string;
+  method: KioskMethod;
+  actorId: string;
+}): Promise<UsbKioskPreview> {
+  const admin = createSupabaseAdmin();
   const { data: member } = await admin
     .from('members')
     .select(
       'id, status, public_number, member_profiles(display_name, profile_slug, photo_changed_at)',
     )
-    .eq('id', card.member_id)
+    .eq('id', input.memberId)
     .maybeSingle();
   const profile = Array.isArray(member?.member_profiles)
     ? member.member_profiles[0]
@@ -827,7 +847,7 @@ export async function previewUsbKioskAction(input: {
     .select(
       'id, name, kind, check_in_opens_at, check_in_closes_at, check_out_opens_at, check_out_closes_at, is_enabled, events(name, status)',
     )
-    .eq('id', parsed.data.sessionId)
+    .eq('id', input.sessionId)
     .maybeSingle();
   const event = Array.isArray(session?.events) ? session.events[0] : session?.events;
   if (!session || !session.is_enabled || event?.status === 'cancelled') {
@@ -867,19 +887,19 @@ export async function previewUsbKioskAction(input: {
     .insert({
       device_id: null,
       member_id: member.id,
-      card_id: card.id,
+      card_id: input.cardId,
       session_id: session.id,
       action,
       status: 'pending',
-      idempotency_key: `usb:${randomUUID()}`,
+      idempotency_key: `kiosk:${randomUUID()}`,
       expires_at: new Date(now + 3 * 60_000).toISOString(),
-      metadata: { source: 'usb-kiosk', actor: user.id },
+      metadata: { source: 'usb-kiosk', method: input.method, actor: input.actorId },
     })
     .select('id')
     .single();
   if (scanError || !scan) {
-    console.error(`[usb-kiosk] could not create pending scan: ${scanError?.message ?? 'unknown'}`);
-    return { error: 'The kiosk could not start this scan. Try again.' };
+    console.error(`[kiosk] could not create pending scan: ${scanError?.message ?? 'unknown'}`);
+    return { error: 'The kiosk could not start this check-in. Try again.' };
   }
 
   const photoChangedAt = (profile?.photo_changed_at as string | undefined) ?? null;
@@ -894,7 +914,170 @@ export async function previewUsbKioskAction(input: {
     eventName: (event?.name as string | null) ?? 'Event',
     sessionName: session.name as string,
     action,
+    method: input.method,
   };
+}
+
+/**
+ * Resolves a card URL read over the browser-local USB reader. It deliberately
+ * does not require a registered device: the admin's authenticated session and
+ * the existing confirmation transaction remain the authority.
+ */
+export async function previewUsbKioskAction(input: {
+  uri: string;
+  sessionId: string;
+}): Promise<UsbKioskPreview> {
+  const { user } = await requireAdminActor();
+  const parsed = z
+    .object({
+      uri: z.string().trim().min(1).max(2048),
+      sessionId: z.uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { error: 'Scan a valid card and select an event session.' };
+
+  const token = cardTokenFromUri(parsed.data.uri);
+  if (!token) return { error: 'That tag does not contain a valid GDG card URL.' };
+
+  const { data: card } = await createSupabaseAdmin()
+    .from('card_credentials')
+    .select('id, member_id, status')
+    .eq('token_hash', hashToken(token))
+    .maybeSingle();
+  if (!card || card.status !== 'active') {
+    return { error: 'That card is not active. Use a current member card or issue a replacement.' };
+  }
+
+  return startKioskScan({
+    memberId: card.member_id as string,
+    cardId: card.id as string,
+    sessionId: parsed.data.sessionId,
+    method: 'card',
+    actorId: user.id,
+  });
+}
+
+/**
+ * Starts a check-in without a card: the organizer picked the member from a
+ * search, or scanned the QR code on their digital ID. Neither proves who is
+ * standing there any more than a card does, so the same photo check and
+ * confirmation follow, and the attendance row records the method.
+ */
+export async function previewKioskLookupAction(input: {
+  sessionId: string;
+  memberId?: string;
+  code?: string;
+}): Promise<UsbKioskPreview> {
+  const { user } = await requireAdminActor();
+  const parsed = z
+    .object({
+      sessionId: z.uuid(),
+      memberId: z.uuid().optional(),
+      code: z.string().trim().min(1).max(2048).optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { error: 'Choose a member and an event session.' };
+  const { sessionId, memberId, code } = parsed.data;
+
+  if (memberId) {
+    return startKioskScan({
+      memberId,
+      cardId: null,
+      sessionId,
+      method: 'manual',
+      actorId: user.id,
+    });
+  }
+  if (!code) return { error: 'Choose a member and an event session.' };
+
+  const admin = createSupabaseAdmin();
+  const slug = profileSlugFromCode(code);
+  if (slug) {
+    const { data: profile } = await admin
+      .from('member_profiles')
+      .select('member_id')
+      .eq('profile_slug', slug)
+      .maybeSingle();
+    if (!profile) return { error: 'That code does not belong to a member.' };
+    return startKioskScan({
+      memberId: profile.member_id as string,
+      cardId: null,
+      sessionId,
+      method: 'qr',
+      actorId: user.id,
+    });
+  }
+
+  const number = code.toUpperCase();
+  if (/^GDG-[A-Z0-9]{6}$/.test(number)) {
+    const { data: member } = await admin
+      .from('members')
+      .select('id')
+      .eq('public_number', number)
+      .maybeSingle();
+    if (!member) return { error: 'No member has that GDG number.' };
+    return startKioskScan({
+      memberId: member.id as string,
+      cardId: null,
+      sessionId,
+      method: 'manual',
+      actorId: user.id,
+    });
+  }
+
+  return { error: 'That is not a member QR code or GDG number.' };
+}
+
+/** Finds active members by name or GDG number for a check-in without a card. */
+export async function searchKioskMembersAction(query: string): Promise<KioskMemberHit[]> {
+  await requireAdminActor();
+  const parsed = z.string().trim().min(2).max(60).safeParse(query);
+  if (!parsed.success) return [];
+  // The value goes into a LIKE pattern, where % and _ are wildcards.
+  const pattern = `%${parsed.data.replace(/[\\%_]/g, '\\$&')}%`;
+
+  const admin = createSupabaseAdmin();
+  const [byName, byNumber] = await Promise.all([
+    admin
+      .from('member_profiles')
+      .select('display_name, profile_slug, members!inner(id, status, public_number)')
+      .ilike('display_name', pattern)
+      .eq('members.status', 'active')
+      .order('display_name')
+      .limit(8),
+    admin
+      .from('members')
+      .select('id, public_number, member_profiles!inner(display_name, profile_slug)')
+      .ilike('public_number', pattern)
+      .eq('status', 'active')
+      .order('public_number')
+      .limit(8),
+  ]);
+
+  const hits = new Map<string, KioskMemberHit>();
+  for (const row of byName.data ?? []) {
+    const member = Array.isArray(row.members) ? row.members[0] : row.members;
+    if (!member) continue;
+    hits.set(member.id as string, {
+      memberId: member.id as string,
+      name: row.display_name as string,
+      number: member.public_number as string,
+      photoUrl: profilePhotoUrl(row.profile_slug as string),
+    });
+  }
+  for (const row of byNumber.data ?? []) {
+    const profile = Array.isArray(row.member_profiles)
+      ? row.member_profiles[0]
+      : row.member_profiles;
+    if (!profile || hits.has(row.id as string)) continue;
+    hits.set(row.id as string, {
+      memberId: row.id as string,
+      name: profile.display_name as string,
+      number: row.public_number as string,
+      photoUrl: profilePhotoUrl(profile.profile_slug as string),
+    });
+  }
+  return [...hits.values()].slice(0, 8);
 }
 
 /**
@@ -1023,23 +1206,6 @@ export async function revokeCardAction(formData: FormData) {
 /* Events                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function readSession(formData: FormData, prefix: string, kind: 'main' | 'bonus') {
-  return {
-    id: readString(formData, `${prefix}Id`) || undefined,
-    name: readString(formData, `${prefix}Name`),
-    kind,
-    startsAt: readString(formData, `${prefix}StartsAt`),
-    endsAt: readString(formData, `${prefix}EndsAt`),
-    checkInOpensAt: readString(formData, `${prefix}CheckInOpensAt`),
-    checkInClosesAt: readString(formData, `${prefix}CheckInClosesAt`),
-    checkOutOpensAt: readString(formData, `${prefix}CheckOutOpensAt`),
-    checkOutClosesAt: readString(formData, `${prefix}CheckOutClosesAt`),
-    minimumDurationMinutes: Number(readString(formData, `${prefix}MinDuration`)),
-    rewardPoints: Number(readString(formData, `${prefix}Reward`)),
-    isEnabled: true,
-  };
-}
-
 function toIso(value: string): string {
   try {
     return newYorkInputToIso(value);
@@ -1048,155 +1214,212 @@ function toIso(value: string): string {
   }
 }
 
-function normalizeSession(session: ReturnType<typeof readSession>) {
-  return {
-    ...session,
-    startsAt: toIso(session.startsAt),
-    endsAt: toIso(session.endsAt),
-    checkInOpensAt: toIso(session.checkInOpensAt),
-    checkInClosesAt: toIso(session.checkInClosesAt),
-    checkOutOpensAt: toIso(session.checkOutOpensAt),
-    checkOutClosesAt: toIso(session.checkOutClosesAt),
-  };
-}
-
 /** Errors come back to the form rather than through a redirect, so typed values survive. */
 export type AdminFormState = { error?: string };
 
 function eventSaveError(error: { code?: string; message: string }): AdminFormState {
-  if (error.code === '23505') return { error: 'That slug is already used by another event.' };
+  if (error.code === '23505') {
+    return { error: 'Another event was just saved with the same name. Save again.' };
+  }
   return { error: domainErrorMessage(error.message) };
 }
 
+type StoredSession = {
+  id: string;
+  kind: 'main' | 'bonus';
+  name: string;
+  check_in_opens_at: string;
+  check_in_closes_at: string;
+  check_out_opens_at: string;
+  check_out_closes_at: string;
+};
+
+/** The event's public web address: its name, with a number added if that is taken. */
+async function freeEventSlug(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  name: string,
+): Promise<string> {
+  const base = slugifyEventName(name) || 'event';
+  const { data } = await admin.from('events').select('slug').like('slug', `${base}%`);
+  const taken = new Set((data ?? []).map((row) => row.slug as string));
+  if (!taken.has(base)) return base;
+  for (let suffix = 2; suffix < 200; suffix += 1) {
+    if (!taken.has(`${base}-${suffix}`)) return `${base}-${suffix}`;
+  }
+  return `${base}-${randomUUID().slice(0, 8)}`;
+}
+
+/** Times that match no option are left exactly as stored when the form says to keep them. */
+function windowsFor(
+  startsAt: string,
+  endsAt: string,
+  arriveBy: ArriveBy | typeof KEEP_TIMES,
+  leaveFrom: LeaveFrom | typeof KEEP_TIMES,
+  stored: StoredSession | undefined,
+) {
+  const computed = sessionWindows(
+    startsAt,
+    endsAt,
+    arriveBy === KEEP_TIMES ? DEFAULT_ARRIVE_BY : arriveBy,
+    leaveFrom === KEEP_TIMES ? DEFAULT_LEAVE_FROM : leaveFrom,
+  );
+  const keepCheckIn = arriveBy === KEEP_TIMES && stored;
+  const keepCheckOut = leaveFrom === KEEP_TIMES && stored;
+  return {
+    check_in_opens_at: keepCheckIn ? stored.check_in_opens_at : computed.checkInOpensAt,
+    check_in_closes_at: keepCheckIn ? stored.check_in_closes_at : computed.checkInClosesAt,
+    check_out_opens_at: keepCheckOut ? stored.check_out_opens_at : computed.checkOutOpensAt,
+    check_out_closes_at: keepCheckOut ? stored.check_out_closes_at : computed.checkOutClosesAt,
+  };
+}
+
+/**
+ * Saves an event from the short form. The organizer gives the event's own times,
+ * the points, and two attendance rules; the session rows and their check-in and
+ * check-out times are worked out here. A new event always starts as a draft.
+ */
 export async function saveEventAction(
   _prev: AdminFormState,
   formData: FormData,
 ): Promise<AdminFormState> {
   const { user } = await requireAdminActor();
-  const returnTo = readReturnTo(formData);
   const eventId = readString(formData, 'eventId') || undefined;
   if (eventId && !z.uuid().safeParse(eventId).success) return { error: 'Invalid event.' };
-  const sessions = [normalizeSession(readSession(formData, 'main', 'main'))];
-  if (readString(formData, 'bonusName')) {
-    const bonus = normalizeSession(readSession(formData, 'bonus', 'bonus'));
-    sessions.push(bonus);
+
+  const startsInput = readString(formData, 'startsAt');
+  const endsInput = readString(formData, 'endsAt');
+  if (!startsInput || !endsInput) return { error: 'Enter when the event starts and ends.' };
+  const bonusName = readString(formData, 'bonusName').trim();
+  const bonusStarts = readString(formData, 'bonusStartsAt');
+  const bonusEnds = readString(formData, 'bonusEndsAt');
+  if (bonusName && (!bonusStarts || !bonusEnds)) {
+    return { error: 'Enter when the bonus session starts and ends.' };
   }
 
-  const parsed = eventInputSchema.safeParse({
+  const parsed = eventFormSchema.safeParse({
     name: readString(formData, 'name'),
-    slug: readString(formData, 'slug'),
     summary: readString(formData, 'summary'),
     location: readString(formData, 'location'),
-    startsAt: toIso(readString(formData, 'startsAt')),
-    endsAt: toIso(readString(formData, 'endsAt')),
-    status: readString(formData, 'status'),
+    startsAt: toIso(startsInput),
+    endsAt: toIso(endsInput),
     isPublic: formData.get('isPublic') === 'on',
-    sessions,
+    points: Number(readString(formData, 'points') || '0'),
+    arriveBy: readString(formData, 'arriveBy') || DEFAULT_ARRIVE_BY,
+    leaveFrom: readString(formData, 'leaveFrom') || DEFAULT_LEAVE_FROM,
+    bonus: bonusName
+      ? {
+          name: bonusName,
+          startsAt: toIso(bonusStarts),
+          endsAt: toIso(bonusEnds),
+          points: Number(readString(formData, 'bonusPoints') || '0'),
+        }
+      : null,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Check the event form.' };
   }
+  const form = parsed.data;
 
   const admin = createSupabaseAdmin();
-  let id = eventId;
-  if (id) {
-    const { error } = await admin
+  let existing: { id: string; slug: string } | null = null;
+  let stored: StoredSession[] = [];
+  if (eventId) {
+    const { data } = await admin
       .from('events')
-      .update({
-        name: parsed.data.name,
-        slug: parsed.data.slug,
-        summary: parsed.data.summary,
-        location: parsed.data.location,
-        starts_at: parsed.data.startsAt,
-        ends_at: parsed.data.endsAt,
-        status: parsed.data.status,
-        is_public: parsed.data.isPublic,
-      })
-      .eq('id', id);
+      .select(
+        'id, slug, event_sessions(id, kind, name, check_in_opens_at, check_in_closes_at, check_out_opens_at, check_out_closes_at)',
+      )
+      .eq('id', eventId)
+      .maybeSingle();
+    if (!data) return { error: 'That event no longer exists.' };
+    existing = { id: data.id as string, slug: data.slug as string };
+    stored = (Array.isArray(data.event_sessions) ? data.event_sessions : []) as StoredSession[];
+  }
+
+  const eventRow = {
+    name: form.name,
+    summary: form.summary,
+    location: form.location,
+    starts_at: form.startsAt,
+    ends_at: form.endsAt,
+    is_public: form.isPublic,
+  };
+  let id: string;
+  let slug: string;
+  if (existing) {
+    // The web address stays put when the name changes, so shared links keep working.
+    ({ id, slug } = existing);
+    const { error } = await admin.from('events').update(eventRow).eq('id', id);
     if (error) return eventSaveError(error);
   } else {
+    slug = await freeEventSlug(admin, form.name);
     const { data, error } = await admin
       .from('events')
-      .insert({
-        name: parsed.data.name,
-        slug: parsed.data.slug,
-        summary: parsed.data.summary,
-        location: parsed.data.location,
-        starts_at: parsed.data.startsAt,
-        ends_at: parsed.data.endsAt,
-        status: parsed.data.status,
-        is_public: parsed.data.isPublic,
-        created_by: user.id,
-      })
+      .insert({ ...eventRow, slug, status: 'draft', created_by: user.id })
       .select('id')
       .single();
     if (error || !data) return eventSaveError(error ?? { message: 'Event insert returned no row' });
-    id = data.id;
+    id = data.id as string;
   }
 
-  for (const session of parsed.data.sessions) {
+  const saveSession = async (
+    kind: 'main' | 'bonus',
+    input: { name: string; startsAt: string; endsAt: string; points: number },
+  ) => {
+    const current = stored.find((session) => session.kind === kind);
     const payload = {
       event_id: id,
-      name: session.name,
-      kind: session.kind,
-      starts_at: session.startsAt,
-      ends_at: session.endsAt,
-      check_in_opens_at: session.checkInOpensAt,
-      check_in_closes_at: session.checkInClosesAt,
-      check_out_opens_at: session.checkOutOpensAt,
-      check_out_closes_at: session.checkOutClosesAt,
-      minimum_duration_minutes: session.minimumDurationMinutes,
-      reward_points: session.rewardPoints,
-      is_enabled: session.isEnabled,
-      reward_policy: {
-        minimum_duration_minutes: session.minimumDurationMinutes,
-        reward_points: session.rewardPoints,
-      },
+      kind,
+      name: input.name,
+      starts_at: input.startsAt,
+      ends_at: input.endsAt,
+      ...windowsFor(input.startsAt, input.endsAt, form.arriveBy, form.leaveFrom, current),
+      // The arrive-by and leave-from times are the whole rule now.
+      minimum_duration_minutes: 0,
+      reward_points: input.points,
+      is_enabled: true,
+      reward_policy: { minimum_duration_minutes: 0, reward_points: input.points },
     };
-    if (session.id) {
-      // Scoped to this event: the id comes from the form, and an unscoped update
-      // would move another event's session here.
-      const { error } = await admin
-        .from('event_sessions')
-        .update(payload)
-        .eq('id', session.id)
-        .eq('event_id', id);
-      if (error) return eventSaveError(error);
-    } else {
-      const { data: existing } = await admin
-        .from('event_sessions')
-        .select('id')
-        .eq('event_id', id)
-        .eq('kind', session.kind)
-        .maybeSingle();
-      if (existing) {
-        const { error } = await admin.from('event_sessions').update(payload).eq('id', existing.id);
-        if (error) return eventSaveError(error);
-      } else {
-        const { error } = await admin.from('event_sessions').insert(payload);
-        if (error) return eventSaveError(error);
-      }
-    }
+    const { error } = current
+      ? await admin.from('event_sessions').update(payload).eq('id', current.id).eq('event_id', id)
+      : await admin.from('event_sessions').insert(payload);
+    return error;
+  };
+
+  const mainError = await saveSession('main', {
+    name: stored.find((session) => session.kind === 'main')?.name ?? 'Main session',
+    startsAt: form.startsAt,
+    endsAt: form.endsAt,
+    points: form.points,
+  });
+  if (mainError) return eventSaveError(mainError);
+
+  const storedBonus = stored.find((session) => session.kind === 'bonus');
+  if (form.bonus) {
+    const bonusError = await saveSession('bonus', form.bonus);
+    if (bonusError) return eventSaveError(bonusError);
+  } else if (storedBonus) {
+    // A bonus session people already attended is switched off, never deleted,
+    // so their attendance and points stay on record.
+    const { count } = await admin
+      .from('attendance_records')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_id', storedBonus.id);
+    const { error } = count
+      ? await admin.from('event_sessions').update({ is_enabled: false }).eq('id', storedBonus.id)
+      : await admin.from('event_sessions').delete().eq('id', storedBonus.id);
+    if (error) return eventSaveError(error);
   }
 
-  await audit(
-    user.id,
-    eventId ? 'event.updated' : 'event.created',
-    'event',
-    id ?? null,
-    null,
-    null,
-    {
-      name: parsed.data.name,
-      status: parsed.data.status,
-      sessions: parsed.data.sessions.length,
-    },
-  );
-  succeed(returnTo, 'Event saved.', [
-    '/events',
-    `/events/${parsed.data.slug}`,
+  await audit(user.id, existing ? 'event.updated' : 'event.created', 'event', id, null, null, {
+    name: form.name,
+    sessions: form.bonus ? 2 : 1,
+  });
+  succeed(
     `/admin/events/${id}`,
-  ]);
+    existing ? 'Event saved.' : 'Event saved as a draft. Publish it when it is ready.',
+    ['/events', `/events/${slug}`, '/admin/events'],
+  );
 }
 
 export async function setEventStatusAction(formData: FormData) {
@@ -1229,7 +1452,13 @@ export async function setEventStatusAction(formData: FormData) {
     { status: event.status },
     { status: status.data },
   );
-  succeed(returnTo, `Event marked ${status.data}.`, ['/events', `/events/${event.slug}`]);
+  const message = {
+    draft: 'Event moved back to drafts.',
+    published: 'Event published.',
+    cancelled: 'Event cancelled.',
+    completed: 'Event marked completed.',
+  }[status.data];
+  succeed(returnTo, message, ['/events', `/events/${event.slug}`, '/admin/events']);
 }
 
 /* -------------------------------------------------------------------------- */

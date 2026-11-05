@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CARD_POLL_INTERVAL_MS,
   isAbortError,
+  isReaderFault,
   laneErrorMessage,
   waitForCard,
+  waitForCardRemoved,
 } from './wait-for-card';
 
 afterEach(() => {
@@ -82,5 +84,51 @@ describe('waitForCard', () => {
       name: 'AbortError',
     });
     expect(operation).not.toHaveBeenCalled();
+  });
+});
+
+describe('waitForCardRemoved', () => {
+  it('waits while the same card, or an unreadable one, is still on the reader', async () => {
+    vi.useFakeTimers();
+    const replies: Array<() => Promise<string>> = [
+      async () => 'https://example.test/c/card',
+      async () => {
+        throw new Error('ndef_record_missing');
+      },
+      async () => {
+        throw new Error('no_card');
+      },
+    ];
+    const read = vi.fn(() => (replies.shift() ?? replies[0])!());
+
+    const promise = waitForCardRemoved(read, new AbortController().signal, 100);
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
+  it('hands a reader fault back to the caller instead of waiting forever', async () => {
+    const read = vi.fn(async () => {
+      throw new Error('nfc_not_ready');
+    });
+
+    await expect(waitForCardRemoved(read, new AbortController().signal)).resolves.toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(isReaderFault(new Error('nfc_not_ready'))).toBe(true);
+    expect(isReaderFault(new Error('unsupported_tag'))).toBe(false);
+  });
+
+  it('stops when cancelled', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const outcome = waitForCardRemoved(async () => 'still here', controller.signal, 100).catch(
+      (error: unknown) => error,
+    );
+
+    await vi.advanceTimersByTimeAsync(150);
+    controller.abort();
+
+    expect(isAbortError(await outcome)).toBe(true);
   });
 });

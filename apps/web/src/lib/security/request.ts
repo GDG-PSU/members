@@ -24,6 +24,21 @@ export function safeAuthNextPath(next: string | null | undefined): string {
   return next && AUTH_NEXT_PATHS.has(next) ? next : DEFAULT_AUTH_NEXT;
 }
 
+const RETURN_PATHS = {
+  member: /^\/member(\/[A-Za-z0-9_-]+)*$/,
+  admin: /^\/admin(\/[A-Za-z0-9_-]+)*$/,
+};
+
+/**
+ * Where a sign-in may continue to: one of our own pages in the signed-in
+ * person's area, written with plain path characters only. Anything else,
+ * including a query string or a second slash, is dropped so the value can never
+ * lead to another site.
+ */
+export function safeReturnPath(next: unknown, area: 'member' | 'admin'): string | null {
+  return typeof next === 'string' && RETURN_PATHS[area].test(next) ? next : null;
+}
+
 /** For cookie-changing route handlers, which do not get the Server Action origin check. */
 export function isSameOriginRequest(request: Request, siteUrl: string): boolean {
   const origin = request.headers.get('origin');

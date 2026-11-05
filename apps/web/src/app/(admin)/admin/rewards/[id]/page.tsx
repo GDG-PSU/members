@@ -6,6 +6,7 @@ import { Card, CardContent, PageShell } from '@gdg/ui';
 import { requireAdmin } from '@/lib/auth/viewer';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { RewardForm, type RewardValues } from '@/components/admin/reward-form';
+import { Flash } from '@/components/admin/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +15,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function EditRewardPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditRewardPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ notice?: string; error?: string }>;
+}) {
   await requireAdmin();
   const { id } = await params;
+  const { notice, error } = await searchParams;
   const admin = createSupabaseAdmin();
   const { data } = await admin
     .from('rewards')
@@ -37,6 +45,7 @@ export default async function EditRewardPage({ params }: { params: Promise<{ id:
 
   return (
     <PageShell width="md">
+      <Flash notice={notice} error={error} />
       <Link
         href="/admin/rewards"
         className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"

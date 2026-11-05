@@ -8,6 +8,17 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+const READER_FAULTS = new Set([
+  'nfc_not_ready',
+  'nfc_unavailable',
+  'The device did not answer in time.',
+]);
+
+/** The reader itself is in trouble, so whether a card is on it cannot be known. */
+export function isReaderFault(error: unknown): boolean {
+  return error instanceof Error && READER_FAULTS.has(error.message);
+}
+
 const NOT_READY = 'The NFC module is not responding. Check its connection to the reader.';
 const UNSUPPORTED = 'This card type is not supported. Use an NTAG213 or NTAG215 card.';
 const UNREADABLE = 'The card could not be read. Hold it flat on the reader and try again.';
@@ -91,6 +102,30 @@ export async function waitForCard<T>(
     } catch (error) {
       if (signal.aborted) throw cancelledError();
       if (!isNoCardError(error)) throw error;
+    }
+
+    await wait(intervalMs, signal);
+  }
+}
+
+/**
+ * Resolves once the reader reports an empty antenna. A card left on the reader
+ * after it was handled must not be read again as if it were the next person's.
+ * A reader fault also resolves, so the caller's next read can report it.
+ */
+export async function waitForCardRemoved(
+  read: () => Promise<unknown>,
+  signal: AbortSignal,
+  intervalMs = 150,
+): Promise<void> {
+  while (true) {
+    if (signal.aborted) throw cancelledError();
+
+    try {
+      await read();
+    } catch (error) {
+      if (signal.aborted) throw cancelledError();
+      if (isNoCardError(error) || isReaderFault(error)) return;
     }
 
     await wait(intervalMs, signal);

@@ -99,9 +99,11 @@ Belongs to an event; `kind` (`main` or `bonus`); start/end; check-in window (`ch
 - Partial unique index `event_sessions_one_main` enforces exactly one main session per event.
 - Rewards are snapshotted on the attendance/ledger rows so later edits do not rewrite history.
 
+The event form does not ask for the four window times or a minimum duration. An organizer picks how late someone may arrive and how early they may leave, and the windows are derived from those (`apps/web/src/lib/events/attendance-rules.ts`). Sessions saved through the form have `minimum_duration_minutes = 0`; the column and its rule remain for older rows.
+
 ### `attendance_records`
 
-Unique `(member_id, session_id)`. Stores check-in timestamp/actor, check-out timestamp/actor, `state` (`checked_in`, `completed`, `rejected`), computed `duration_minutes`, `qualified`, `reward_points` and `ledger_id`.
+Unique `(member_id, session_id)`. Stores check-in timestamp/actor, check-out timestamp/actor, `state` (`checked_in`, `completed`, `rejected`), computed `duration_minutes`, `qualified`, `reward_points`, `ledger_id`, and how the member was identified at each step: `check_in_method` and `check_out_method` (`card`, `qr` or `manual`).
 
 Points are granted only on confirmed check-out when `duration_minutes >= minimum_duration_minutes` and the session reward is positive. A bonus session has its own attendance row; it is never inferred from the main session.
 
@@ -159,17 +161,17 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 ## Views
 
-| View              | Security                                                                        | Exposure        |
-| ----------------- | ------------------------------------------------------------------------------- | --------------- |
-| `public_profiles` | Definer (owner `postgres`), explicit column projection                          | `service_role`  |
-| `leaderboard`     | Definer, filtered by public profile + points + leaderboard + display-name flags | `service_role`  |
-| `member_balances` | Security invoker, so base-table RLS applies                                     | `authenticated` |
+| View              | Security                                                                       | Exposure        |
+| ----------------- | ------------------------------------------------------------------------------ | --------------- |
+| `public_profiles` | Definer (owner `postgres`), explicit column projection                         | `service_role`  |
+| `leaderboard`     | Definer, filtered by public profile + stars + leaderboard + display-name flags | `service_role`  |
+| `member_balances` | Security invoker, so base-table RLS applies                                    | `authenticated` |
 
 The public pages and `/api/public/*` read the two projections with the server-only client, one profile or one bounded page at a time. They are not exposed through the Supabase API, where anyone holding the publishable key could dump them.
 
 `public_profiles` returns only: slug, conditional display name/photo/about/links/member number/member-since/points/stars/attended-events/email, and `created_at`. It never returns internal UUIDs, Auth IDs, card data, notes or role information. Profiles with `public_profile = false` and non-active members are excluded.
 
-`leaderboard` ranks deterministically by points desc, display name, slug; hidden members are excluded rather than counted as zero.
+`leaderboard` ranks deterministically by lifetime stars desc, display name, slug, so spending points never lowers a rank. It lists members who share their stars and display name and opted in; hidden members are excluded rather than counted as zero.
 
 ## Deletion, retention and corrections
 

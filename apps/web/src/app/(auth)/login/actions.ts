@@ -3,7 +3,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { clientAddress, hashForBucket } from '@/lib/security/request';
+import { clientAddress, hashForBucket, safeReturnPath } from '@/lib/security/request';
 import { withinRateLimit } from '@/lib/security/rate-limit';
 import { createSupabaseServer } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
@@ -62,7 +62,12 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
     await supabase.auth.signOut({ scope: 'local' });
     return { error: 'This membership is not active. Contact GDG@PSU.' };
   }
-  if (member) redirect('/member');
-  if (roleRows?.length) redirect('/admin');
+  const next = formData.get('next');
+  if (member) redirect(safeReturnPath(next, 'member') ?? '/member');
+  if (roleRows?.length) {
+    // The code check comes first, so it carries the destination forward.
+    const target = safeReturnPath(next, 'admin');
+    redirect(target ? `/admin-mfa?next=${encodeURIComponent(target)}` : '/admin');
+  }
   redirect('/invite/accept');
 }

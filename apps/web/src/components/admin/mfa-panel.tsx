@@ -29,10 +29,12 @@ export function MfaPanel({
   hasVerifiedFactor,
   email,
   verifiedFactorId,
+  next,
 }: {
   hasVerifiedFactor: boolean;
   email: string;
   verifiedFactorId?: string;
+  next?: string;
 }) {
   const [enrollState, enrollAction] = useActionState(enrollMfaAction, initial);
   const [verifyState, verifyAction] = useActionState(verifyMfaAction, initial);
@@ -46,6 +48,7 @@ export function MfaPanel({
           current code.
         </p>
         <input type="hidden" name="factorId" value={factorId} />
+        {next ? <input type="hidden" name="next" value={next} /> : null}
         <CodeField autoFocus />
         {verifyState.error ? <Alert variant="danger">{verifyState.error}</Alert> : null}
         <SubmitButton pendingLabel="Verifying…" fullWidth>
@@ -76,6 +79,7 @@ export function MfaPanel({
           </p>
         ) : null}
         <input type="hidden" name="factorId" value={enrollState.factorId ?? ''} />
+        {next ? <input type="hidden" name="next" value={next} /> : null}
         <CodeField autoFocus />
         {verifyState.error ? <Alert variant="danger">{verifyState.error}</Alert> : null}
         <SubmitButton pendingLabel="Verifying…" fullWidth>
@@ -88,8 +92,8 @@ export function MfaPanel({
   return (
     <form action={enrollAction} className="space-y-4">
       <p className="text-sm leading-relaxed text-muted-foreground">
-        No authenticator for <span className="font-semibold text-foreground">{email}</span>. Enroll
-        one to continue.
+        <span className="font-semibold text-foreground">{email}</span> has no authenticator app yet.
+        Set one up to continue.
       </p>
       {enrollState.error ? <Alert variant="danger">{enrollState.error}</Alert> : null}
       <SubmitButton pendingLabel="Starting…" fullWidth className="h-11">

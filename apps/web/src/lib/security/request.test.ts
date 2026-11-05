@@ -5,6 +5,7 @@ import {
   isEmailLinkType,
   isSameOriginRequest,
   safeAuthNextPath,
+  safeReturnPath,
 } from './request';
 
 const SITE = 'https://members.example.edu';
@@ -20,6 +21,37 @@ describe('isEmailLinkType', () => {
     for (const type of ['nope', '', null, undefined, ['invite']]) {
       expect(isEmailLinkType(type)).toBe(false);
     }
+  });
+});
+
+describe('safeReturnPath', () => {
+  it('keeps pages inside the signed-in area', () => {
+    expect(safeReturnPath('/member/rewards', 'member')).toBe('/member/rewards');
+    expect(safeReturnPath('/admin', 'admin')).toBe('/admin');
+    expect(safeReturnPath('/admin/events/0d0c7e0a-1f6f-4d55-9f0a-6f1c9a1d2b3c', 'admin')).toBe(
+      '/admin/events/0d0c7e0a-1f6f-4d55-9f0a-6f1c9a1d2b3c',
+    );
+  });
+
+  it('drops anything that could leave the site or the area', () => {
+    for (const path of [
+      '//evil.example',
+      '/\\evil.example',
+      'https://evil.example',
+      '/admin//evil.example',
+      '/admin/../member',
+      '/admin?next=https://evil.example',
+      '/admin-mfa',
+      '/administrator',
+      '/member',
+      '',
+      null,
+      undefined,
+      ['/admin'],
+    ]) {
+      expect(safeReturnPath(path, 'admin')).toBeNull();
+    }
+    expect(safeReturnPath('/admin/kiosk', 'member')).toBeNull();
   });
 });
 

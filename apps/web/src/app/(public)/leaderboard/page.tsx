@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Leaderboard',
-  description: 'The GDG@PSU member leaderboard, built from verified event attendance.',
+  description: 'The GDG@PSU member leaderboard, ranked by stars earned at events.',
 };
 
 type Entry = Awaited<ReturnType<typeof listLeaderboard>>[number];
@@ -59,10 +59,10 @@ export default async function LeaderboardPage() {
       render: (entry) => <span className="text-muted-foreground">{entry.memberNumber ?? '—'}</span>,
     },
     {
-      key: 'points',
-      header: 'Points',
+      key: 'stars',
+      header: 'Stars',
       align: 'right',
-      render: (entry) => <span className="font-bold tabular-nums">{entry.points}</span>,
+      render: (entry) => <span className="font-bold tabular-nums">{entry.stars}</span>,
     },
   ];
 
@@ -70,9 +70,9 @@ export default async function LeaderboardPage() {
     <PageShell width="lg" className="py-10 sm:py-14">
       <SectionHeading
         headingLevel={1}
-        eyebrow="Semester standings"
+        eyebrow="All-time standings"
         title="The leaderboard"
-        description="Points from confirmed attendance. Stars don't count."
+        description="Ranked by stars: every point you have earned. Spending points on rewards never lowers your rank."
       />
 
       {entries.length === 0 ? (
@@ -140,8 +140,8 @@ export default async function LeaderboardPage() {
                         </div>
                       </div>
                       <div className="mt-4 flex items-baseline gap-1.5">
-                        <span className="text-[2rem] font-light tabular-nums">{entry.points}</span>
-                        <span className="text-xs font-semibold text-muted-foreground">pts</span>
+                        <span className="text-[2rem] font-light tabular-nums">{entry.stars}</span>
+                        <span className="text-xs font-semibold text-muted-foreground">stars</span>
                       </div>
                     </div>
                   </div>

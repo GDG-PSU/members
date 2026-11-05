@@ -376,7 +376,9 @@ test.describe('admin invitation and member setup', () => {
                                   uptimeMs: 1,
                                 },
                               }
-                            : command.cmd === 'nfc.read' && readAttempts === 1
+                            : command.cmd === 'nfc.read' &&
+                                (readAttempts === 1 ||
+                                  (window as unknown as { __lifted?: boolean }).__lifted)
                               ? { id: command.id, ok: false, error: 'no_card' }
                               : command.cmd === 'nfc.read'
                                 ? { id: command.id, ok: true, result: { uri: fixtureCardUrl } }
@@ -422,9 +424,10 @@ test.describe('admin invitation and member setup', () => {
 
           await page.goto('/admin/kiosk');
           await expect(page.getByRole('heading', { name: 'Kiosk' })).toBeVisible();
-          await page.getByRole('button', { name: 'Connect lane' }).click();
-          await expect(page.getByText('Connected.')).toBeVisible({ timeout: 15_000 });
-          await page.getByRole('button', { name: 'Read card' }).click();
+          await page.locator('#kiosk-session').selectOption(kioskSessionId as string);
+          // The reader is always on: the card is read without another click, after
+          // the empty first read shows the kiosk keeps waiting.
+          await page.getByRole('button', { name: 'Connect reader' }).click();
           await expect(page.getByRole('heading', { name: displayName })).toBeVisible({
             timeout: 20_000,
           });
@@ -454,7 +457,15 @@ test.describe('admin invitation and member setup', () => {
           expect(checkedIn?.state).toBe('checked_in');
           expect(checkedIn?.checked_in_at).toBeTruthy();
 
-          await page.getByRole('button', { name: 'Read card' }).click();
+          // The card has to leave the reader before it is read again.
+          await expect(page.getByText('Lift the card off the reader').first()).toBeVisible();
+          await page.evaluate(() => {
+            (window as unknown as { __lifted: boolean }).__lifted = true;
+          });
+          await expect(page.getByText('Waiting for a card')).toBeVisible({ timeout: 15_000 });
+          await page.evaluate(() => {
+            (window as unknown as { __lifted: boolean }).__lifted = false;
+          });
           await expect(page.getByRole('heading', { name: displayName })).toBeVisible({
             timeout: 20_000,
           });

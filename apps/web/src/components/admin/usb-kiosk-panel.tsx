@@ -2,11 +2,25 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Alert, Button, Card, CardContent, Field, MemberAvatar, Select } from '@gdg/ui';
-import { previewUsbKioskAction, type UsbKioskPreview } from '@/app/(admin)/admin/actions';
+import { QrCode, Search } from 'lucide-react';
+import { Alert, Button, Card, CardContent, Field, Input, MemberAvatar, Select, cn } from '@gdg/ui';
+import {
+  previewKioskLookupAction,
+  previewUsbKioskAction,
+  searchKioskMembersAction,
+  type KioskMemberHit,
+  type UsbKioskPreview,
+} from '@/app/(admin)/admin/actions';
 import { formatDateTime } from '@/lib/format';
+import { QrScanDialog } from '@/components/admin/qr-scan-dialog';
 import { useUsbLane } from '@/components/admin/use-usb-lane';
-import { isAbortError, laneErrorMessage, waitForCard } from '@/components/admin/wait-for-card';
+import {
+  isAbortError,
+  isReaderFault,
+  laneErrorMessage,
+  waitForCard,
+  waitForCardRemoved,
+} from '@/components/admin/wait-for-card';
 
 export type KioskSessionOption = {
   id: string;
@@ -14,85 +28,147 @@ export type KioskSessionOption = {
 };
 
 type Message = { kind: 'success' | 'danger'; text: string };
+type ReaderStep = 'waiting' | 'lift';
 
-export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) {
-  const [sessionId, setSessionId] = useState(sessions[0]?.id ?? '');
+const METHOD_LABELS = { card: 'Card', qr: 'QR code', manual: 'Found by organizer' } as const;
+const READER_FAULT_RETRY_MS = 1500;
+const SEARCH_DELAY_MS = 250;
+
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+export function UsbKioskPanel({
+  sessions,
+  initialSessionId,
+}: {
+  sessions: KioskSessionOption[];
+  initialSessionId?: string;
+}) {
+  const [sessionId, setSessionId] = useState(
+    sessions.some((session) => session.id === initialSessionId)
+      ? (initialSessionId ?? '')
+      : (sessions[0]?.id ?? ''),
+  );
   const [scan, setScan] = useState<UsbKioskPreview | null>(null);
   const [identityChecked, setIdentityChecked] = useState(false);
-  const [busy, setBusy] = useState<'read' | 'confirm' | 'reject' | null>(null);
+  const [busy, setBusy] = useState<'confirm' | 'reject' | 'lookup' | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
-  const {
-    connected,
-    connecting,
-    info,
-    status,
-    error,
-    log,
-    connect,
-    disconnect,
-    sendCommand,
-    setError,
-    setStatus,
-  } = useUsbLane();
-  const readAbortRef = useRef<AbortController | null>(null);
+  const [readerStep, setReaderStep] = useState<ReaderStep>('waiting');
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<KioskMemberHit[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const { connected, connecting, info, status, error, log, connect, disconnect, sendCommand } =
+    useUsbLane({ autoConnect: true });
+  // A card that has been read stays on the reader until someone lifts it. Reading
+  // it again would offer the same person a second action they did not ask for.
+  const cardOnReaderRef = useRef(false);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
+  // The reader is always reading while it is connected and nobody is on screen.
   useEffect(() => {
-    return () => readAbortRef.current?.abort();
-  }, []);
-
-  async function disconnectLane() {
-    readAbortRef.current?.abort();
-    await disconnect();
-    setScan(null);
-    setIdentityChecked(false);
-  }
-
-  function cancelRead() {
-    readAbortRef.current?.abort();
-    setStatus('Card read cancelled.');
-  }
-
-  async function readCard() {
-    if (busy || readAbortRef.current) return;
-
-    setMessage(null);
-    setScan(null);
-    setIdentityChecked(false);
-    setError('');
-
-    if (!connected) {
-      setError('Connect the USB lane before reading a card.');
-      return;
-    }
-    if (!sessionId) {
-      setError('Select an event session before reading a card.');
-      return;
-    }
-
+    if (!connected || !sessionId || scan) return;
     const controller = new AbortController();
-    readAbortRef.current = controller;
-    setBusy('read');
-    setStatus('Waiting for card…');
+    const { signal } = controller;
+    const read = () => sendCommand('nfc.read');
 
-    try {
-      const response = await waitForCard(() => sendCommand('nfc.read'), controller.signal);
-      const uri = response.result?.uri;
-      if (!uri) throw new Error('The card does not contain a readable URL.');
+    void (async () => {
+      while (!signal.aborted) {
+        try {
+          if (cardOnReaderRef.current) {
+            setReaderStep('lift');
+            await waitForCardRemoved(read, signal);
+            cardOnReaderRef.current = false;
+          }
+          setReaderStep('waiting');
 
-      const preview = await previewUsbKioskAction({ uri, sessionId });
-      if (controller.signal.aborted) return;
-      if (!preview.ok || !preview.scanId) {
-        throw new Error(preview.error ?? 'Could not resolve this card.');
+          const response = await waitForCard(read, signal);
+          cardOnReaderRef.current = true;
+          setReaderStep('lift');
+          const uri = response.result?.uri;
+          if (!uri) throw new Error('ndef_record_missing');
+
+          const preview = await previewUsbKioskAction({ uri, sessionId });
+          if (signal.aborted) return;
+          if (!preview.ok || !preview.scanId) {
+            setMessage({ kind: 'danger', text: preview.error ?? 'Could not resolve this card.' });
+            continue;
+          }
+          setMessage(null);
+          setIdentityChecked(false);
+          setScan(preview);
+          return;
+        } catch (readError) {
+          if (signal.aborted || isAbortError(readError)) return;
+          setMessage({ kind: 'danger', text: laneErrorMessage(readError) });
+          if (isReaderFault(readError)) {
+            await pause(READER_FAULT_RETRY_MS, signal);
+          } else {
+            // An unreadable card is still a card on the reader.
+            cardOnReaderRef.current = true;
+            setReaderStep('lift');
+          }
+        }
       }
+    })();
 
+    return () => controller.abort();
+  }, [connected, sessionId, scan, sendCommand]);
+
+  // Enter or Space confirms the person on screen, once any ID check is ticked.
+  useEffect(() => {
+    if (scan && !(scan.photoChangedRecently && !identityChecked)) confirmRef.current?.focus();
+  }, [scan, identityChecked]);
+
+  // A scanner types a whole profile link; that is looked up on Enter instead.
+  const searchText = query.trim();
+  const searchable = searchText.length >= 2 && !/^https?:/i.test(searchText);
+  useEffect(() => {
+    if (!searchable) return;
+    const text = searchText;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void searchKioskMembersAction(text).then((found) => {
+        if (!cancelled) setHits(found);
+      });
+    }, SEARCH_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchable, searchText]);
+
+  function clearPerson() {
+    setScan(null);
+    setIdentityChecked(false);
+  }
+
+  async function lookUp(input: { memberId?: string; code?: string }) {
+    if (!sessionId) {
+      setMessage({ kind: 'danger', text: 'Choose an event session first.' });
+      return;
+    }
+    setBusy('lookup');
+    setMessage(null);
+    try {
+      const preview = await previewKioskLookupAction({ sessionId, ...input });
+      if (!preview.ok || !preview.scanId) {
+        setMessage({ kind: 'danger', text: preview.error ?? 'Could not find that member.' });
+        return;
+      }
+      setIdentityChecked(false);
       setScan(preview);
-      setStatus('Card read. Confirm identity and attendance.');
-    } catch (readError) {
-      if (controller.signal.aborted || isAbortError(readError)) return;
-      setStatus('');
-      setError(laneErrorMessage(readError));
+      setQuery('');
+      setHits(null);
+    } catch (lookupError) {
+      setMessage({ kind: 'danger', text: laneErrorMessage(lookupError) });
     } finally {
-      if (readAbortRef.current === controller) readAbortRef.current = null;
       setBusy(null);
     }
   }
@@ -132,9 +208,7 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
               ? `${scan.memberName} checked out.`
               : `${scan.memberName} checked in.`,
       });
-      setScan(null);
-      setIdentityChecked(false);
-      setStatus('Ready for the next card.');
+      clearPerson();
     } catch (confirmError) {
       setMessage({ kind: 'danger', text: laneErrorMessage(confirmError) });
     } finally {
@@ -144,162 +218,108 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
 
   const action = scan?.action ?? 'check_in';
   const actionLabel = action === 'check_out' ? 'check-out' : 'check-in';
+  const needsIdCheck = Boolean(scan?.photoChangedRecently && !identityChecked);
+  const readerLine = connecting
+    ? status || 'Connecting to the reader…'
+    : !connected
+      ? 'Reader not connected'
+      : readerStep === 'lift'
+        ? 'Lift the card off the reader'
+        : 'Waiting for a card';
 
   return (
     <div className="space-y-4">
-      <Alert variant="info">
-        The card is read locally over USB and the kiosk keeps waiting until one is placed. The URL
-        is only a locator; an organizer still confirms the person and the attendance action.
-      </Alert>
-
       <Card>
-        <CardContent className="p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => void connect()} disabled={connecting || connected}>
-              {connecting ? 'Connecting…' : 'Connect lane'}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => void disconnectLane()}
-              disabled={!connected || connecting}
+        <CardContent className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <Field label="Event session" htmlFor="kiosk-session" required>
+            <Select
+              id="kiosk-session"
+              value={sessionId}
+              onChange={(event) => {
+                setSessionId(event.target.value);
+                clearPerson();
+              }}
+              disabled={busy !== null || sessions.length === 0}
             >
-              Disconnect
-            </Button>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {connected
-                ? (info?.deviceId ?? 'USB connected')
-                : connecting
-                  ? 'Opening USB serial…'
-                  : 'No lane connected'}
-            </span>
-          </div>
-
-          {error ? (
-            <Alert variant="danger" className="mt-4" role="alert">
-              {error}
-            </Alert>
-          ) : null}
-          {status ? (
-            <p className="mt-3 text-sm text-muted-foreground" role="status">
-              {status}
-            </p>
-          ) : null}
-          {connected ? (
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Firmware {info?.firmware ?? '—'} · NFC {info?.nfcReady ? 'ready' : 'not ready'} · USB
-              serial · 115200
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-5">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <Field label="Event session" htmlFor="kiosk-session" required>
-              <Select
-                id="kiosk-session"
-                value={sessionId}
-                onChange={(event) => {
-                  setSessionId(event.target.value);
-                  setScan(null);
-                  setIdentityChecked(false);
-                }}
-                disabled={busy !== null || sessions.length === 0}
-              >
-                {sessions.length === 0 ? (
-                  <option value="">No current sessions</option>
-                ) : (
-                  sessions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {session.label}
-                    </option>
-                  ))
+              {sessions.length === 0 ? (
+                <option value="">No current sessions</option>
+              ) : (
+                sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.label}
+                  </option>
+                ))
+              )}
+            </Select>
+          </Field>
+          <div className="flex items-center gap-3">
+            <p className="flex items-center gap-2 text-sm" role="status">
+              <span
+                aria-hidden
+                className={cn(
+                  'size-2.5 rounded-full',
+                  connected ? 'bg-success' : connecting ? 'bg-warning' : 'bg-muted-foreground',
                 )}
-              </Select>
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => void readCard()}
-                disabled={!connected || !sessionId || busy !== null || sessions.length === 0}
-              >
-                {busy === 'read' ? 'Waiting…' : 'Read card'}
+              />
+              {readerLine}
+            </p>
+            {connected ? (
+              <Button variant="secondary" onClick={() => void disconnect()}>
+                Disconnect
               </Button>
-              {busy === 'read' ? (
-                <Button variant="secondary" onClick={cancelRead}>
-                  Cancel
-                </Button>
-              ) : null}
-            </div>
+            ) : (
+              <Button onClick={() => void connect()} disabled={connecting}>
+                {connecting ? 'Connecting…' : 'Connect reader'}
+              </Button>
+            )}
           </div>
-
-          {sessions.length === 0 ? (
-            <Alert variant="warning" className="mt-4">
-              No event sessions are available. Create or publish an event in{' '}
-              <Link href="/admin/events" className="font-semibold underline underline-offset-2">
-                Events
-              </Link>{' '}
-              before opening the kiosk.
-            </Alert>
-          ) : null}
-
-          {message ? (
-            <Alert
-              variant={message.kind === 'success' ? 'success' : 'danger'}
-              className="mt-4"
-              role="status"
-            >
-              {message.text}
-            </Alert>
-          ) : null}
         </CardContent>
       </Card>
+
+      {sessions.length === 0 ? (
+        <Alert variant="warning">
+          No event sessions are available. Create or publish an event in{' '}
+          <Link href="/admin/events" className="font-semibold underline underline-offset-2">
+            Events
+          </Link>{' '}
+          before opening the kiosk.
+        </Alert>
+      ) : null}
+      {error ? (
+        <Alert variant="danger" role="alert">
+          {error}
+        </Alert>
+      ) : null}
+      {message ? (
+        <Alert variant={message.kind === 'success' ? 'success' : 'danger'} role="status">
+          {message.text}
+        </Alert>
+      ) : null}
 
       {scan ? (
         <Card className="overflow-hidden border-l-4 border-l-primary">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <CardContent className="space-y-5 p-5 sm:p-6">
+            <div className="flex items-center gap-4">
               <MemberAvatar
                 name={scan.memberName ?? 'Member'}
                 photoUrl={scan.photoUrl ?? null}
-                size={76}
+                size={104}
               />
               <div className="min-w-0 flex-1">
-                <h2 className="text-xl font-extrabold leading-tight tracking-[-0.02em] sm:text-2xl">
+                <h2 className="text-2xl font-extrabold leading-tight tracking-[-0.02em] sm:text-3xl">
                   {scan.memberName}
                 </h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {scan.memberNumber} · {scan.eventName} · {scan.sessionName}
                 </p>
-                <p className="mt-1.5 text-sm font-medium">Ready to confirm {actionLabel}.</p>
-              </div>
-              <div className="flex w-full flex-col gap-2 sm:w-52">
-                <Button
-                  size="lg"
-                  disabled={busy !== null || Boolean(scan.photoChangedRecently && !identityChecked)}
-                  onClick={() => void decide(action)}
-                  className="flex-1 sm:w-full"
-                >
-                  {busy === 'confirm'
-                    ? 'Confirming…'
-                    : scan.photoChangedRecently && !identityChecked
-                      ? 'PSU ID required'
-                      : `Confirm ${actionLabel}`}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  disabled={busy !== null}
-                  onClick={() => void decide('reject')}
-                  className="shrink-0 text-muted-foreground sm:w-full"
-                >
-                  {busy === 'reject' ? 'Dismissing…' : 'Dismiss scan'}
-                </Button>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Identified by: {METHOD_LABELS[scan.method ?? 'card']}
+                </p>
               </div>
             </div>
 
             {scan.photoChangedRecently ? (
-              <Alert variant="warning" title="Photo changed in the last 48 hours" className="mt-4">
+              <Alert variant="warning" title="Photo changed in the last 48 hours">
                 <p>
                   Last changed {formatDateTime(scan.photoChangedAt)}. Check their PSU ID before
                   confirming.
@@ -315,16 +335,45 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
                 </label>
               </Alert>
             ) : null}
+
+            <div className="space-y-2">
+              <Button
+                ref={confirmRef}
+                disabled={busy !== null || needsIdCheck}
+                onClick={() => void decide(action)}
+                className="h-16 w-full text-lg font-semibold"
+              >
+                {busy === 'confirm'
+                  ? 'Confirming…'
+                  : needsIdCheck
+                    ? 'PSU ID required'
+                    : `Confirm ${actionLabel}`}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() => void decide('reject')}
+                className="w-full text-muted-foreground"
+              >
+                {busy === 'reject' ? 'Dismissing…' : 'Dismiss scan'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
         <Card className="border-dashed bg-subtle">
-          <CardContent className="flex flex-col items-center px-6 py-12 text-center">
-            <h2 className="type-h3">Ready for the next card</h2>
+          <CardContent className="flex flex-col items-center px-6 py-14 text-center">
+            <h2 className="type-h3">
+              {!connected
+                ? 'Connect the reader to start'
+                : readerStep === 'lift'
+                  ? 'Lift the card off the reader'
+                  : 'Tap a card on the reader'}
+            </h2>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-              Connect the lane, choose the open session, then select <strong>Read card</strong> and
-              place a member card on the reader. The kiosk keeps waiting until a card is read;
-              select Cancel to stop waiting.
+              {connected
+                ? 'The reader is always on. Each person appears here for you to confirm.'
+                : 'No reader? You can still find members below.'}
             </p>
           </CardContent>
         </Card>
@@ -332,15 +381,100 @@ export function UsbKioskPanel({ sessions }: { sessions: KioskSessionOption[] }) 
 
       <Card>
         <CardContent className="p-5">
-          <h2 className="type-h3">Device log</h2>
-          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-            Boot and diagnostic lines from the local serial connection.
-          </p>
-          <pre className="mt-3 max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[0.7rem] leading-relaxed">
-            {log.length > 0 ? log.join('\n') : 'No serial output yet.'}
-          </pre>
+          <h2 className="text-base font-bold">No card?</h2>
+          <form
+            className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = query.trim();
+              // A handheld scanner types the code and presses Enter.
+              if (/^https?:/i.test(text) || /^gdg-[a-z0-9]{6}$/i.test(text)) {
+                void lookUp({ code: text });
+              } else if (searchable && hits?.length === 1 && hits[0]) {
+                void lookUp({ memberId: hits[0].memberId });
+              }
+            }}
+          >
+            <Field label="Find a member" htmlFor="kiosk-search">
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  id="kiosk-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
+                  placeholder="Name or GDG number"
+                  className="pl-9"
+                  disabled={busy !== null || Boolean(scan)}
+                />
+              </div>
+            </Field>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setScanning(true)}
+              disabled={busy !== null || Boolean(scan) || !sessionId}
+            >
+              <QrCode className="size-4" aria-hidden />
+              Scan QR code
+            </Button>
+          </form>
+
+          {searchable && hits ? (
+            hits.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">No active member matches.</p>
+            ) : (
+              <ul
+                className="mt-3 divide-y divide-border border border-border"
+                aria-label="Members found"
+              >
+                {hits.map((hit) => (
+                  <li key={hit.memberId}>
+                    <button
+                      type="button"
+                      onClick={() => void lookUp({ memberId: hit.memberId })}
+                      disabled={busy !== null}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                    >
+                      <MemberAvatar name={hit.name} photoUrl={hit.photoUrl} size={40} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{hit.name}</span>
+                        <span className="block text-xs text-muted-foreground">{hit.number}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
         </CardContent>
       </Card>
+
+      <details className="border border-border bg-subtle/50 px-5 py-3 text-sm">
+        <summary className="cursor-pointer font-medium">Reader troubleshooting</summary>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          {connected
+            ? `${info?.deviceId ?? 'Reader'} · firmware ${info?.firmware ?? '—'} · NFC ${
+                info?.nfcReady ? 'ready' : 'not ready'
+              }`
+            : 'Plug the reader into this computer, then select Connect reader. Use Chrome or Edge.'}
+        </p>
+        <pre className="mt-3 max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[0.7rem] leading-relaxed">
+          {log.length > 0 ? log.join('\n') : 'No messages from the reader yet.'}
+        </pre>
+      </details>
+
+      <QrScanDialog
+        open={scanning}
+        onClose={() => setScanning(false)}
+        onResult={(text) => {
+          setScanning(false);
+          void lookUp({ code: text });
+        }}
+      />
     </div>
   );
 }

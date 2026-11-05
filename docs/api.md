@@ -79,7 +79,7 @@ The bucket is per client rather than per token: 256-bit tokens cannot be guessed
 
 ## Public JSON endpoints
 
-- `GET /api/public/leaderboard?limit=&offset=` returns `{ entries, pagination, generatedAt, requestId }`. Entries contain only `rank`, `slug`, `displayName`, `photoUrl`, `memberNumber`, `points` and include only public, opted-in members.
+- `GET /api/public/leaderboard?limit=&offset=` returns `{ entries, pagination, generatedAt, requestId }`. Entries contain only `rank`, `slug`, `displayName`, `photoUrl`, `memberNumber`, `stars` and include only public, opted-in members who share their stars.
 - `GET /api/public/events` returns published public events.
 - `GET /api/public/events/<slug>` returns the event and its enabled sessions, or 404.
 - All set `Cache-Control: no-store`.

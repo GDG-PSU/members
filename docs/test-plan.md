@@ -10,16 +10,17 @@ PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
 | ------------------- | ----------------------------- | ---------------------------------------------- |
 | Formatting          | `pnpm format:check`           | Pass                                           |
 | Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 54/54 pass                                     |
+| Unit tests          | `pnpm test`                   | 67/67 pass                                     |
 | Production build    | `pnpm build`                  | Pass                                           |
-| Browser E2E         | `pnpm e2e`                    | 51 pass, 31 skipped; 41/41 on desktop Chromium |
+| Browser E2E         | `pnpm e2e`                    | 52 pass, 32 skipped; 42/42 on desktop Chromium |
 | Database/RLS/ledger | `pnpm db:verify`              | 76/76 pass on the local Supabase stack         |
 | Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
 | Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
 | Physical end to end | Browser app + real reader     | Pass on 2.0.2; see Hardware coverage           |
+| Camera QR scan      | Simulated camera, one-off     | Pass; check-in recorded as `qr`                |
 | Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
 
-The 31 skips are the signed-in specs on the mobile project, which run on desktop
+The 32 skips are the signed-in specs on the mobile project, which run on desktop
 only. On mobile, the 10 public specs pass, and one desktop test checks that member
 and admin pages fit a phone-width viewport.
 
@@ -37,9 +38,14 @@ disposable accounts it creates and removes:
   token refresh; signing out one device; recovery; suspension; user type changes.
 - **Members:** profile, photo and links, privacy settings, and forms keeping their
   values after a validation error.
-- **Events and attendance:** event validation, no time shift on save, publishing,
-  bonus sessions, the 48-hour PSU ID rule, dismissing a preview, reader errors,
-  duplicate scans, minimum duration, cancelled events, and corrections.
+- **Events:** the short form and its validation, the web address made from the
+  name, the two attendance rules becoming the stored times, no time shift on save,
+  publishing, cancelling and restoring, and adding and removing a bonus session.
+- **Kiosk:** reading with no button, a card not being read twice until it is
+  lifted, the confirm button's height, the 48-hour PSU ID rule, dismissing a
+  preview, reader errors, duplicate scans, a legacy minimum stay, and check-in by
+  name or by a typed QR link with the method recorded.
+- **Corrections:** every attendance correction a superadmin can make.
 - **Cards:** pending, active, replacement and revoked cards, and batches of cards.
 - **Rewards:** request, cancel, re-request, approve, fulfil, and reject, with the
   point balance checked after each step.
@@ -65,12 +71,19 @@ Verified on the physical unit, firmware 2.0.2:
   producing one `line_too_long`.
 - With the PN532 powered off, a read returning `nfc_not_ready` in about 1.5 s
   without hanging.
+- The always-on kiosk, read-only and with nothing on the reader: it connected and
+  polled about ten times a second for 18 seconds, with only `no_card` replies and
+  no errors.
 
 Not verified:
 
 - The real Chrome/Edge port picker, and a Web Serial session on the hosted app.
-- An empty antenna on real hardware. The card stayed on the reader, so `no_card` is
-  covered only by the fake port.
+- A real card read through the always-on kiosk. The end-to-end pass above used the
+  old Read button, and the reader was empty for the always-on run.
+- The reader reconnecting by itself on a later visit, which depends on a real
+  browser remembering the port.
+- A real camera reading a real phone screen. The camera path was proved once with
+  Chromium's simulated camera playing a picture of a member's QR code.
 - A locked or too-small card, a card removed mid-write, a purchased card batch, and
   two lanes running together.
 - A production card written for a live member.

@@ -12,7 +12,7 @@ test.describe('public experience', () => {
         .getByRole('link', { name: /^sign in$/i })
         .first(),
     ).toBeVisible();
-    await expect(page.getByText(/semester leaderboard/i).first()).toBeVisible();
+    await expect(page.getByText('All time', { exact: true }).first()).toBeVisible();
   });
 
   test('every page declares the site icon, and it loads', async ({ page, request }) => {
@@ -90,7 +90,7 @@ test.describe('public experience', () => {
     expect(Array.isArray(body.entries)).toBe(true);
     for (const entry of body.entries) {
       expect(Object.keys(entry).sort()).toEqual(
-        ['displayName', 'memberNumber', 'photoUrl', 'points', 'rank', 'slug'].sort(),
+        ['displayName', 'memberNumber', 'photoUrl', 'rank', 'slug', 'stars'].sort(),
       );
       expect(entry.email).toBeUndefined();
     }
