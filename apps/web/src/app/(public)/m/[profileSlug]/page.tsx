@@ -106,7 +106,8 @@ export default async function MemberProfilePage({
           </div>
 
           {profile.about ? (
-            <p className="mt-6 max-w-2xl text-[0.95rem] leading-relaxed text-muted-foreground">
+            // The bio is plain text, so its line breaks have to be asked for.
+            <p className="mt-6 max-w-2xl whitespace-pre-line break-words text-[0.95rem] leading-relaxed text-muted-foreground">
               {profile.about}
             </p>
           ) : null}
