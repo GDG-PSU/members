@@ -55,6 +55,8 @@ type UserRow = {
   inviteExpiresAt: string | null;
   /** Invited, but the link stopped working before it was used. */
   notAccepted: boolean;
+  /** An organizer who accepted, but has not yet set up their profile at /admin-setup. */
+  profileMissing: boolean;
 };
 
 type StaffDetails = { role: StaffRole; grantedAt: string };
@@ -183,11 +185,11 @@ export default async function UsersPage({
           .in('auth_user_id', staffOnlyAuthIds)
       : { data: [] };
   const organizerByAuth = new Map(
-    (organizerRows ?? []).map((row) => {
+    (organizerRows ?? []).flatMap((row) => {
       const profile = Array.isArray(row.member_profiles)
         ? row.member_profiles[0]
         : row.member_profiles;
-      return [row.auth_user_id as string, profile] as const;
+      return profile ? [[row.auth_user_id as string, profile] as const] : [];
     }),
   );
 
@@ -224,6 +226,9 @@ export default async function UsersPage({
         invitedAt: null,
         inviteExpiresAt: staffInvited ? (staffInviteEnds.get(authUserId) ?? null) : null,
         notAccepted: staffInvited && inviteExpired(staffInviteEnds.get(authUserId), now),
+        // Setting a password is only the first step: the admin area sends them on
+        // to /admin-setup until they have a profile.
+        profileMissing: !staffInvited && !organizer,
       };
     }),
   );
@@ -253,6 +258,7 @@ export default async function UsersPage({
       invitedAt: null,
       inviteExpiresAt: null,
       notAccepted: false,
+      profileMissing: false,
     };
   });
 
@@ -274,6 +280,7 @@ export default async function UsersPage({
     invitedAt: row.created_at as string,
     inviteExpiresAt: row.expires_at as string,
     notAccepted: inviteExpired(row.expires_at as string, now),
+    profileMissing: false,
   }));
 
   const needle = q.trim().toLowerCase();
@@ -287,6 +294,7 @@ export default async function UsersPage({
             row.staffRole ?? '',
             row.staffInvited ? 'invited' : '',
             row.notAccepted ? 'not accepted' : row.kind === 'invite' ? 'invite pending' : '',
+            row.profileMissing ? 'profile not set up' : '',
           ].some((value) => value.toLowerCase().includes(needle))
         : true,
     )
@@ -411,6 +419,9 @@ export default async function UsersPage({
                           <Badge variant="warning">Invite pending</Badge>
                         ) : null}
                         {row.notAccepted ? <Badge variant="neutral">Not accepted</Badge> : null}
+                        {row.profileMissing ? (
+                          <Badge variant="warning">Profile not set up</Badge>
+                        ) : null}
                         {row.authUserId === viewer.user.id ? (
                           <Badge variant="outline">You</Badge>
                         ) : null}
@@ -465,8 +476,14 @@ export default async function UsersPage({
                   <StatusChip status={row.memberStatus} />
                 ) : (
                   <StatusChip
-                    status={row.staffInvited ? 'pending' : 'active'}
-                    label={row.staffInvited ? 'Setting up' : 'Active'}
+                    status={row.staffInvited || row.profileMissing ? 'pending' : 'active'}
+                    label={
+                      row.staffInvited
+                        ? 'Setting up'
+                        : row.profileMissing
+                          ? 'Profile not set up'
+                          : 'Active'
+                    }
                   />
                 ),
             },

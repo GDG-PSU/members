@@ -132,6 +132,9 @@ export default async function AdminStaffDetailPage({
     (inviteLink?.expires_at as string | undefined) ??
     (invitedAt ? staffInviteExpiry(invitedAt) : null);
   const notAccepted = settingUp && inviteExpired(inviteEnds, currentTime());
+  // A password alone is not setup: the admin area keeps sending them to
+  // /admin-setup until they have a profile.
+  const profileMissing = !settingUp && !profile;
   const actions = recent ?? [];
   const names = await loadAuditNames(admin, actions);
   const typeChange = { returnTo: '/admin/users', authUserId: id };
@@ -174,6 +177,8 @@ export default async function AdminStaffDetailPage({
                       <Badge variant="neutral">Invitation not accepted</Badge>
                     ) : settingUp ? (
                       <Badge variant="warning">Still setting up</Badge>
+                    ) : profileMissing ? (
+                      <Badge variant="warning">Profile not set up</Badge>
                     ) : null}
                     {profile?.profile_slug ? (
                       <Link href={`/m/${profile.profile_slug as string}`} className="rounded-full">

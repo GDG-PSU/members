@@ -142,6 +142,8 @@ their own: route handlers and server actions must re-check the viewer and role.
 - An invitation whose link has stopped working shows as "Not accepted" on the People page, for a
   member and an organizer alike. New link reopens a member's; inviting an organizer again reopens
   theirs.
+- An organizer who has set a password but has no profile yet shows as "Profile not set up" on People
+  and their manage page, not as active: the admin area still sends them to `/admin-setup`.
 
 ## 5. Route map
 
@@ -569,7 +571,7 @@ record what was not verified as plainly as what was.
 
 ## 13. Current state and progress
 
-Last updated 2026-11-05.
+Last updated 2026-11-09.
 
 ### Where things stand
 
@@ -615,6 +617,10 @@ them, and do not record a weak setting here, because this repository is public:
   because card URLs are built from it. The origin of a generated invite link shows it.
 
 ### Verification record
+
+On the local stack on 2026-11-09, after People and the organizer page learned to say "Profile not set
+up": format, lint and typecheck pass, and `pnpm e2e` on desktop Chromium passes 46/46 plus both
+invitation specs, which check the label before and after an organizer saves their profile.
 
 On a local Supabase stack with every migration through 0020, on 2026-11-05:
 

@@ -697,6 +697,15 @@ test.describe('admin invitation and member setup', () => {
           await inviteePage.goto('/admin/events');
           await expect(inviteePage).toHaveURL(/\/admin-setup$/);
 
+          // The password is set, but the organizer is not done until the profile is.
+          await page.goto('/admin/users');
+          const noProfileRow = page.getByRole('row').filter({ hasText: invitedEmail });
+          await expect(noProfileRow.getByText('Profile not set up').first()).toBeVisible();
+          await expect(noProfileRow.getByText('Invited', { exact: true })).toHaveCount(0);
+          await expect(noProfileRow.getByText('Active', { exact: true })).toHaveCount(0);
+          await page.goto(`/admin/staff/${invitedUserId}`);
+          await expect(page.getByText('Profile not set up')).toBeVisible();
+
           await inviteePage.getByLabel('Your name').fill('Invited Organizer');
           await inviteePage.getByRole('button', { name: 'Save and continue' }).click();
           await expect(inviteePage.getByText('Add a photo for your profile.')).toBeVisible({
@@ -715,6 +724,10 @@ test.describe('admin invitation and member setup', () => {
           await inviteePage.getByRole('button', { name: 'Save and continue' }).click();
           await expect(inviteePage).toHaveURL(/\/admin\/profile/, { timeout: 30_000 });
           await expect(inviteePage.getByText('Your profile is ready.')).toBeVisible();
+          await page.goto('/admin/users');
+          const readyRow = page.getByRole('row').filter({ hasText: 'Invited Organizer' });
+          await expect(readyRow.getByText('Active', { exact: true })).toBeVisible();
+          await expect(readyRow.getByText('Profile not set up')).toHaveCount(0);
 
           const { data: organizer } = await supabase
             .from('members')
