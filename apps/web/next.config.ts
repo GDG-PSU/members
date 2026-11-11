@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
           `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ''}`,
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           "font-src 'self' data: https://fonts.gstatic.com",
-          `connect-src 'self'${isDevelopment ? ' ws:' : ''}`,
+          `connect-src 'self'${isDevelopment ? ' ws:' : ''} https://vitals.vercel-insights.com`,
           "object-src 'none'",
           "frame-ancestors 'none'",
           "base-uri 'self'",
