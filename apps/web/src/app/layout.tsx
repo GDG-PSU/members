@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import { AppHeader } from '@/components/app-header';
 import { AppFooter } from '@/components/app-footer';
 import { getViewer } from '@/lib/auth/viewer';
@@ -65,6 +66,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
         {children}
         <AppFooter />
+        <Analytics />
       </body>
     </html>
   );
