@@ -637,8 +637,7 @@ Last updated 2026-11-12.
 
 - **App:** deployed on Vercel from `main`, served at `https://members.gdgpsu.dev` as seen on
   2026-11-12. `https://mempass.vercel.app` and `https://members-bay-eight.vercel.app` redirect
-  there. `README.md`, `docs/deployment.md` and the fallback in `lib/env.ts` still name
-  `mempass.vercel.app`; see Known issues.
+  there. `SITE_URL` falls back to that domain when `NEXT_PUBLIC_SITE_URL` is unset.
 - **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0020 applied. The
   Supabase GitHub integration applies new migrations when `main` is pushed.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
@@ -840,9 +839,6 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
   email default is deliberate (`PRIVACY.md`). Consider hiding it by default and adding `noindex`.
 - **Decision:** the legacy device API is still reachable, though no devices are registered. Consider
   removing it.
-- The site moved to `https://members.gdgpsu.dev`, but `README.md`, `docs/deployment.md` and the
-  fallback `SITE_URL` in `lib/env.ts` still name `mempass.vercel.app`, which now only redirects.
-  The fallback is used when `NEXT_PUBLIC_SITE_URL` is unset.
 - The public read APIs have no rate limit.
 - The database scripts connect without validating the TLS certificate.
 - `scripts/admin-enroll-totp.mjs` reads a credentials file that nothing creates anymore.

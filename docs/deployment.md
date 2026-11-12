@@ -1,9 +1,10 @@
 # Deployment
 
 Target: Next.js on **Vercel** at
-**https://mempass.vercel.app**, Supabase Postgres/Auth/Storage, and a
-ESP32 + PN532 reader on a USB cable or Bluetooth. No custom domain, DNS change,
-campus WiFi, or firmware server endpoint is required.
+**https://members.gdgpsu.dev**, Supabase Postgres/Auth/Storage, and an
+ESP32 + PN532 reader on a USB cable or Bluetooth. The project's Vercel addresses,
+`mempass.vercel.app` and `members-bay-eight.vercel.app`, redirect to that domain.
+No campus WiFi or firmware server endpoint is required.
 
 The hosted Supabase project is `potjjlmgnrqxseeendmx`. Compare its applied
 migrations with `supabase/migrations/` before a release: the application expects
@@ -20,7 +21,7 @@ Vercel deployment after a push before treating a checkout as the running release
 | Node             | 20.9+ (24 used locally)                        |
 | Framework preset | Next.js                                        |
 | Output           | `apps/web/.next` (configured in `vercel.json`) |
-| Production URL   | `https://mempass.vercel.app`                   |
+| Production URL   | `https://members.gdgpsu.dev`                   |
 
 `NEXT_PUBLIC_SITE_URL` must equal the hosted origin for production. Preview
 deployments should use their own origin and must not point at the production
@@ -51,9 +52,9 @@ These are dashboard settings on the hosted project. `supabase/config.toml` only
 configures the local stack, so check them here; the Auth settings endpoint reports
 the sign-up state as `disable_signup`.
 
-- Site URL: `https://mempass.vercel.app`; keep it in sync with
+- Site URL: `https://members.gdgpsu.dev`; keep it in sync with
   `NEXT_PUBLIC_SITE_URL`.
-- Optional callback fallback: `https://mempass.vercel.app/auth/callback`.
+- Optional callback fallback: `https://members.gdgpsu.dev/auth/callback`.
 - **Allow new users to sign up: off.** Accounts are created by Admin API invitation
   or recovery links, which keep working with sign-ups off.
 - Minimum password length 12, requiring letters and digits, matching the app.
@@ -91,7 +92,7 @@ The reset removes your own account too, so create the first superadmin next. The
 one-time link goes to a gitignored `.local/` file and is never printed:
 
 ```bash
-pnpm db:bootstrap-admin --email <you>@psu.edu --role superadmin --site-url https://mempass.vercel.app --out .local/superadmin-link.txt
+pnpm db:bootstrap-admin --email <you>@psu.edu --role superadmin --site-url https://members.gdgpsu.dev --out .local/superadmin-link.txt
 ```
 
 The link works once, for 72 hours. Open it, press Continue, set a password, enroll TOTP at
@@ -125,7 +126,7 @@ the serial bus.
 3. The invited admin can set a password and complete TOTP at `/admin-mfa`. The
    authenticator entry is named after the production host.
 4. Admin → Invitations generates a link whose origin is
-   `https://mempass.vercel.app` and whose path is `/auth/confirm`.
+   `https://members.gdgpsu.dev` and whose path is `/auth/confirm`.
 5. `/admin/cards` lists active members; preparing a card returns a `/c/<43-char>`
    URL and activation changes the card to active.
 6. A physical tag writes and reads back the same URL in Chrome/Edge.

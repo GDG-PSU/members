@@ -4,7 +4,7 @@ MemberPass is the member platform for the Google Developer Group at Penn State (
 get a profile, an NFC membership card, and points for showing up to events. Organizers get the tools
 to run all of it.
 
-**Live app:** <https://mempass.vercel.app>
+**Live app:** <https://members.gdgpsu.dev>
 
 Membership is by invitation, so there is no public sign-up page.
 
