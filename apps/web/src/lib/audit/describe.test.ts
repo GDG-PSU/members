@@ -15,6 +15,7 @@ describe('describeAudit', () => {
     expect(describeAudit({ action: 'user.access_revoked' }, null)).toBe("removed someone's access");
     expect(describeAudit({ action: 'event.updated' })).toBe('changed an event');
     expect(describeAudit({ action: 'redemption.approve' })).toBe('approved a reward request');
+    expect(describeAudit({ action: 'reader.paired' })).toBe('set up a card reader for Bluetooth');
   });
 
   it('reads the outcome from what was recorded', () => {
@@ -92,6 +93,7 @@ describe('AUDIT_TOPICS', () => {
       'points.interaction_awarded',
       'staff.profile_created',
       'card.revoked',
+      'reader.paired',
       'attendance.check_in',
       'scan.rejected',
       'event.created',

@@ -1,12 +1,13 @@
 # Operations runbook
 
-> **Current hardware note (2026-11-05):** The reader is USB-only. At
+> **Current hardware note (2026-11-12):** The reader plugs into the computer
+> with a USB cable, or is used over Bluetooth when no data cable is at hand. At
 > `/admin/cards`, choose a person and select **Write card**: the page prepares
-> the card, writes it with the PN532 through Web Serial, reads it back and
-> switches it on in one go. There is no device registration, WiFi, heartbeat,
-> HMAC secret, kiosk scan queue, or writer-job operation. The same reader powers
-> `/admin/kiosk`; select a session, read a card, verify the member, and confirm
-> attendance. The retired `/admin/devices` URL redirects to `/admin/cards`.
+> the card, writes it with the PN532, reads it back and switches it on in one go.
+> There is no device registration, WiFi, heartbeat, kiosk scan queue, or
+> writer-job operation. The same reader powers `/admin/kiosk`; select a session,
+> read a card, verify the member, and confirm attendance. The retired
+> `/admin/devices` URL redirects to `/admin/cards`.
 
 Audience: GDG@PSU organizers with admin access. Support address: **gdg@psu.edu**.
 
@@ -31,7 +32,7 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 ## Preflight (day before / morning of)
 
 1. **Event:** create the event (it starts as a draft), check its times, points and attendance rules, then publish it. Add a bonus session only if part of the event needs its own check-in and points.
-2. **Reader:** connect the reader at `/admin/cards` and confirm **Reader tools** reports NFC ready. There is no server registration.
+2. **Reader:** connect the reader at `/admin/cards` with its cable and confirm **Reader tools** reports NFC ready and, for firmware 2.1.0 or newer, that Bluetooth is ready. Plugging it in once is what sets it up for Bluetooth; there is no other registration.
 3. **Pages:** admin and kiosk pages load with AAL2, server time is sane, and the HTTPS certificate is valid. The reader itself does not use the network.
 4. **Test card:** perform a write test only on a non-production test card.
 5. **Admin access:** sign in with password + TOTP, kiosk open on the tablet/laptop, and photos load. **[target-project enrollment unverified]**
@@ -55,6 +56,21 @@ The script signs in with the credentials file, completes the app's own `/admin-m
 3. Select **Write card** and place a blank card on the reader. The page prepares the card, writes one link to it, reads it back and switches it on. It reports success only when the link it read back is the one it wrote; if anything fails, the person's old card keeps working and you can try again.
 4. Lift the card off before writing the next one; the page waits for that. The previous card, if there was one, stops working once the new one is on.
 5. Never write a card for someone whose identity and photo you have not checked. **Reader tools** at the bottom of the page reads any card and shows the reader's messages.
+
+### Using a reader over Bluetooth
+
+For when there is no data cable, or the reader has to sit away from the computer.
+It needs firmware 2.1.0 or newer, and Chrome or Edge.
+
+1. **Once, beforehand:** plug the reader into any organizer's computer and open `/admin/cards`. **Reader tools** says **Bluetooth is ready** and gives the reader's name, such as `GDG Reader 2DF4`. A reader that has never been plugged in like this cannot be reached over Bluetooth at all.
+2. Give the reader power from a charger or power bank. Its light blinks slowly while it waits for a connection.
+3. On `/admin/cards` or `/admin/kiosk`, select **Use Bluetooth**, choose the reader in the browser's list, and wait for **Bluetooth** to appear beside the reader's status. Everything works as it does on the cable.
+4. **The cable always wins.** Plug the reader into the computer and the page moves to USB by itself, without losing its place. To use Bluetooth with the cable in, select **Switch to Bluetooth**; **Switch to USB** goes back. Move the cable to a charger and the page goes back to Bluetooth.
+5. After reloading the page, select **Use Bluetooth** again; the browser asks which reader each time a page is opened.
+
+The reader's light: steady on the cable, slow blink waiting for Bluetooth, steady with a short dip every two seconds in use over Bluetooth, off if the NFC module is not answering.
+
+To stop a reader being reachable over Bluetooth, connect it by cable, open **Reader tools** and select **Switch Bluetooth off on this reader**. It stays off until switched on again the same way.
 
 ## Lost, stolen or replaced card
 
@@ -91,14 +107,15 @@ Corrections are admin-only, require a reason, and are audited.
 ## Reader management
 
 - **Reconnect:** close the kiosk or card tab or use **Disconnect**, then reconnect and select the port again. Do not open two admin tabs against the same reader.
-- **Lost or untrusted reader:** stop using it, remove physical access, and inspect recent `device_scans`/audit records. The reader has no server secret to rotate; it cannot reach the network on its own.
-- **Browser support:** use a current Chrome or Edge build with Web Serial. Safari and Firefox are not supported.
+- **Bluetooth will not connect:** check the reader has power and its light is blinking slowly. If it is steady, a computer is using its cable. If the page says the reader did not accept this site, plug it in once at `/admin/cards`.
+- **Lost or untrusted reader:** stop using it, remove physical access, and inspect recent `device_scans`/audit records. It cannot reach the network on its own, but it holds its own Bluetooth key, and someone who opens it could copy that reader. Ask a developer to raise `READER_KEY_EPOCH` (`apps/web/src/lib/reader/keys.ts`) and deploy; every other reader then sets itself up again the next time it is plugged in.
+- **Browser support:** use a current Chrome or Edge build, which have Web Serial and Web Bluetooth. Safari and Firefox are not supported. Chrome on Android can use a reader over Bluetooth, but not over a cable.
 
 ## Incidents
 
 | Incident                                                  | Immediate steps                                                                                                                                                                                                                                                                                                                                                               |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lost or untrusted USB reader                              | Stop using it, remove physical access, inspect recent scans/audit rows, and reflash a trusted unit if needed. The USB reader has no server credential.                                                                                                                                                                                                                        |
+| Lost or untrusted reader                                  | Stop using it, remove physical access, inspect recent scans/audit rows, and reflash a trusted unit if needed. Raise `READER_KEY_EPOCH` and deploy, because a lost reader's Bluetooth key can be read out of it.                                                                                                                                                               |
 | Compromised admin account                                 | Revoke the role (`user_roles.revoked_at`), reset the TOTP factor in Supabase Auth, force sign-out/rotate credentials, review `audit_log`, check card/ledger changes                                                                                                                                                                                                           |
 | Lost admin authenticator                                  | Reset the factor in Supabase Auth, sign in with the password, re-enroll with `pnpm admin:enroll-totp`; do not disable the AAL2 gate                                                                                                                                                                                                                                           |
 | Bad ledger grant                                          | Do **not** delete. Use `reverse_grant` with actor + reason, then verify sums                                                                                                                                                                                                                                                                                                  |

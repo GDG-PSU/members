@@ -71,12 +71,41 @@ disposable accounts it creates and removes:
 - **Audit and browser:** audit entries shown as sentences and filtered by topic,
   audit contents, phone-width layout, the CSP, and uncaught page errors.
 
-These specs use a fake Web Serial port, which also returns `no_card` on first reads
-to prove that the wait loops recover when a card appears. `admin-invitation.spec.ts`
+- **Readers:** a reader being set up for Bluetooth by its cable, once however often
+  it is plugged in; connecting by Bluetooth and reading a card with nothing readable
+  on the air; the page moving to the cable when it is plugged in; the organizer
+  choosing Bluetooth with the cable in and going back; falling back when the cable
+  is pulled; and a reader with the wrong key being refused.
+
+These specs use a stand-in reader (`tests/e2e/support/fake-reader.ts`) with a fake
+Web Serial port and a fake Web Bluetooth radio. It follows the firmware's rule for
+when the radio is on and does the real handshake and sealing, and it returns
+`no_card` on first reads to prove that the wait loops recover when a card appears.
+`reader-hardware.spec.ts` runs the same journey against a physical reader and
+real radio when `READER_PORT` is set; it is skipped otherwise. `admin-invitation.spec.ts`
 and the public specs cover the rest. The suite skips a hosted Supabase project
 unless `E2E_ALLOW_HOSTED_SUPABASE=yes`, which must never be set for production.
 
 ## Hardware coverage
+
+Verified on a physical reader with firmware 2.1.0 on 2026-11-12 (details in
+`docs/hardware-bringup.md`, section 9b):
+
+- `firmware/kiosk-reader/tools/reader_check.py --bluetooth`, 44 of 44 checks over
+  the cable and over real radio: pairing by cable only, the handshake, sealed
+  commands, the wrong key, a replayed line and an unsealed line each ending the
+  session, a silent caller dropped after 8 seconds, the cable taking over, the
+  organizer's override, and Bluetooth switched off.
+- `reader-hardware.spec.ts`: the real Cards page, real Web Bluetooth and the real
+  server actions, through set-up by cable, connecting by Bluetooth, moving to the
+  cable, choosing Bluetooth and going back, and falling back to Bluetooth, with no
+  error shown. Only the serial port picker was stood in for.
+- The same spec with a real card: the one-button writer preparing, writing,
+  reading back and switching on a card over the cable; that card read over
+  Bluetooth; and a second card written the same way over Bluetooth, replacing the
+  first.
+- Straight to the reader over Bluetooth: a card read, written, read back, and
+  given its own link again.
 
 Verified on the physical unit, firmware 2.0.2:
 
@@ -96,6 +125,10 @@ Verified on the physical unit, firmware 2.0.2:
 
 Not verified:
 
+- The kiosk over Bluetooth. It reads cards with the same command the Cards page
+  does, which was run, but the kiosk page itself was not.
+- A reader powered from a charger with no cable to the computer, Chrome or Edge
+  themselves over Bluetooth, and Chrome on Android.
 - The real Chrome/Edge port picker, and a Web Serial session on the hosted app.
 - A real card read through the always-on kiosk. The end-to-end pass above used the
   old Read button, and the reader was empty for the always-on run.

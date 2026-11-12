@@ -2,6 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import {
+  FAKE_READER_ID,
+  fakeReader,
+  installFakeReader,
+  overTheAir,
+  setCard,
+} from './support/fake-reader';
 import { baseUrl, hasSupabaseAdminCredentials, loadTestEnv, siteOrigin } from './support/env';
 import {
   createDisposableAdmin,
@@ -70,6 +77,7 @@ test.describe('every member and organizer workflow', () => {
   let superSecret = '';
   let memberId = '';
   let memberAuthId = '';
+  let adminAuthId = '';
   let memberSlug = '';
   const memberName = 'Workflow Member';
   let eventId = '';
@@ -199,77 +207,6 @@ test.describe('every member and organizer workflow', () => {
     await expect.poll(() => balance()).toEqual({ points, stars });
   }
 
-  /** A stand-in for the USB lane whose card contents the test controls. */
-  async function installFakeReader(page: Page) {
-    await page.addInitScript(() => {
-      const encoder = new TextEncoder();
-      const decoder = new TextDecoder();
-      const state = window as unknown as { __cardUri: string | null; __corruptWrites?: boolean };
-      state.__cardUri = null;
-      class FakeSerialPort {
-        readable: ReadableStream<Uint8Array>;
-        writable: WritableStream<Uint8Array>;
-        private controller!: ReadableStreamDefaultController<Uint8Array>;
-        constructor() {
-          this.readable = new ReadableStream<Uint8Array>({
-            start: (controller) => {
-              this.controller = controller;
-            },
-          });
-          this.writable = new WritableStream<Uint8Array>({
-            write: (chunk) => {
-              for (const line of decoder.decode(chunk).split('\n')) {
-                if (!line.trim()) continue;
-                const command = JSON.parse(line) as { id: number; cmd: string; uri?: string };
-                let payload: Record<string, unknown>;
-                if (command.cmd === 'info') {
-                  payload = {
-                    id: command.id,
-                    ok: true,
-                    result: {
-                      protocol: 2,
-                      firmware: 'test',
-                      deviceId: 'esp32-test',
-                      nfcReady: true,
-                    },
-                  };
-                } else if (command.cmd === 'nfc.write') {
-                  state.__cardUri = state.__corruptWrites
-                    ? `${command.uri}#corrupt`
-                    : (command.uri ?? null);
-                  payload = { id: command.id, ok: true, result: { readBack: true } };
-                } else if (command.cmd === 'nfc.read' && state.__cardUri?.startsWith('error:')) {
-                  payload = { id: command.id, ok: false, error: state.__cardUri.slice(6) };
-                } else if (command.cmd === 'nfc.read' && state.__cardUri) {
-                  payload = { id: command.id, ok: true, result: { uri: state.__cardUri } };
-                } else {
-                  payload = { id: command.id, ok: false, error: 'no_card' };
-                }
-                this.controller.enqueue(encoder.encode(JSON.stringify(payload) + '\n'));
-              }
-            },
-          });
-        }
-        async open() {}
-        async close() {}
-        getInfo() {
-          return { usbVendorId: 0x10c4, usbProductId: 0xea60 };
-        }
-      }
-      const port = new FakeSerialPort();
-      Object.defineProperty(navigator, 'serial', {
-        configurable: true,
-        value: { requestPort: async () => port },
-      });
-    });
-  }
-
-  async function setCard(page: Page, uri: string | null) {
-    await page.evaluate((value) => {
-      (window as unknown as { __cardUri: string | null }).__cardUri = value;
-    }, uri);
-  }
-
   async function connectReader(page: Page) {
     await page.getByRole('button', { name: 'Connect reader' }).click();
     await expect(page.getByText('Waiting for a card')).toBeVisible({ timeout: 15_000 });
@@ -358,6 +295,7 @@ test.describe('every member and organizer workflow', () => {
     const admin = await createDisposableAdmin(client, people.admin);
     fixtureAuthIds.add(superadmin.user.id);
     fixtureAuthIds.add(admin.user.id);
+    adminAuthId = admin.user.id;
 
     await signIn(superPage, people.superadmin.email, 'not-the-right-password-1');
     await expect(superPage.getByText('Email or password is incorrect.')).toBeVisible();
@@ -1087,6 +1025,88 @@ test.describe('every member and organizer workflow', () => {
       .order('created_at');
     expect(cards?.map((card) => card.status)).toEqual(['replaced', 'active']);
     activeCardUrl = replacementUrl;
+  });
+
+  test('a reader set up over its cable works over Bluetooth, and the cable always wins', async () => {
+    const badge = (link: 'USB' | 'Bluetooth') => adminPage.getByLabel(`Connected by ${link}`);
+    const overBluetooth = 'https://example.test/read-over-bluetooth';
+    // Next.js keeps an announcer with the same role outside the page's own content.
+    const alerts = adminPage.locator('main').getByRole('alert');
+
+    await adminPage.goto('/admin/cards');
+    await adminPage.getByRole('button', { name: 'Connect reader' }).click();
+    await expect(badge('USB')).toBeVisible({ timeout: 15_000 });
+
+    // Being plugged in once is all it takes to set a reader up for Bluetooth,
+    // and it is only set up once however often it is plugged in after that.
+    await adminPage.getByText('Reader tools').click();
+    await expect(adminPage.getByText('Bluetooth is ready.')).toBeVisible({ timeout: 15_000 });
+    const { data: pairings } = await supabase()
+      .from('audit_log')
+      .select('actor_auth_id, after')
+      .eq('action', 'reader.paired')
+      .eq('actor_auth_id', adminAuthId)
+      .eq('target_id', FAKE_READER_ID);
+    expect(pairings).toHaveLength(1);
+    // The entry says a reader was set up, and holds nothing that could open one.
+    expect(pairings?.[0]?.after).toEqual({ epoch: 1 });
+
+    // With no cable, the reader is used over Bluetooth.
+    await adminPage.getByRole('button', { name: 'Disconnect' }).click();
+    await expect(adminPage.getByText('Reader not connected')).toBeVisible();
+    await fakeReader(adminPage, 'unplug');
+    await adminPage.getByRole('button', { name: 'Use Bluetooth' }).click();
+    await expect(badge('Bluetooth')).toBeVisible({ timeout: 15_000 });
+    await expect(adminPage.getByText('Reader connected')).toBeVisible();
+
+    await setCard(adminPage, overBluetooth);
+    await adminPage.getByRole('button', { name: 'Read a card' }).click();
+    await expect(adminPage.locator('p.break-all')).toHaveText(overBluetooth, { timeout: 10_000 });
+    await setCard(adminPage, null);
+    // Someone listening nearby sees the handshake and nothing they can read.
+    const air = await overTheAir(adminPage);
+    expect(air).toContain('auth.begin');
+    expect(air).not.toContain('nfc.read');
+    expect(air).not.toContain('read-over-bluetooth');
+
+    // Plugging the cable in moves the reader onto it, without a click and without
+    // the page ever losing the reader.
+    await fakeReader(adminPage, 'plug');
+    await expect(badge('USB')).toBeVisible({ timeout: 15_000 });
+    await expect(adminPage.getByText('Reader connected')).toBeVisible();
+    await expect(alerts).toHaveCount(0);
+
+    // The organizer can still ask for Bluetooth with the cable in, and go back.
+    await adminPage.getByRole('button', { name: 'Switch to Bluetooth' }).click();
+    await expect(badge('Bluetooth')).toBeVisible({ timeout: 15_000 });
+    await setCard(adminPage, overBluetooth);
+    await adminPage.getByRole('button', { name: 'Read a card' }).click();
+    await expect(adminPage.locator('p.break-all')).toHaveText(overBluetooth, { timeout: 10_000 });
+    await setCard(adminPage, null);
+    await adminPage.getByRole('button', { name: 'Switch to USB' }).click();
+    await expect(badge('USB')).toBeVisible({ timeout: 15_000 });
+
+    // Closing the browser's chooser leaves the reader on its cable.
+    await fakeReader(adminPage, 'closeChooser');
+    await adminPage.getByRole('button', { name: 'Switch to Bluetooth' }).click();
+    await expect(badge('USB')).toBeVisible();
+    await expect(alerts).toHaveCount(0);
+    await fakeReader(adminPage, 'openChooser');
+
+    // Pulling the cable falls back to Bluetooth by itself.
+    await fakeReader(adminPage, 'unplug');
+    await expect(badge('Bluetooth')).toBeVisible({ timeout: 20_000 });
+    await expect(adminPage.getByText('Reader connected')).toBeVisible();
+
+    // A reader that cannot prove it holds its key is refused, and is sent nothing.
+    await adminPage.getByRole('button', { name: 'Disconnect' }).click();
+    await fakeReader(adminPage, 'swapKey');
+    await adminPage.getByRole('button', { name: 'Use Bluetooth' }).click();
+    await expect(alerts).toContainText('did not accept this site', {
+      timeout: 15_000,
+    });
+    await expect(adminPage.getByText('Reader not connected')).toBeVisible();
+    await fakeReader(adminPage, 'restoreKey');
   });
 
   test('the kiosk reads by itself, checks people in and out, and enforces the PSU ID rule', async () => {

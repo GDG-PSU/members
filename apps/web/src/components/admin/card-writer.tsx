@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
-import { Alert, Button, Card, CardContent, Field, Input, MemberAvatar, cn } from '@gdg/ui';
+import { Alert, Button, Card, CardContent, Field, Input, MemberAvatar } from '@gdg/ui';
 import {
   activateUsbCardAction,
   prepareUsbCardAction,
   searchCardHoldersAction,
   type CardHolder,
 } from '@/app/(admin)/admin/actions';
-import { useUsbLane } from '@/components/admin/use-usb-lane';
+import { ReaderConnection, ReaderDetails, ReaderError } from '@/components/admin/reader-controls';
+import { useReader } from '@/components/admin/use-reader';
 import {
   isAbortError,
   laneErrorMessage,
@@ -37,8 +38,8 @@ const SEARCH_DELAY_MS = 250;
  */
 export function CardWriter({ initialHolder }: { initialHolder?: CardHolder | null }) {
   const router = useRouter();
-  const { connected, connecting, info, status, error, log, connect, disconnect, sendCommand } =
-    useUsbLane({ autoConnect: true });
+  const reader = useReader();
+  const { connected, sendCommand } = reader;
   const [holder, setHolder] = useState<CardHolder | null>(initialHolder ?? null);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<CardHolder[] | null>(null);
@@ -168,45 +169,14 @@ export function CardWriter({ initialHolder }: { initialHolder?: CardHolder | nul
   }
 
   const working = step !== 'idle';
-  const readerLine = connecting
-    ? status || 'Connecting to the reader…'
-    : !connected
-      ? 'Reader not connected'
-      : mustLift
-        ? 'Lift the card off the reader'
-        : 'Reader connected';
+  const readerLine = mustLift ? 'Lift the card off the reader' : 'Reader connected';
 
   return (
     <div className="space-y-4">
       <Card>
         <CardContent className="space-y-5 p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="flex items-center gap-2 text-sm" role="status">
-              <span
-                aria-hidden
-                className={cn(
-                  'size-2.5 rounded-full',
-                  connected ? 'bg-success' : connecting ? 'bg-warning' : 'bg-muted-foreground',
-                )}
-              />
-              {readerLine}
-            </p>
-            {connected ? (
-              <Button variant="secondary" onClick={() => void disconnect()} disabled={working}>
-                Disconnect
-              </Button>
-            ) : (
-              <Button onClick={() => void connect()} disabled={connecting}>
-                {connecting ? 'Connecting…' : 'Connect reader'}
-              </Button>
-            )}
-          </div>
-
-          {error ? (
-            <Alert variant="danger" role="alert">
-              {error}
-            </Alert>
-          ) : null}
+          <ReaderConnection reader={reader} line={readerLine} busy={working} />
+          <ReaderError reader={reader} />
 
           <div>
             <p className="text-sm font-bold">1. Who is this card for?</p>
@@ -337,16 +307,7 @@ export function CardWriter({ initialHolder }: { initialHolder?: CardHolder | nul
             {readBack || 'The card has no link on it.'}
           </p>
         ) : null}
-        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          {connected
-            ? `${info?.deviceId ?? 'Reader'} · firmware ${info?.firmware ?? '—'} · NFC ${
-                info?.nfcReady ? 'ready' : 'not ready'
-              }`
-            : 'Plug the reader into this computer, then select Connect reader. Use Chrome or Edge.'}
-        </p>
-        <pre className="mt-3 max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[0.7rem] leading-relaxed">
-          {log.length > 0 ? log.join('\n') : 'No messages from the reader yet.'}
-        </pre>
+        <ReaderDetails reader={reader} busy={working} />
       </details>
     </div>
   );

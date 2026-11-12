@@ -2,8 +2,8 @@
 
 Target: Next.js on **Vercel** at
 **https://mempass.vercel.app**, Supabase Postgres/Auth/Storage, and a
-USB-only ESP32 + PN532 reader. No custom domain, DNS change, campus WiFi, or
-firmware server endpoint is required.
+ESP32 + PN532 reader on a USB cable or Bluetooth. No custom domain, DNS change,
+campus WiFi, or firmware server endpoint is required.
 
 The hosted Supabase project is `potjjlmgnrqxseeendmx`. Compare its applied
 migrations with `supabase/migrations/` before a release: the application expects

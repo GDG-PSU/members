@@ -31,6 +31,19 @@ import {
 import { newYorkInputToIso } from '@/lib/format';
 import { SITE_URL } from '@/lib/env';
 import { issueSignInLink } from '@/lib/auth/sign-in-links';
+import {
+  READER_KEY_EPOCH,
+  deriveReaderKey,
+  readerKeyCheck,
+  readerSessionSecrets,
+} from '@/lib/reader/keys';
+import {
+  READER_DEVICE_ID,
+  READER_KEY_CHECK,
+  READER_NONCE,
+  fromBase64Url,
+} from '@/lib/reader/protocol';
+import { withinRateLimit } from '@/lib/security/rate-limit';
 
 async function requireAdminActor() {
   const viewer = await getViewer();
@@ -1809,4 +1822,113 @@ export async function decideRedemptionAction(formData: FormData) {
     cancel: 'Request cancelled and the points refunded.',
   }[parsed.data.action];
   succeed(returnTo, message, ['/member/rewards']);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Readers over Bluetooth                                                     */
+/* -------------------------------------------------------------------------- */
+
+export type ReaderPairing =
+  | { ok: true; current: true }
+  | { ok: true; current: false; key: string; epoch: number; check: string }
+  | { ok: false; error: string };
+
+/**
+ * Gives a reader on this organizer's cable the key it needs to be used over
+ * Bluetooth later. The cable is what makes this safe: only someone holding the
+ * reader can plug it in. A reader that already has the current key gets nothing,
+ * so the key crosses the browser once per reader, not once per visit.
+ */
+export async function pairReaderAction(input: {
+  deviceId: string;
+  epoch?: number;
+  check?: string;
+}): Promise<ReaderPairing> {
+  const { user } = await requireAdminActor();
+  const parsed = z
+    .object({
+      deviceId: z.string().regex(READER_DEVICE_ID),
+      epoch: z.number().int().optional(),
+      check: z.string().regex(READER_KEY_CHECK).optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'That is not a reader this site knows.' };
+
+  const key = deriveReaderKey(parsed.data.deviceId);
+  const check = readerKeyCheck(key);
+  if (parsed.data.epoch === READER_KEY_EPOCH && parsed.data.check === check) {
+    return { ok: true, current: true };
+  }
+  if (!(await withinRateLimit(`reader:pair:${user.id}`, 20, 600))) {
+    return {
+      ok: false,
+      error: 'Too many readers were set up at once. Try again in a few minutes.',
+    };
+  }
+
+  await audit(user.id, 'reader.paired', 'reader', parsed.data.deviceId, null, null, {
+    epoch: READER_KEY_EPOCH,
+  });
+  return {
+    ok: true,
+    current: false,
+    key: key.toString('base64url'),
+    epoch: READER_KEY_EPOCH,
+    check,
+  };
+}
+
+export type ReaderSession =
+  { ok: true; proof: string; expect: string; sessionKey: string } | { ok: false; error: string };
+
+/**
+ * Opens one Bluetooth session with a reader. The pairing key stays here: the
+ * browser gets the proof to send, the proof a genuine reader answers with, and
+ * a key that seals this session only. Someone whose access was removed can no
+ * longer open a session, whatever their browser remembers.
+ */
+export async function openReaderSessionAction(input: {
+  deviceId: string;
+  epoch: number;
+  clientNonce: string;
+  readerNonce: string;
+}): Promise<ReaderSession> {
+  const { user } = await requireAdminActor();
+  const parsed = z
+    .object({
+      deviceId: z.string().regex(READER_DEVICE_ID),
+      epoch: z.number().int(),
+      clientNonce: z.string().regex(READER_NONCE),
+      readerNonce: z.string().regex(READER_NONCE),
+    })
+    .safeParse(input);
+  const clientNonce = parsed.success ? fromBase64Url(parsed.data.clientNonce) : null;
+  const readerNonce = parsed.success ? fromBase64Url(parsed.data.readerNonce) : null;
+  if (!parsed.success || !clientNonce || !readerNonce) {
+    return { ok: false, error: 'That is not a reader this site knows.' };
+  }
+  if (parsed.data.epoch !== READER_KEY_EPOCH) {
+    return {
+      ok: false,
+      error:
+        'This reader needs setting up again. Plug it in with a cable once, then use Bluetooth.',
+    };
+  }
+  if (!(await withinRateLimit(`reader:session:${user.id}`, 60, 60))) {
+    return { ok: false, error: 'Too many Bluetooth connections at once. Try again in a minute.' };
+  }
+
+  const secrets = readerSessionSecrets({
+    key: deriveReaderKey(parsed.data.deviceId),
+    deviceId: parsed.data.deviceId,
+    epoch: parsed.data.epoch,
+    clientNonce,
+    readerNonce,
+  });
+  return {
+    ok: true,
+    proof: secrets.clientProof.toString('base64url'),
+    expect: secrets.readerProof.toString('base64url'),
+    sessionKey: secrets.sessionKey.toString('base64url'),
+  };
 }

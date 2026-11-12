@@ -16,10 +16,12 @@ call out the discrepancy.
 GDG@PSU's invitation-only member platform: member identity and profiles, NFC membership cards,
 event attendance, points/stars, rewards, and organizer administration.
 
-Current hardware is **USB-only**. An admin browser talks to an ESP32 + PN532 reader over Web Serial;
-the reader has no WiFi, server client, secret, registration, heartbeat, or writer-job queue. The old
-WiFi device API is legacy and must not be revived as part of normal work. See
-`docs/architecture.md` and `docs/usb-api.md`.
+An admin browser drives an ESP32 + PN532 reader over its **USB cable** (Web Serial) or, when no
+computer is using the cable, over **Bluetooth** (Web Bluetooth). The cable always wins. The reader
+has no WiFi, server client, registration, heartbeat, or writer-job queue, and never reaches the
+network by itself; its one secret is its own Bluetooth pairing key. The old WiFi device API is
+legacy and must not be revived as part of normal work. See `docs/architecture.md` and
+`docs/usb-api.md`.
 
 ## 2. Workspace map
 
@@ -31,7 +33,7 @@ WiFi device API is legacy and must not be revived as part of normal work. See
 | `supabase/migrations`       | Schema, RLS, grants, views, storage policy, and transactional domain functions. This is the database source of truth. |
 | `scripts`                   | Verification, legacy migration, seed, reset, admin bootstrap, and TOTP enrollment entry points.                       |
 | `tests/e2e`                 | Playwright public and authenticated browser tests, including disposable fixtures.                                     |
-| `firmware/kiosk-reader`     | PlatformIO ESP32/PN532 USB firmware. No network or secret handling.                                                   |
+| `firmware/kiosk-reader`     | PlatformIO ESP32/PN532 firmware for USB and Bluetooth. No network, and no secret compiled in.                         |
 | `docs`                      | Architecture, data model, API, USB protocol, operations, deployment, security, hardware, and test records.            |
 | Root `README.md`            | Plain-language overview and quick start for people. Status, test results, and agent rules belong in this file.        |
 | `CONTRIBUTING.md`           | Human contribution rules; the commit rules below still apply to agents.                                               |
@@ -47,7 +49,7 @@ Member/admin browser
        -> Supabase Storage (`avatars`, server-side uploads)
 
 Admin browser (AAL2)
-  -> USB serial -> ESP32 + PN532
+  -> USB serial, or Bluetooth -> ESP32 + PN532
        -> /admin/cards  (prepare/write/read back/activate)
        -> /admin/kiosk  (read -> preview -> human confirmation)
        -> server actions/API -> Next.js -> Supabase
@@ -72,7 +74,12 @@ Admin browser (AAL2)
   event columns. Never serialize a base table row or an Auth user to the public.
 - Serverless functions are stateless. Rate limits and locks live in Postgres; there are no
   long-lived jobs, in-memory locks, or background daemons.
-- USB reads are local previews. They never grant points or complete attendance by themselves.
+- Card reads are local previews, on either link. They never grant points or complete attendance
+  by themselves.
+- The reader's cable is trusted because it is physical. Bluetooth is trusted only after the reader
+  and the browser have each proved themselves with the reader's pairing key, and every line after
+  that is sealed. The browser never holds that key: the server derives it, stores nothing, and
+  answers the handshake only for a signed-in organizer.
 
 ### Legacy surfaces: do not build on them
 
@@ -85,8 +92,9 @@ Retained for historical records/tests but **not** the current hardware flow:
 - `/admin/usb` and `/admin/devices`
 
 `/admin/usb` and `/admin/devices` redirect to `/admin/cards`; do not add new links to them. Do not
-add WiFi, device secrets, heartbeat, registration, or writer-job behavior to the current USB flow
-without an explicit product decision.
+add WiFi, server-stored device secrets, heartbeat, registration, or writer-job behavior to the
+current reader flow without an explicit product decision. Bluetooth was such a decision, made on
+2026-11-12; what it added is described under Readers in section 6.
 
 ## 4. Roles and access control
 
@@ -251,6 +259,32 @@ instants are stored as `timestamptz`; event wall-clock input and display use
 - Revocation is explicit and audited. Unknown/revoked/replaced tokens go to the neutral
   `/card-unavailable` page with no member metadata.
 
+### Readers
+
+- One connection per tab, `ReaderManager` (`lib/reader/reader-manager.ts`), shared by Cards and
+  the kiosk through `useReader`. Pages send commands with `sendCommand` and never open a port or a
+  Bluetooth device themselves.
+- The cable always wins, in the firmware and in the browser. A reader on the cable is the link in
+  use, and any Bluetooth link is let go, whichever reader it was to. Bluetooth is used with no
+  cable, or when the organizer selects Switch to Bluetooth; that choice ends when they switch back,
+  the Bluetooth link fails, or the page reloads.
+- A switch between links must not show. While one link replaces the other the reader still counts
+  as connected, and a command caught in the middle is sent again on the new link.
+- A reader is paired by being connected by cable: the browser asks `pairReaderAction` for the key
+  and passes it down the cable with `pair.set`. The key is derived from
+  `CARD_WRITE_ENCRYPTION_KEY` and the device ID (`lib/reader/keys.ts`); the server stores
+  nothing. Raise `READER_KEY_EPOCH` to retire every reader's key, for instance after one is lost.
+- The browser never holds a pairing key. `openReaderSessionAction` answers the handshake for a
+  signed-in organizer and returns a key for that session only. Do not return, log or audit a
+  pairing key or a session key, and do not move the handshake into the browser.
+- Over Bluetooth nothing is sent to a reader until it has proved it holds its key, and every line
+  after that is sealed (`lib/reader/secure-channel.ts`). The firmware accepts pairing, transport
+  and Bluetooth settings from the cable only, and keeps its radio off until it has a key.
+- The wire format lives in three places that must agree: the firmware (`ble_link.cpp`,
+  `reader_crypto.cpp`), the web (`lib/reader`), and `tools/reader_check.py`. `keys.test.ts` pins
+  reference values worked out separately in Python. Change `docs/usb-api.md` with them.
+- Firmware 2.0.x is still supported: it speaks protocol 2, and the pages offer it the cable only.
+
 ### Permanent delete
 
 - Organizers hide things: an event is cancelled, a reward or a card switched off, a member archived.
@@ -349,12 +383,19 @@ Next. It loads `.env.local` and `apps/web/.env.local`, and the base URL is the f
   fixtures. Run it against a disposable/test database, not production, and verify no leftover E2E
   auth users or rows. It skips on a hosted `*.supabase.co` project unless
   `E2E_ALLOW_HOSTED_SUPABASE=yes`; never set that for production.
-- `workflows.spec.ts` drives every member and organizer workflow through the real UI with a fake
-  Web Serial port. To run it locally, start the stack with
+- `workflows.spec.ts` drives every member and organizer workflow through the real UI with a
+  stand-in reader (`tests/e2e/support/fake-reader.ts`) that has a fake Web Serial port and a fake
+  Web Bluetooth radio, and does the real handshake and sealing. To run it locally, start the stack with
   `pnpm dlx supabase@2.122.0 start -x realtime,edge-runtime,imgproxy,studio,postgres-meta,logflare,vector,supavisor`,
   export its URL and keys in the shell (process env wins over `.env.local`), then build and serve the
   app on the `E2E_BASE_URL` port. `NEXT_PUBLIC_*` values are inlined at build time, so rebuild
   whenever you switch databases.
+- `reader-hardware.spec.ts` runs the real pages against a physical reader and real radio. It is
+  skipped unless `READER_PORT` is set, and needs a Bluetooth adapter, a disposable stack and Python
+  with pyserial (`READER_PYTHON`). It runs with a window, because Web Bluetooth needs one, and
+  answers the chooser over the DevTools protocol; only the serial port picker is stood in for.
+  With `READER_CARD=1` and a spare card on the reader it also writes the card over the cable and
+  over Bluetooth. The card is left holding a test link, so never use a member's card.
 - The invitation regression test intentionally checks `admin.invited` plus absence of
   `auth.password_updated`; do not "simplify" it back to `last_sign_in_at`.
 - For a focused run, pass the spec path and one project:
@@ -367,9 +408,13 @@ Next. It loads `.env.local` and `apps/web/.env.local`, and the base URL is the f
 pio run -d firmware/kiosk-reader
 pio run -d firmware/kiosk-reader --target upload --upload-port COM3
 pio device monitor -b 115200
+python firmware/kiosk-reader/tools/reader_check.py --port COM3 --bluetooth
 ```
 
-The firmware build is also part of `pnpm verify`. `docs/hardware-bringup.md` records what has passed
+`reader_check.py` checks a plugged-in reader over both links from the outside. It needs
+`pip install pyserial bleak cryptography` and a Bluetooth adapter, pairs the reader with a
+throwaway key, and leaves it unpaired; the admin pages set it up again the next time it is plugged
+in. The firmware build is also part of `pnpm verify`. `docs/hardware-bringup.md` records what has passed
 on physical hardware and what has not; claim only what it lists. Unplug the PN532 before an upload on
 the current reader, or esptool loses the port. Bump `GDG_FIRMWARE_VERSION` in `platformio.ini` with
 any firmware change, since `info` reports it to the admin page.
@@ -533,6 +578,21 @@ permission.
   old one, split it: push the part the running app tolerates, confirm it applied, then push the rest.
 - A browser tab connected over Web Serial holds the COM port, so flashing or a serial script gets
   "Access is denied" until the tab disconnects.
+- The ESP32 cannot tell a charger from a computer: the board's USB chip is separate from it. "On
+  USB" means a computer is talking over the cable, which is why the browser sends `ping` every two
+  seconds and `usb.release` when it lets go.
+- Opening the serial port resets the board. That also ends any Bluetooth session to that reader and
+  clears a `transport.set` override.
+- Web Bluetooth's chooser needs a click each time a page is opened: `getDevices()` is behind a flag
+  in Chrome, so a reload cannot reconnect by itself. Within one page, a reader chosen earlier can.
+- A growing lockout after failed Bluetooth proofs would let anyone nearby silence a reader by
+  failing on purpose. The key is too long to guess, so the pause is one second and fixed.
+- A Bluetooth peer can say why it is hanging up and hang up in the same instant. `BluetoothLink`
+  reads everything it was sent before treating a disconnect as a loss, or the reason is dropped.
+- `getByRole('alert')` also matches the route announcer Next.js keeps outside the page. Scope it
+  to `main`.
+- The audit log is permanent, so a second E2E run finds the first run's entries. Filter by this
+  run's actor before counting them.
 - `NavTabs` lights the longest matching `href`, so a section's first page (`/admin`, `/member`)
   takes `exact` or it lights up on every page beneath it.
 - A form inside a closed `<details>` is still in the page, so a test's `getByText` can match its
@@ -571,7 +631,7 @@ record what was not verified as plainly as what was.
 
 ## 13. Current state and progress
 
-Last updated 2026-11-09.
+Last updated 2026-11-12.
 
 ### Where things stand
 
@@ -595,7 +655,14 @@ Last updated 2026-11-09.
   anything. Its schema went ahead in `f187f33` and the app followed in `e18f987`. Since then
   invitation links work for 72 hours and password reset links for 48, an invitation nobody used
   shows as not accepted, and the links are the app's own instead of Supabase tokens. Its schema
-  went ahead in `8bd6160` and the app followed in `85f53ef`. See `docs/test-plan.md`.
+  went ahead in `8bd6160` and the app followed in `85f53ef`. An organizer who has only set a
+  password shows as "Profile not set up" since `fa2234d`. See `docs/test-plan.md`.
+- **Bluetooth, deployment not checked yet:** firmware 2.1.0 and the pages that go with it. A reader
+  can be used over Bluetooth when no computer is on its cable, the cable always wins, the organizer
+  can choose Bluetooth anyway, and the page moves between the two without losing the reader. A
+  reader is set up for Bluetooth by being plugged in once. There is no migration. One reader,
+  `esp32-a4156cc92df4`, runs 2.1.0 and was left unpaired, so the live pages set it up the next time
+  it is plugged in; the other is still on 2.0.2, which the pages keep supporting over the cable.
 
 ### Approved and not built yet
 
@@ -617,6 +684,43 @@ them, and do not record a weak setting here, because this repository is public:
   because card URLs are built from it. The origin of a generated invite link shows it.
 
 ### Verification record
+
+On the physical reader `esp32-a4156cc92df4` with firmware 2.1.0 on 2026-11-12
+(`docs/hardware-bringup.md` section 9b has the detail):
+
+- `tools/reader_check.py --bluetooth` passed 44 of 44 over the cable and over real radio from this
+  computer: pairing by cable only, the handshake both ways, sealed commands, the wrong key, a
+  replayed line and an unsealed line each ending the session, a silent caller dropped after 8
+  seconds, the cable taking over, the organizer's override, and Bluetooth switched off.
+- A command over Bluetooth took about 31 ms. Finding and connecting took 1.7 s.
+- `reader-hardware.spec.ts` passed: the real Cards page in Playwright's Chromium, real Web
+  Bluetooth, and the real server actions on a local stack. Connected by cable in 1.9 s, set up for
+  Bluetooth by itself, connected by Bluetooth in 3.5 s, moved to the cable in 1.9 s when it was
+  plugged in, took the organizer's choice of Bluetooth in 5.0 s and gave it back at once, and fell
+  back to Bluetooth in 7.5 s, with no error shown. Only the serial port picker was stood in for,
+  and "pulling the cable" closed the port while the reader kept its power.
+- The NFC module was unplugged for those. With it back and a card on the reader, the same spec
+  with `READER_CARD=1` passed too: the one-button writer prepared, wrote, read back and switched
+  on a card over the cable in 1.7 s; that card was read over Bluetooth; and a second card was
+  written the same way over Bluetooth in 1.7 s, replacing the first. Straight to the reader, a
+  card was read, written and read back over Bluetooth. The card was given back the link it came
+  with.
+
+On a local Supabase stack on 2026-11-12, for firmware 2.1.0 and Bluetooth, with a stand-in reader:
+
+- `pnpm format:check`, `pnpm lint` and `pnpm typecheck` pass, and `pnpm test` passes 113 unit
+  tests. Twenty-two are new: the pairing key and handshake against reference values worked out
+  separately in Python, the sealed channel against Node's own AES-GCM including replay and
+  tampering, and the link manager against a simulated reader that does the real handshake.
+- The firmware builds without warnings in its own sources, at 655 KB of a 1,310 KB slot.
+- `pnpm e2e` passes 57 with 39 skipped: 47/47 on desktop Chromium. The new test sets a stand-in
+  reader up over its cable, connects by Bluetooth, reads a card with nothing readable on the air,
+  moves to the cable when it is plugged in, takes the organizer's choice of Bluetooth and gives it
+  back, falls back when the cable is pulled, and refuses a reader holding the wrong key. The
+  earlier card and kiosk tests run on the new connection code, and `admin-invitation.spec.ts`
+  still uses a protocol 2 reader, which is offered the cable only.
+- Playwright's own Chromium, with a window, has Web Bluetooth on this computer and its chooser can
+  be answered over the DevTools protocol. `reader-hardware.spec.ts` relies on that.
 
 On the local stack on 2026-11-09, after People and the organizer page learned to say "Profile not set
 up": format, lint and typecheck pass, and `pnpm e2e` on desktop Chromium passes 46/46 plus both
@@ -697,11 +801,18 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
 
 ### Not verified yet
 
+- The kiosk over Bluetooth. It reads cards with the same command the Cards page does, which was
+  run on the physical reader, but the kiosk page itself was not.
+- A reader powered from a charger with no cable to the computer. The run kept it on the laptop's
+  cable for power.
+- Chrome or Edge themselves with a real reader over Bluetooth, and Chrome on Android. The run used
+  Playwright's Chromium.
+- The second reader on 2.1.0, and two readers at once.
+
 - The signed-in parts of the deployed app since `7472690`: the kiosk, the event form, and the fixes
   behind sign-in.
 - Organizer profiles on production while signed in: staff editing their placeholder, the setup step
   for a new admin, and a card written for an organizer.
-- The one-button card writer on the physical reader: it was only run against the fake reader.
 - The new Home, People, manage and audit pages on production while signed in.
 - Permanent delete on production. It was never run there, and an agent must not run it there.
 - The new links on production: making one, opening it days later, and the Not accepted status.

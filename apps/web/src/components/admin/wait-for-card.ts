@@ -8,6 +8,11 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+/** The reader went away mid-command, which says nothing about any card. */
+export function isDisconnected(error: unknown): boolean {
+  return error instanceof Error && error.name === 'LinkClosedError';
+}
+
 const READER_FAULTS = new Set([
   'nfc_not_ready',
   'nfc_unavailable',

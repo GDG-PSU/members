@@ -93,6 +93,10 @@ The bucket is per client rather than per token: 256-bit tokens cannot be guessed
 
 `/admin/kiosk` calls the `previewUsbKioskAction` Server Action after Web Serial returns one card URI. The action validates the URL/token, active card and member, session and check-in/check-out window, and photo-change state. It creates a short-lived pending `device_scans` row with `device_id = null` and `metadata.source = 'usb-kiosk'`, then returns the member preview and suggested action. The admin confirms through `POST /api/admin/kiosk/confirm`, which invokes the same `confirm_scan` transaction used by the legacy path. A read alone never changes attendance or points.
 
+### Readers over Bluetooth
+
+Two Server Actions, both for a signed-in organizer at AAL2. `pairReaderAction({ deviceId, epoch?, check? })` is called when a reader is connected by cable. If the reader already reports the current key's fingerprint it returns `{ ok, current: true }`; otherwise it writes a `reader.paired` audit row and returns the key for the browser to pass down the cable. It is limited to 20 new keys per organizer per 10 minutes. `openReaderSessionAction({ deviceId, epoch, clientNonce, readerNonce })` is called once per Bluetooth connection and returns the proof to send, the proof a genuine reader answers with, and the key for that session; never the pairing key. It is limited to 60 per organizer per minute and is not audited. The protocol is in `docs/usb-api.md`.
+
 All other admin mutations are Server Actions (below). They require `getViewer().isAdmin` on the server and write an `audit_log` row; most finish with `redirect()` to the originating page with a notice/error query parameter. Link-returning actions instead return `{ ok, email, link }` to a client form (never a redirect URL), so tokens are not placed in browser history or server logs. Delivery is manual: the admin copies the link, sends it privately, and the app never calls an email provider.
 
 ### Admin Server Actions

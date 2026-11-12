@@ -54,3 +54,6 @@ pnpm-debug.log*
 # generated test artifacts
 test-results/
 playwright-report/
+
+# Python tools for the reader
+__pycache__/

@@ -47,7 +47,7 @@ always confirms attendance, and why tapping a card never logs anyone in or award
 - Next.js 16, React 19, and TypeScript
 - Tailwind CSS v4 and a shared component library
 - Supabase for the Postgres database, sign-in, and file storage
-- An ESP32 and a PN532 NFC reader, connected through the browser's Web Serial API
+- An ESP32 and a PN532 NFC reader, driven from the browser over a USB cable (Web Serial) or Bluetooth
 - pnpm workspaces and Turborepo
 
 ## Getting started
@@ -89,8 +89,9 @@ Delete the file when you're done.
 ### Using the card reader
 
 Writing cards and running the kiosk also need the reader hardware and Chrome or Edge, the browsers
-with Web Serial. See [hardware bring-up](docs/hardware-bringup.md) for wiring and the
-[firmware README](firmware/kiosk-reader/README.md) for flashing.
+with Web Serial and Web Bluetooth. The reader plugs in with a USB cable, or works over Bluetooth
+once it has been plugged in a first time. See [hardware bring-up](docs/hardware-bringup.md) for
+wiring and the [firmware README](firmware/kiosk-reader/README.md) for flashing.
 
 ## Useful commands
 

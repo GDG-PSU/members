@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { QrCode, Search } from 'lucide-react';
-import { Alert, Button, Card, CardContent, Field, Input, MemberAvatar, Select, cn } from '@gdg/ui';
+import { Alert, Button, Card, CardContent, Field, Input, MemberAvatar, Select } from '@gdg/ui';
 import {
   previewKioskLookupAction,
   previewUsbKioskAction,
@@ -13,9 +13,11 @@ import {
 } from '@/app/(admin)/admin/actions';
 import { formatDateTime } from '@/lib/format';
 import { QrScanDialog } from '@/components/admin/qr-scan-dialog';
-import { useUsbLane } from '@/components/admin/use-usb-lane';
+import { ReaderConnection, ReaderDetails, ReaderError } from '@/components/admin/reader-controls';
+import { useReader } from '@/components/admin/use-reader';
 import {
   isAbortError,
+  isDisconnected,
   isReaderFault,
   laneErrorMessage,
   waitForCard,
@@ -64,8 +66,8 @@ export function UsbKioskPanel({
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<KioskMemberHit[] | null>(null);
   const [scanning, setScanning] = useState(false);
-  const { connected, connecting, info, status, error, log, connect, disconnect, sendCommand } =
-    useUsbLane({ autoConnect: true });
+  const reader = useReader();
+  const { connected, sendCommand } = reader;
   // A card that has been read stays on the reader until someone lifts it. Reading
   // it again would offer the same person a second action they did not ask for.
   const cardOnReaderRef = useRef(false);
@@ -105,7 +107,8 @@ export function UsbKioskPanel({
           setScan(preview);
           return;
         } catch (readError) {
-          if (signal.aborted || isAbortError(readError)) return;
+          // A lost reader is reported by the reader's own status, not as a bad card.
+          if (signal.aborted || isAbortError(readError) || isDisconnected(readError)) return;
           setMessage({ kind: 'danger', text: laneErrorMessage(readError) });
           if (isReaderFault(readError)) {
             await pause(READER_FAULT_RETRY_MS, signal);
@@ -219,13 +222,7 @@ export function UsbKioskPanel({
   const action = scan?.action ?? 'check_in';
   const actionLabel = action === 'check_out' ? 'check-out' : 'check-in';
   const needsIdCheck = Boolean(scan?.photoChangedRecently && !identityChecked);
-  const readerLine = connecting
-    ? status || 'Connecting to the reader…'
-    : !connected
-      ? 'Reader not connected'
-      : readerStep === 'lift'
-        ? 'Lift the card off the reader'
-        : 'Waiting for a card';
+  const readerLine = readerStep === 'lift' ? 'Lift the card off the reader' : 'Waiting for a card';
 
   return (
     <div className="space-y-4">
@@ -252,27 +249,7 @@ export function UsbKioskPanel({
               )}
             </Select>
           </Field>
-          <div className="flex items-center gap-3">
-            <p className="flex items-center gap-2 text-sm" role="status">
-              <span
-                aria-hidden
-                className={cn(
-                  'size-2.5 rounded-full',
-                  connected ? 'bg-success' : connecting ? 'bg-warning' : 'bg-muted-foreground',
-                )}
-              />
-              {readerLine}
-            </p>
-            {connected ? (
-              <Button variant="secondary" onClick={() => void disconnect()}>
-                Disconnect
-              </Button>
-            ) : (
-              <Button onClick={() => void connect()} disabled={connecting}>
-                {connecting ? 'Connecting…' : 'Connect reader'}
-              </Button>
-            )}
-          </div>
+          <ReaderConnection reader={reader} line={readerLine} />
         </CardContent>
       </Card>
 
@@ -285,11 +262,7 @@ export function UsbKioskPanel({
           before opening the kiosk.
         </Alert>
       ) : null}
-      {error ? (
-        <Alert variant="danger" role="alert">
-          {error}
-        </Alert>
-      ) : null}
+      <ReaderError reader={reader} />
       {message ? (
         <Alert variant={message.kind === 'success' ? 'success' : 'danger'} role="status">
           {message.text}
@@ -455,16 +428,7 @@ export function UsbKioskPanel({
 
       <details className="border border-border bg-subtle/50 px-5 py-3 text-sm">
         <summary className="cursor-pointer font-medium">Reader troubleshooting</summary>
-        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          {connected
-            ? `${info?.deviceId ?? 'Reader'} · firmware ${info?.firmware ?? '—'} · NFC ${
-                info?.nfcReady ? 'ready' : 'not ready'
-              }`
-            : 'Plug the reader into this computer, then select Connect reader. Use Chrome or Edge.'}
-        </p>
-        <pre className="mt-3 max-h-48 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[0.7rem] leading-relaxed">
-          {log.length > 0 ? log.join('\n') : 'No messages from the reader yet.'}
-        </pre>
+        <ReaderDetails reader={reader} />
       </details>
 
       <QrScanDialog

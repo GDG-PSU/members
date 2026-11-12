@@ -90,6 +90,8 @@ export function describeAudit(
       return `wrote a card for ${who}`;
     case 'card.revoked':
       return `switched off ${whose} card`;
+    case 'reader.paired':
+      return 'set up a card reader for Bluetooth';
     case 'event.created':
       return `created ${titled('event')}`;
     case 'event.updated':
@@ -167,7 +169,7 @@ export const AUDIT_TOPICS: { value: string; label: string; prefixes: string[] }[
     label: 'People and invitations',
     prefixes: ['invitation.', 'admin.', 'user.', 'member.', 'points.', 'staff.'],
   },
-  { value: 'cards', label: 'Cards', prefixes: ['card.'] },
+  { value: 'cards', label: 'Cards and readers', prefixes: ['card.', 'reader.'] },
   { value: 'attendance', label: 'Check-in and check-out', prefixes: ['attendance.', 'scan.'] },
   { value: 'events', label: 'Events', prefixes: ['event.'] },
   { value: 'rewards', label: 'Rewards', prefixes: ['reward.', 'redemption.'] },

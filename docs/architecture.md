@@ -1,12 +1,14 @@
 # Architecture
 
-> **Current hardware path (2026-11-04):** The reader is a USB-only ESP32 +
-> PN532 controlled by an admin browser over Web Serial at `/admin/cards` and
-> `/admin/kiosk`. It has no WiFi, server device client, registration, HMAC
-> secret, heartbeat, or kiosk polling. The signed device API, kiosk queue, and
+> **Current hardware path (2026-11-12):** The reader is an ESP32 + PN532
+> controlled by an admin browser at `/admin/cards` and `/admin/kiosk`, over
+> its USB cable (Web Serial) or, when no computer is using the cable, over
+> Bluetooth (Web Bluetooth). The cable always wins. The reader has no WiFi,
+> server device client, registration, heartbeat, or kiosk polling, and never
+> reaches the network by itself. The signed device API, kiosk queue, and
 > writer-job sections below are legacy history; do not use them for the current
 > hardware. The old Devices tab is removed; `/admin/devices` redirects to
-> `/admin/cards`.
+> `/admin/cards`. See [usb-api.md](usb-api.md).
 
 ## Staff roles
 
@@ -28,7 +30,7 @@ Member / Admin browser
                 ├── Supabase Storage (`avatars` bucket, server-side uploads)
                 └── Admin copies one-time auth links (no SMTP; email is manual)
 
-Admin browser (AAL2) ── USB serial ── ESP32 + PN532 (no WiFi, no server client)
+Admin browser (AAL2) ── USB serial, or Bluetooth ── ESP32 + PN532 (no WiFi, no server client)
   ├── /admin/cards   → prepare / write / read back / activate cards
   ├── /admin/kiosk → select session → read card → confirm check-in/check-out
   └── Server Actions / API → Next.js → Supabase
@@ -51,7 +53,7 @@ The repository is a pnpm workspace with Turborepo:
 
 1. **Browser → Next server.** The browser holds only an HttpOnly Supabase session cookie. Every member/admin page, server action and route handler re-checks the session and the server-side role/member record. Client-side visibility is never authorization.
 2. **Next server → Supabase.** The server holds the Supabase secret (service) key. Signed-in requests use the user's access token, so Postgres RLS applies to member reads. Privileged writes are executed by the server only after an explicit authorization check and then call narrowly-scoped SQL functions.
-3. **USB lane → admin browser → Next server (current).** The reader exposes only local newline-delimited JSON over Web Serial; it never reaches the network. The admin page still requires a verified AAL2 admin session, and every preview/confirmation is re-authorized server-side. The former signed device API is legacy and unused.
+3. **Reader → admin browser → Next server (current).** The reader exposes only local newline-delimited JSON, over Web Serial or Web Bluetooth; it never reaches the network. The cable is trusted because it is physical. Bluetooth is trusted only after the reader and the browser have each proved themselves with the reader's pairing key, which the reader got over the cable and the browser never holds: the server derives it, answers the handshake for a signed-in organizer, and hands back a key that seals that one session. The admin page still requires a verified AAL2 admin session, and every preview/confirmation is re-authorized server-side. The former signed device API is legacy and unused.
 4. **Admin → attendance/points.** A card read creates only a preview and a short-lived pending scan. A human admin must confirm check-in, then check-out, before points exist. A card link (`/c/...`) is a routing identifier, never an authentication factor.
 5. **Public → data.** Public pages read explicit projections (`public_profiles`, `leaderboard`) with column-level visibility. No public query serializes a table row or Auth user.
 
@@ -83,7 +85,7 @@ The repository is a pnpm workspace with Turborepo:
 ### Attendance and points
 
 ```text
-USB card read (Web Serial nfc.read)
+Card read (nfc.read over the cable or Bluetooth)
   → admin selects event session on /admin/kiosk
   → previewUsbKioskAction validates card, member, session/window and photo state
   → insert device_scans(status = pending, device_id = null, expires_at = now + 3 min)
