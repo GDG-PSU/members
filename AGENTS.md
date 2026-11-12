@@ -635,9 +635,10 @@ Last updated 2026-11-12.
 
 ### Where things stand
 
-- **App:** deployed on Vercel from `main`, served at `https://mempass.vercel.app`.
-  `https://members-bay-eight.vercel.app` redirects there. Only the gitignored local `.env.production`
-  still names the old host.
+- **App:** deployed on Vercel from `main`, served at `https://members.gdgpsu.dev` as seen on
+  2026-11-12. `https://mempass.vercel.app` and `https://members-bay-eight.vercel.app` redirect
+  there. `README.md`, `docs/deployment.md` and the fallback in `lib/env.ts` still name
+  `mempass.vercel.app`; see Known issues.
 - **Database:** Supabase project `potjjlmgnrqxseeendmx`, with migrations through 0020 applied. The
   Supabase GitHub integration applies new migrations when `main` is pushed.
 - **Data:** production was reset on 2026-11-04 and has been in use since: staff accounts and a few
@@ -657,10 +658,10 @@ Last updated 2026-11-12.
   shows as not accepted, and the links are the app's own instead of Supabase tokens. Its schema
   went ahead in `8bd6160` and the app followed in `85f53ef`. An organizer who has only set a
   password shows as "Profile not set up" since `fa2234d`. See `docs/test-plan.md`.
-- **Bluetooth, deployment not checked yet:** firmware 2.1.0 and the pages that go with it. A reader
-  can be used over Bluetooth when no computer is on its cable, the cable always wins, the organizer
-  can choose Bluetooth anyway, and the page moves between the two without losing the reader. A
-  reader is set up for Bluetooth by being plugged in once. There is no migration. One reader,
+- **Bluetooth:** firmware 2.1.0 and the pages that go with it, deployed in `7655a02`. A reader can
+  be used over Bluetooth when no computer is on its cable, the cable always wins, the organizer can
+  choose Bluetooth anyway, and the page moves between the two without losing the reader. A reader
+  is set up for Bluetooth by being plugged in once. There was no migration. One reader,
   `esp32-a4156cc92df4`, runs 2.1.0 and was left unpaired, so the live pages set it up the next time
   it is plugged in; the other is still on 2.0.2, which the pages keep supporting over the cable.
 
@@ -762,6 +763,13 @@ On the physical ESP32 + PN532 with firmware 2.0.2:
   read back, activate, the card URL resolving, check-in, check-out, and the points grant. Only
   `navigator.serial` was bridged to COM3, because its picker cannot be automated.
 
+On production, read-only, after `7655a02` was pushed on 2026-11-12:
+
+- `7655a02` passed CI and its Vercel deployment is live. The site's `Permissions-Policy` now allows
+  Bluetooth and serial to the site itself. Signed out, `/admin/cards` and `/admin/kiosk` redirect to
+  `/login` with the destination.
+- No reader was connected to production and none was set up for Bluetooth there.
+
 On production, read-only, after `8bd6160` was pushed on 2026-11-05:
 
 - Migration 0020 is applied. `sign_in_links` has RLS on and cannot be read by `anon` or
@@ -808,6 +816,7 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
 - Chrome or Edge themselves with a real reader over Bluetooth, and Chrome on Android. The run used
   Playwright's Chromium.
 - The second reader on 2.1.0, and two readers at once.
+- Bluetooth on production: a reader set up and used through the live pages while signed in.
 
 - The signed-in parts of the deployed app since `7472690`: the kiosk, the event form, and the fixes
   behind sign-in.
@@ -831,6 +840,9 @@ On production, read-only, after `7472690` was pushed on 2026-11-04:
   email default is deliberate (`PRIVACY.md`). Consider hiding it by default and adding `noindex`.
 - **Decision:** the legacy device API is still reachable, though no devices are registered. Consider
   removing it.
+- The site moved to `https://members.gdgpsu.dev`, but `README.md`, `docs/deployment.md` and the
+  fallback `SITE_URL` in `lib/env.ts` still name `mempass.vercel.app`, which now only redirects.
+  The fallback is used when `NEXT_PUBLIC_SITE_URL` is unset.
 - The public read APIs have no rate limit.
 - The database scripts connect without validating the TLS certificate.
 - `scripts/admin-enroll-totp.mjs` reads a credentials file that nothing creates anymore.
