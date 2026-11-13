@@ -2,44 +2,73 @@
 
 ## Reporting a vulnerability
 
-Email **gdg@psu.edu** with a description, reproduction steps and impact. Do not open a public issue for a suspected vulnerability, and do not include other members' data or live credentials in the report.
+Email **gdg@psu.edu** with a description, steps to reproduce and the impact. Do
+not open a public issue for a suspected vulnerability, and do not include other
+members' data or live credentials in the report.
 
-This is a student-run project with no formal SLA. Organizers will acknowledge reports as soon as practical and coordinate a fix before public disclosure.
+This is a student-run project with no formal response time. Organizers
+acknowledge reports as soon as they can and coordinate a fix before anything is
+made public.
 
-## Supported versions
+Only the current `main` branch is supported.
 
-Only the current `main` branch is supported. There are no maintained release branches.
+## The security model in brief
 
-## Security model in brief
+- **Identity:** Supabase Auth, email and password. Accounts exist by invitation
+  only; there is no public sign-up. Organizers also verify an authenticator app.
+- **Authorization:** every page, server action and route handler checks the
+  session and the role on the server. Roles come from `user_roles`, never from
+  metadata or an email address. Member data is also protected by Postgres RLS.
+- **Points and stars:** append-only ledgers; a balance is a sum. Grants,
+  reversals and reward requests run in SQL functions only the server can call,
+  with idempotency keys and row locks.
+- **Attendance:** reading a card, scanning a QR code or finding a member by name
+  only creates a preview. An organizer checks the person against their photo and
+  confirms.
+- **Cards:** a card holds one opaque HTTPS link and can be copied, so holding
+  one authorizes nothing. Links are stored hashed, with a sealed copy for the
+  owner's own digital ID.
+- **Card readers:** a reader holds a key of its own and obeys only a session
+  opened with it, over its cable or over Bluetooth. The site stores that key
+  sealed and never gives it to a browser for a session: the server answers the
+  handshake for a signed-in organizer and returns a key for that one session,
+  under which every line is sealed with AES-256-GCM. See `docs/usb-api.md`,
+  including what this does not protect against.
+- **One-time links:** invitations and password resets are links the app issues
+  itself. Only the token's hash is stored, a link works once, for 72 or 48
+  hours, and opening one does not spend it.
+- **Public data:** explicit projections with per-field visibility enforced in
+  the database. Internal IDs, card data and notes are never public.
+- **Audit:** an append-only log with the actor and reason. Nothing can update or
+  delete an entry, and it never holds a secret, a card link or a one-time link.
+- **Secrets:** the Supabase service key, the encryption key and the database
+  URL live in ignored env files and in the host's settings. Nothing secret is
+  prefixed `NEXT_PUBLIC_` or compiled into the reader's firmware.
+- **Headers:** a CSP, `X-Content-Type-Options`, `Referrer-Policy`, framing
+  denial and a permissions policy, in `apps/web/next.config.ts`.
 
-- **Identity:** Supabase Auth (email + password, invitation-only accounts, admin-initiated recovery). No public signup. Passwords are never stored by this application.
-- **Authorization:** server-side checks on every member/admin page, server action and route handler. Roles come from `user_roles`, never from editable metadata or email suffixes. Member data is additionally protected by Postgres RLS.
-- **Value integrity:** points/stars are append-only ledgers; balances are sums. Grants, reversals and redemptions run in transactional SQL functions restricted to the server role, with idempotency keys, row locks and non-negative balance checks.
-- **Attendance:** device scans only create pending rows. A human admin must confirm check-in and check-out; rewards require a server-computed duration threshold.
-- **Cards:** NFC cards store a single opaque HTTPS URL. Card tokens are hashed at rest (SHA-256); an AES-256-GCM encrypted copy exists only for the owner's authenticated digital ID and one-time write jobs. Card possession never authorizes attendance, spending or account access.
-- **Devices:** separate identity from users. Per-device high-entropy secret, only a hash stored, rotatable/revocable, scoped endpoints, TLS required. Firmware never receives Supabase keys.
-- **Readers:** a card reader is driven by an organizer's browser, over its USB cable or over Bluetooth, and never reaches the network. The cable is trusted because it is physical. Bluetooth is trusted only after the reader and the browser have each proved themselves with the reader's pairing key, and every line after that is sealed with AES-256-GCM under a key made for that session. The reader is given its key over the cable; the browser never holds it. The server derives it from `CARD_WRITE_ENCRYPTION_KEY`, stores nothing, and opens a session only for a signed-in organizer. See `docs/usb-api.md`.
-- **Public data:** explicit allowlisted projection views; email public by default and member-controlled; internal UUIDs, card data and admin notes never public.
-- **Auditing:** append-only audit and attendance-audit tables with actor, reason and redacted before/after values. Audit rows retain the actor UUID after an account is deleted; the log itself cannot be edited or removed.
-- **Secrets:** server-only Supabase secret/service key, encryption key and database URL live in ignored env files (Vercel env in deployment). `.env.example` contains placeholders only. Firmware secrets are ignored; only `secrets.example.h` belongs in Git.
-- **Headers:** CSP, `X-Content-Type-Options`, `Referrer-Policy`, framing denial and a permissions policy are configured in `apps/web/next.config.ts`. HSTS must be enabled at the edge/production host.
+## Handling secrets
 
-## Secret handling rules
-
-1. Never commit `.env*`, firmware `secrets.h`, service keys, card tokens, invitation/recovery URLs or production member data.
+1. Never commit `.env*` (except `.env.example`), service keys, card links,
+   one-time links, reader keys or real member data.
 2. Never prefix a secret with `NEXT_PUBLIC_`.
-3. Never put Supabase credentials on an ESP32.
-4. Rotate a device secret immediately if it is suspected lost; disable the device first. For a lost card reader, raise `READER_KEY_EPOCH` so its Bluetooth key stops being accepted.
-5. Do not paste secrets into chats, issues, screenshots or test reports.
-6. Do not disable TLS certificate validation in firmware.
+3. Never put a Supabase key on a reader.
+4. Do not paste secrets into chats, issues, screenshots or test reports.
+5. When a reader comes back after being out of your hands, use **Rotate key**
+   before trusting it.
 
-## Known limitations (not a clean bill of health)
+## Known limits
 
-- The SSR client uses the publishable key, so user/anonymous queries are bound by RLS. A server compromise can still reach the secret key used for admin operations (auth-admin link generation, cross-member reads, device jobs).
-- Invitations and recovery are delivered manually: an admin copies a one-time link into their own mail client. The link is as sensitive as a password until used. It is the app's own: only the hash of its token is stored, an invitation works for 72 hours and a password reset for 48, and a new link replaces the old one. It no longer depends on the project's Auth OTP setting.
-- The device middleware API is auth-tested, but the firmware build and hardware behavior are not verified in this environment.
-- No production deployment, custom domain, dependency audit, secret scan or backup/restore drill has been completed.
-- The authenticated invitation and member-setup flow is automated end to end. Remaining admin surfaces (cards, kiosk, events, devices), accessibility and load tests have not been run.
-- The admin TOTP factor is enrolled, but the bootstrap password still needs rotating before live member data.
+- The server holds a service key for organizer operations, so a server
+  compromise is high impact.
+- A one-time link is as sensitive as a password until it is used, and it is
+  delivered by hand.
+- A reader's flash is not encrypted. Someone with the reader and a flashing tool
+  can read its key or replace its firmware.
+- Email is public on a profile unless the member hides it.
+- The public read APIs have no rate limit, and no load test has been run.
+- No secret scanning or dependency audit runs in CI, and no backup restore has
+  been rehearsed.
 
-See `docs/threat-model.md` for the threat table and the ASVS mapping with tested/untested controls, and `docs/test-plan.md` for exact recorded results.
+`docs/threat-model.md` has the full threat table, and `docs/test-plan.md` what
+has and has not been tested.

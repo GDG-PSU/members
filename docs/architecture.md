@@ -1,141 +1,127 @@
 # Architecture
 
-> **Current hardware path (2026-11-12):** The reader is an ESP32 + PN532
-> controlled by an admin browser at `/admin/cards` and `/admin/kiosk`, over
-> its USB cable (Web Serial) or, when no computer is using the cable, over
-> Bluetooth (Web Bluetooth). The cable always wins. The reader has no WiFi,
-> server device client, registration, heartbeat, or kiosk polling, and never
-> reaches the network by itself. The signed device API, kiosk queue, and
-> writer-job sections below are legacy history; do not use them for the current
-> hardware. The old Devices tab is removed; `/admin/devices` redirects to
-> `/admin/cards`. See [usb-api.md](usb-api.md).
-
-## Staff roles
-
-- **Admin** — member invitations, Cards/USB writer, events, kiosk, and rewards.
-  The admin overview and invitation history show only actions/records created by
-  that admin; there is no full audit or staff management.
-- **Superadmin** — inherits all admin operations and additionally sees the
-  combined Users tab and the full Audit tab, can invite admins or superadmins,
-  and can revoke staff access. The last active superadmin and self-revocation
-  are blocked.
+How the pieces fit and where trust ends. For the rules to follow when changing
+them, see `AGENTS.md`; for tables and functions, [data-model.md](data-model.md).
 
 ## System shape
 
 ```text
-Member / Admin browser
+Member / organizer browser
   └── HTTPS → Next.js App Router (Vercel)
-                ├── Supabase Auth (email + password, invitation/recovery links)
-                ├── Postgres via Supabase (RLS + transactional SQL functions)
-                ├── Supabase Storage (`avatars` bucket, server-side uploads)
-                └── Admin copies one-time auth links (no SMTP; email is manual)
+                ├── Supabase Auth (email + password)
+                ├── Postgres (RLS + transactional SQL functions)
+                └── Supabase Storage (private `avatars` bucket)
 
-Admin browser (AAL2) ── USB serial, or Bluetooth ── ESP32 + PN532 (no WiFi, no server client)
-  ├── /admin/cards   → prepare / write / read back / activate cards
-  ├── /admin/kiosk → select session → read card → confirm check-in/check-out
-  └── Server Actions / API → Next.js → Supabase
+Organizer browser (signed in, authenticator app verified)
+  └── USB cable, or Bluetooth → ESP32 + PN532 card reader
+        ├── /admin/cards  write a card and switch it on
+        └── /admin/kiosk  read a card → preview → an organizer confirms
 ```
 
-The former WiFi path (`/api/device/v1/*`, pending-scan polling, writer jobs) is
-retained only for historical records and is not part of the current hardware
-flow.
+The reader has no WiFi and never reaches the network. Everything it does is
+asked for by an organizer's browser, and the server is only involved through
+that browser.
 
-The repository is a pnpm workspace with Turborepo:
+The repository is a pnpm workspace built with Turborepo:
 
-- `apps/web` — the only deployable web app (Next.js, strict TypeScript, Tailwind CSS v4 + shadcn/ui-style components).
-- `packages/ui` — central Tailwind token layer, shadcn-style primitives and branded components.
-- `packages/contracts` — framework-neutral Zod schemas and public types.
-- `supabase/migrations` — schema, policies, functions, storage configuration.
-- `scripts` — migration runner and transactional database verification.
-- `firmware/kiosk-reader` — PlatformIO ESP32/PN532 project.
+| Path                    | What it is                                         |
+| ----------------------- | -------------------------------------------------- |
+| `apps/web`              | The one deployable app: Next.js, strict TypeScript |
+| `packages/ui`           | Design tokens and components                       |
+| `packages/contracts`    | Zod schemas and types shared across boundaries     |
+| `supabase/migrations`   | Schema, policies, functions, storage               |
+| `scripts`               | Database checks, reset, first admin                |
+| `firmware/kiosk-reader` | The reader's firmware and its tools                |
+| `tests/e2e`             | Playwright tests                                   |
 
 ## Trust boundaries
 
-1. **Browser → Next server.** The browser holds only an HttpOnly Supabase session cookie. Every member/admin page, server action and route handler re-checks the session and the server-side role/member record. Client-side visibility is never authorization.
-2. **Next server → Supabase.** The server holds the Supabase secret (service) key. Signed-in requests use the user's access token, so Postgres RLS applies to member reads. Privileged writes are executed by the server only after an explicit authorization check and then call narrowly-scoped SQL functions.
-3. **Reader → admin browser → Next server (current).** The reader exposes only local newline-delimited JSON, over Web Serial or Web Bluetooth; it never reaches the network. The cable is trusted because it is physical. Bluetooth is trusted only after the reader and the browser have each proved themselves with the reader's pairing key, which the reader got over the cable and the browser never holds: the server derives it, answers the handshake for a signed-in organizer, and hands back a key that seals that one session. The admin page still requires a verified AAL2 admin session, and every preview/confirmation is re-authorized server-side. The former signed device API is legacy and unused.
-4. **Admin → attendance/points.** A card read creates only a preview and a short-lived pending scan. A human admin must confirm check-in, then check-out, before points exist. A card link (`/c/...`) is a routing identifier, never an authentication factor.
-5. **Public → data.** Public pages read explicit projections (`public_profiles`, `leaderboard`) with column-level visibility. No public query serializes a table row or Auth user.
+1. **Browser → server.** The browser holds only an HttpOnly session cookie.
+   Every page, server action and route handler checks the session and the
+   person's role again on the server. What the page shows is never
+   authorization.
+2. **Server → database.** Reads on behalf of a signed-in person use their own
+   token, so Postgres RLS applies. Privileged writes use the service key, only
+   after an authorization check, and go through SQL functions that own each
+   transition. The API roles can reach almost nothing: `anon` reads published
+   events, and `authenticated` reads its own rows.
+3. **Public → data.** Public pages read two projections, `public_profiles` and
+   `leaderboard`, which leave hidden fields out in the database. No public
+   response is built from a table row or an Auth user.
+4. **Reader → browser → server.** A reader obeys only a session opened with its
+   own key, on its cable and over Bluetooth alike. The website holds that key
+   and the browser does not: the server answers the handshake for a signed-in
+   organizer and returns a key for that one session. So a reader in the wrong
+   hands does nothing, and neither does one whose organizer lost their access.
+   [usb-api.md](usb-api.md) has the protocol and its limits.
+5. **Card → attendance.** A card holds a link and can be copied. Reading one
+   creates a short-lived preview. An organizer checks the person against their
+   photo and confirms, and only then is anything recorded.
 
-## Current authentication implementation
+## Signing in
 
-- `apps/web/src/lib/supabase/server.ts` creates a cookie-bound client with the **publishable** key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`), so every query is subject to RLS. The secret key is used only by the admin client.
-- After `signInWithPassword` / invite callback, requests carry the user's access token. PostgREST then evaluates RLS as that user, so member isolation is exercised by the database, not just app code.
-- Unauthenticated/public reads use `apps/web/src/lib/supabase/admin.ts` against the explicit public views. RLS is bypassed for those reads, so these queries must never select from base tables or serialize arbitrary rows.
-- Invitations use Supabase's Admin API. The member lands on `/auth/callback`, where a small client component forwards the URL-fragment tokens to `POST /api/auth/session`; the server sets the session cookies and redirects. This avoids requiring a browser Supabase key.
-- Invitations and recovery are admin-initiated and **manual**: the admin API generates a one-time link, the portal returns it to a client form, and the admin copies it into their own mail client. No email provider is involved. Members without a link are directed to email `gdg@psu.edu`.
-- The secret key remains server-only and is limited to `createSupabaseAdmin()` call sites (auth-admin link generation, cross-member reads, device jobs, public-projection reads). Those call sites must authorize the actor first and must never serialize arbitrary rows.
+- There is no public sign-up. An organizer makes an invitation; the app issues a
+  one-time link of its own and the organizer sends it by hand, because there is
+  no email provider. Password resets work the same way, from a superadmin.
+- Only the hash of a link's token is stored (`sign_in_links`). Opening the link
+  shows a Continue button, so a chat preview cannot use it up. Pressing Continue
+  spends it and signs the person in.
+- A new member sets a password, uploads a face photo and fills in a profile;
+  `complete_member_setup` creates the member in one transaction and can be
+  retried safely.
+- Organizers also verify an authenticator app code. Admin pages and the
+  database's admin policies both require that verified session (AAL2).
 
-## Request flows
-
-### Member sign-in and setup
-
-1. Admin records dues and generates an invitation link (server-only, idempotent per pending email). The admin copies it to the member manually.
-2. The link verifies with Supabase Auth and redirects to `/auth/callback#access_token=…&refresh_token=…`.
-3. `/api/auth/session` sets HttpOnly session cookies. The member lands on `/invite/accept`.
-4. The member sets a password (`auth.updateUser`), uploads a photo (server validates/re-encodes with `sharp`), and submits name/bio/consent.
-5. `complete_member_setup(...)` atomically creates `members`, `member_private`, `member_profiles`, generates the permanent slug and member number, and marks the invitation accepted. It is safe against retries.
-6. The server queues audit entries. No card is created until an organizer prepares one.
-
-### Public profile and card routing
-
-- `/m/<slug>` reads `public_profiles`; hidden fields are absent from the row. A private or unknown profile renders the neutral not-found state.
-- `/c/<token>` validates the 43-character token format, applies a rate limit, hashes the token with SHA-256, looks up an `active` card, and redirects (307, `no-store`) to the member's stable `/m/<slug>`. Revoked/replaced cards go to `/card-unavailable` with no member metadata.
-
-### Attendance and points
+## Attendance and points
 
 ```text
-Card read (nfc.read over the cable or Bluetooth)
-  → admin selects event session on /admin/kiosk
-  → previewUsbKioskAction validates card, member, session/window and photo state
-  → insert device_scans(status = pending, device_id = null, expires_at = now + 3 min)
-  → admin verifies photo/PSU ID and confirms check-in
-       → POST /api/admin/kiosk/confirm → confirm_scan
-  → admin reads the same card again and confirms check-out
-       ├─ below threshold or no checkout → no ledger row, qualified = false
-       └─ at/over threshold → grant_points(source_key = attendance:<id>)
-                               → point_ledger + mirrored star_ledger
-  → audit_log + attendance_audit_events
+card read, QR code, or an organizer finding the member by name
+  → previewUsbKioskAction checks the card, the member and the session's times
+  → a pending scan that expires in 3 minutes
+  → the organizer checks the photo (and a PSU ID after a recent photo change)
+  → POST /api/admin/kiosk/confirm → confirm_scan
+       check-in, then later check-out
+       points and stars are granted on a check-out inside the event's times
 ```
 
-`confirm_scan` locks the scan, validates expiry/window/session state, and performs all changes in one transaction. Duplicate check-in, duplicate check-out, missing check-in, expired scan and out-of-window attempts raise stable error codes that the UI maps to human messages. The legacy WiFi flow (`POST /api/device/v1/scans` plus polling) is described below only for historical context and is not executed by the USB kiosk.
+`confirm_scan` locks the scan and does everything in one transaction. A second
+check-in, a check-out with no check-in, an expired preview and a scan outside
+the session's times all fail with stable codes that the page turns into plain
+messages.
 
-### Spending points
+## Why balances are sums
 
-`redeem_reward` locks the member row and reward row, checks the ledger-derived balance and inventory inside the transaction, writes a negative `redemption` entry and decrements stock. Concurrent requests serialize on the locks; the second either fails with `insufficient_points`/`out_of_stock` or returns the same redemption for a repeated idempotency key. Cancellation/rejection adds a `redemption_refund` entry and restocks.
+Points are value and attendance is a record, so neither can be quietly edited.
 
-## Why ledger-derived balances
+- The ledgers are append-only, enforced by triggers.
+- A balance is always the sum of its ledger; there is no balance column.
+- A correction is a new entry with an actor and a reason.
+- Every grant has a unique source key, so a retry grants nothing twice.
+- A reward's cost and an event's points are copied onto the entry that used
+  them, so later edits do not rewrite history.
 
-Points are loyalty value and attendance is an attendance record. Editing or deleting rows would destroy the audit trail and make disputes unanswerable. Therefore:
+Redeeming a reward locks the member and the reward, checks the balance and the
+stock inside the transaction, and returns the same redemption for a repeated
+request.
 
-- ledger tables are append-only at the database level (triggers, not convention);
-- balances are always sums, never directly assigned;
-- corrections are compensating entries with actor and reason;
-- grant source keys make retries idempotent;
-- reward rules and costs are snapshotted onto the transaction that used them;
-- aggregate read models (`member_balances`, `public_profiles`, `leaderboard`) are views, so they cannot drift.
+## What a serverless host rules out
 
-Audit rows outlive the accounts they name. `audit_log.actor_auth_id` is a UUID without a foreign key (migration 0005): the append-only trigger blocks the `ON DELETE SET NULL` update an FK would perform, so retaining the historical actor id both preserves the trail and lets account deletion complete.
+Vercel functions are short-lived and share no memory, so rate limits and locks
+live in Postgres, uploads go to Storage, and there are no background jobs.
 
-## Serverless constraints
+## When something fails
 
-Vercel functions are short-lived and stateless, so the design avoids:
+| Failure                    | What happens                                                     |
+| -------------------------- | ---------------------------------------------------------------- |
+| The reader disconnects     | The page says so; nothing is recorded. Check in by name instead  |
+| The same card tapped twice | One preview; the second confirmation is refused                  |
+| A request is retried       | The SQL function returns what the first attempt made             |
+| A photo upload fails       | The form says why; no profile is saved without a photo           |
+| Supabase is unreachable    | Pages fail closed. Nothing falls back to what the browser claims |
 
-- in-memory locks or rate limits (locks and limiter state live in Postgres);
-- long-lived jobs or background daemons (USB commands are request/response and scans expire);
-- local filesystem state (uploads go to Supabase Storage);
-- long request chains (device requests are bounded and return typed errors quickly).
+## Older parts still in the code
 
-The USB kiosk is a local, operator-driven request/response flow; it does not poll a device queue. Realtime may be added later without changing the authoritative database transitions.
-
-## Failure behavior
-
-- USB lane failure → the page shows the serial/protocol error; no attendance is written locally. Recovery is a retry or an explicitly audited admin correction.
-- Duplicate taps → device idempotency key + pending-scan uniqueness + `confirm_scan` locks.
-- Request retries → idempotent SQL functions keyed by source/idempotency keys.
-- Photo upload failure → setup/profile update returns an actionable error; no partial profile is created without a photo.
-- Supabase outage → pages fail closed; no fallback to client-trusted state.
-
-## What is deliberately not in the browser
-
-The Supabase secret key, card tokens, device secrets, invitation/recovery URLs, member emails (unless opted in), internal member UUIDs, card token hashes and audit internals are all server-only. The browser receives only the projected fields needed to render the page.
+A WiFi version of the reader once called the server itself. Its endpoints
+(`/api/device/v1/*`, `/api/admin/kiosk/pending`), tables (`devices`,
+`card_write_jobs`) and helpers (`lib/devices`) remain for historical rows and
+their tests. Nothing current uses them, and nothing new should.

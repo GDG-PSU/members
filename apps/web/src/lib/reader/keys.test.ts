@@ -1,30 +1,27 @@
 import { createCipheriv, createDecipheriv } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import {
-  READER_KEY_EPOCH,
-  deriveReaderKey,
-  readerKeyCheck,
-  readerSessionSecrets,
-} from '@/lib/reader/keys';
+import { newReaderKey, readerKeyCheck, readerSessionSecrets } from '@/lib/reader/keys';
 import { LineBuffer, fromBase64Url, toBase64Url } from '@/lib/reader/protocol';
+import { decryptSecret, encryptSecret } from '@/lib/security/tokens';
 import { SecureChannel } from '@/lib/reader/secure-channel';
 
 const DEVICE = 'esp32-a4156cc92df4';
 const bytes = (start: number) => Uint8Array.from({ length: 16 }, (_, index) => start + index);
 
-describe('reader pairing keys', () => {
-  it('gives each reader and each epoch its own key', () => {
-    const key = deriveReaderKey(DEVICE);
+describe('reader keys', () => {
+  it('makes a new random key every time', () => {
+    const key = newReaderKey();
     expect(key).toHaveLength(32);
-    expect(deriveReaderKey(DEVICE).equals(key)).toBe(true);
-    expect(deriveReaderKey('esp32-000000000001').equals(key)).toBe(false);
-    expect(deriveReaderKey(DEVICE, READER_KEY_EPOCH + 1).equals(key)).toBe(false);
+    expect(newReaderKey().equals(key)).toBe(false);
   });
 
   it('fingerprints a key without giving it away', () => {
-    const check = readerKeyCheck(deriveReaderKey(DEVICE));
+    const key = newReaderKey();
+    const check = readerKeyCheck(key);
     expect(check).toMatch(/^[0-9a-f]{16}$/);
-    expect(readerKeyCheck(deriveReaderKey(DEVICE, 2))).not.toBe(check);
+    expect(readerKeyCheck(key)).toBe(check);
+    expect(readerKeyCheck(newReaderKey())).not.toBe(check);
+    expect(key.toString('hex')).not.toContain(check);
   });
 
   // The firmware and firmware/kiosk-reader/tools/reader_check.py build the same
@@ -51,8 +48,19 @@ describe('reader pairing keys', () => {
     );
   });
 
+  // provision_reader.py seals a key for `reader_keys` the way encryptSecret
+  // does. This value was made by that tool, with the key this suite runs under.
+  it('opens a key the flashing tool stored', () => {
+    const key = Buffer.from(Uint8Array.from({ length: 32 }, (_, index) => index));
+    const stored =
+      'v1.BwcHBwcHBwcHBwcH.9kXYuGtsNyUJ8Ym_yEJtSw.9cOyRE7lFWUPq07f9SIhIfvI3XqS6HsbnTy5RotVeAwvNNcYPkS4AC4ecw';
+    expect(Buffer.from(decryptSecret(stored), 'base64url').equals(key)).toBe(true);
+    const again = encryptSecret(key.toString('base64url'));
+    expect(Buffer.from(decryptSecret(again), 'base64url').equals(key)).toBe(true);
+  });
+
   it('ties every value to both nonces', () => {
-    const key = deriveReaderKey(DEVICE);
+    const key = newReaderKey();
     const base = { key, deviceId: DEVICE, epoch: 1, clientNonce: bytes(1), readerNonce: bytes(2) };
     const first = readerSessionSecrets(base);
     const replayed = readerSessionSecrets({ ...base, readerNonce: bytes(3) });
@@ -86,7 +94,7 @@ function readerOpen(key: Buffer, line: string): string {
   ]).toString('utf8');
 }
 
-describe('the sealed Bluetooth channel', () => {
+describe('the sealed channel', () => {
   const key = Buffer.from(Uint8Array.from({ length: 32 }, (_, index) => 255 - index));
 
   it('seals lines the reader can open, and opens the reader’s', async () => {

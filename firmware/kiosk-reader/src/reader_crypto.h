@@ -4,9 +4,9 @@
 #include <mbedtls/gcm.h>
 
 /**
- * The few primitives the Bluetooth link needs: HMAC-SHA-256 to prove both ends
- * hold the pairing key, AES-256-GCM to seal every frame after that, and
- * unpadded base64url to carry bytes inside newline-delimited text.
+ * The few primitives a session needs: HMAC-SHA-256 to prove both ends hold the
+ * reader's key, AES-256-GCM to seal every line after that, and unpadded
+ * base64url to carry bytes inside newline-delimited text.
  *
  * The matching browser code is apps/web/src/lib/reader/secure-channel.ts and the
  * server's is apps/web/src/lib/reader/keys.ts; docs/usb-api.md states the format.

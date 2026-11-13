@@ -2,8 +2,9 @@
 
 // ---------------------------------------------------------------------------
 // Build configuration. There are no WiFi, server, or registration settings, and
-// no secret is compiled in: the Bluetooth pairing key arrives over the cable and
-// lives in the reader's own storage. Device identity is derived from the chip.
+// no secret is compiled in: the reader's key is put in over the cable after
+// flashing and lives in the reader's own storage. Device identity is derived
+// from the chip.
 // ---------------------------------------------------------------------------
 
 // PN532 interface: SPI. The I2C transport is intentionally not built.
@@ -47,11 +48,12 @@
 // Bluetooth. Shown in the browser's chooser, followed by four characters of the
 // device ID.
 #define GDG_BLE_NAME_PREFIX "GDG Reader "
-// How long a new Bluetooth connection has to prove it holds the pairing key,
+// How long a new Bluetooth connection has to prove it holds the reader's key,
 // and how long the reader stays off the air after one that failed to.
 #define GDG_BLE_AUTH_DEADLINE_MS 8000
 #define GDG_BLE_FAILED_PROOF_PAUSE_MS 1000
-// Largest JSON line carried over Bluetooth, and the sealed, base64url line it
-// becomes: 1 + ceil((GDG_BLE_PLAIN_BYTES + 24) * 4 / 3), with room to spare.
-#define GDG_BLE_PLAIN_BYTES 760
-#define GDG_BLE_LINE_BYTES 1100
+// Largest JSON line a session carries, on either link, and the sealed,
+// base64url line it becomes: 1 + ceil((GDG_PLAIN_BYTES + 24) * 4 / 3), with
+// room to spare.
+#define GDG_PLAIN_BYTES 760
+#define GDG_LINE_BYTES 1100

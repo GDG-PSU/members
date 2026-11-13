@@ -1,166 +1,121 @@
-# API and server actions
+# Route handlers and server actions
 
-> **Current hardware note (2026-11-04):** `/api/device/v1/*` and
-> `GET /api/admin/kiosk/pending` are legacy and are not called by the USB
-> firmware or the current kiosk UI. `POST /api/admin/kiosk/confirm` is still the
-> confirmation transaction used by `/admin/kiosk`; the preview is the
-> `previewUsbKioskAction` Server Action. Card operations are Server Actions used
-> by `/admin/cards`: prepare a pending card, display its one-time `/c/<token>` URL,
-> then activate it after the admin attests to a matching USB read-back.
+The app has two kinds of server entry point: route handlers under
+`apps/web/src/app/api/` (and `/c/[cardToken]`), and Next.js server actions
+called by its own forms and pages. Every one derives the person from the
+verified session and checks their role in the database. Nothing trusts a role or
+a member ID sent by the browser.
 
-This repository has three kinds of server surface:
+## Route handlers
 
-1. Route handlers under `apps/web/src/app/api/` and `/c/[cardToken]`.
-2. Next.js Server Actions used by the app's own forms.
-3. Server-side data access in Server Components (not an HTTP API).
-
-## Implementation status
-
-| Surface                                                                         | Status                                                                  |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `POST /api/auth/session`, `POST /api/auth/signout`                              | Implemented                                                             |
-| `GET /c/<card-token>`                                                           | Implemented                                                             |
-| Member/auth Server Actions                                                      | Implemented                                                             |
-| `GET /api/public/leaderboard`, `/api/public/events`, `/api/public/events/:slug` | Implemented                                                             |
-| Admin portal + Server Actions                                                   | Implemented under `app/(admin)/admin/*`; admin MFA gate at `/admin-mfa` |
-| `GET /api/admin/kiosk/pending`, `POST /api/admin/kiosk/confirm`                 | Pending endpoint legacy; confirmation used by the USB kiosk             |
-| `/api/device/v1/*`                                                              | Implemented; device auth, rate limits and idempotency enforced          |
-
-All authenticated surfaces derive the actor from the verified Supabase session and re-check the role in the database; no client-supplied role or member id is trusted.
-
-## Authentication model
-
-- Browser sessions are Supabase SSR cookies (HttpOnly), created by `POST /api/auth/session` or the login Server Action.
-- Server components/actions call `supabase.auth.getUser()`; the member is derived from the verified user, never from a client-supplied ID.
-- Admin access is checked from `user_roles` server-side.
-- The Supabase secret key is used server-side only; it never appears in browser bundles.
-
-## Existing route handlers
-
-### `POST /api/auth/session`
-
-Completes an email-link sign-in by accepting the tokens from the URL fragment.
-
-Request:
-
-```json
-{ "accessToken": "<jwt>", "refreshToken": "<token>", "next": "/invite/accept" }
-```
-
-- `accessToken` min 20 chars; `refreshToken` min 10; `next` must start with `/` and is rejected/replaced if it starts with `//`.
-- Content type must be JSON (parsed manually).
-- Calls `supabase.auth.setSession`, then copies the resulting cookies onto the response.
-
-Responses:
-
-| Status | Body                                                               |
-| ------ | ------------------------------------------------------------------ |
-| 200    | `{ "redirectTo": "/invite/accept" }` and `Cache-Control: no-store` |
-| 400    | `{ "error": "Invalid session payload." }`                          |
-| 401    | `{ "error": "That sign-in link is invalid or expired." }`          |
-
-This endpoint intentionally accepts tokens because Supabase's email verification redirect delivers them in the fragment. It does not log token values.
-
-### `POST /api/auth/signout`
-
-No body. Clears the Supabase session and responds `303` to `/login?notice=signed-out`. A cross-site POST can sign a user out; impact is limited to a forced logout.
+| Route                           | What it does                                                           |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `POST /api/auth/session`        | Sets the session cookies for the older link flow. Same-origin only     |
+| `POST /api/auth/signout`        | Ends this device's session and redirects to `/login`                   |
+| `GET /c/[cardToken]`            | Sends a card's link to its owner's profile, or to `/card-unavailable`  |
+| `GET /api/profile-photo/[slug]` | Serves a profile photo if the viewer may see it                        |
+| `GET /api/public/leaderboard`   | A page of the public leaderboard                                       |
+| `GET /api/public/events`        | Published public events                                                |
+| `GET /api/public/events/[slug]` | One event and its sessions, or 404                                     |
+| `POST /api/admin/kiosk/confirm` | Confirms or rejects a kiosk preview. Organizers only, same-origin only |
 
 ### `GET /c/[cardToken]`
 
-Resolves an NFC card URL.
+- The token must match `^[A-Za-z0-9_-]{43}$`.
+- It is hashed with SHA-256 and looked up among active cards. A match redirects
+  (307, `no-store`) to `/m/<profile-slug>`.
+- Anything else, including a card that was switched off and a rate-limited
+  request, goes to `/card-unavailable` with nothing about any member.
+- The limit is 120 lookups a minute per client address. It is per client rather
+  than per token because a 256-bit token cannot be guessed, and a per-token
+  bucket would let anyone add a database row for every random address.
 
-- Token must match `^[A-Za-z0-9_-]{43}$`; otherwise redirects to `/card-unavailable`.
-- Applies `consume_rate_limit(bucket = card-lookup:<hash of the client address>, limit = 120, window = 60s)`.
-- Hashes the token (SHA-256), looks up `card_credentials` with `status = 'active'`, and redirects `307` to `/m/<profile-slug>` with `Cache-Control: no-store`.
-- Unknown, revoked, replaced, lost or rate-limited tokens redirect to `/card-unavailable` with no member metadata.
-- No member data, token value or internal identifier is returned in the response body.
+### `POST /api/admin/kiosk/confirm`
 
-The bucket is per client rather than per token: 256-bit tokens cannot be guessed, and a per-token bucket would let anyone add a database row for each random URL.
+Body: `{ scanId, action: 'check_in' | 'check_out' | 'reject', reason?, identityCheck? }`.
+It calls `confirm_scan`, which does the whole change in one transaction, and
+returns `{ ok, attendanceId }`. It is limited to 60 a minute per organizer. If
+the member's photo changed in the last 48 hours, a check-in or check-out without
+`identityCheck: true` is refused with 400, and a successful check is audited.
 
-## Public JSON endpoints
+### Public JSON
 
-- `GET /api/public/leaderboard?limit=&offset=` returns `{ entries, pagination, generatedAt, requestId }`. Entries contain only `rank`, `slug`, `displayName`, `photoUrl`, `memberNumber`, `stars` and include only public, opted-in members who share their stars.
-- `GET /api/public/events` returns published public events.
-- `GET /api/public/events/<slug>` returns the event and its enabled sessions, or 404.
-- All set `Cache-Control: no-store`.
+All three set `Cache-Control: no-store` and return explicit fields only.
+Leaderboard entries hold `rank`, `slug`, `displayName`, `photoUrl`,
+`memberNumber` and `stars`, for members who are public, opted in, and share
+their stars.
 
-## Admin endpoints
+### Errors
 
-- `GET /api/admin/kiosk/pending` — legacy pending-scan polling endpoint. It is retained for historical data and diagnostics; the USB kiosk does not use it.
-- `POST /api/admin/kiosk/confirm` — body `{ scanId, action: 'check_in'|'check_out'|'reject', reason?, identityCheck? }`; calls `confirm_scan` atomically, applies a per-admin rate limit (60/min), and returns `{ ok, attendanceId }`. If the member's photo changed within 48 hours, a check-in or check-out without `identityCheck: true` is rejected with 400; a successful check writes an `attendance.identity_checked` audit row. A scan is never awarded automatically. This is the current USB kiosk confirmation endpoint.
+Route handlers use `lib/api.ts`. `jsonOk` sets `no-store`; errors have the shape
+`{ error: { code, message, requestId, details? } }`. Known database codes are
+mapped to messages; anything else is a generic 500 with a request ID. The two
+auth routes return the simpler `{ error: string }`.
 
-### USB kiosk preview
+## Server actions
 
-`/admin/kiosk` calls the `previewUsbKioskAction` Server Action after Web Serial returns one card URI. The action validates the URL/token, active card and member, session and check-in/check-out window, and photo-change state. It creates a short-lived pending `device_scans` row with `device_id = null` and `metadata.source = 'usb-kiosk'`, then returns the member preview and suggested action. The admin confirms through `POST /api/admin/kiosk/confirm`, which invokes the same `confirm_scan` transaction used by the legacy path. A read alone never changes attendance or points.
+A server action is a same-origin POST that Next.js generates; it is not a public
+API, but it is a public endpoint, so each one checks the caller itself. Inputs
+are parsed with Zod. An action behind a form people type into returns
+`{ error }` so the form keeps what was typed; the rest redirect back with a
+notice. Organizer actions need a session verified with an authenticator code,
+and each writes an audit entry.
 
-### Readers over Bluetooth
+| Area            | Actions                                                                                                                | Who                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Sign-in         | `signInAction`, `confirmLinkAction`, `updatePasswordAction`                                                            | Anyone                                                |
+| Setup           | `completeSetupAction`, `completeStaffSetupAction`, `enrollMfaAction`, `verifyMfaAction`                                | The signed-in person                                  |
+| Member          | `updateProfileAction`, `updatePrivacyAction`, `requestRedemptionAction`, `cancelRedemptionAction`                      | An active member, for themselves                      |
+| Invitations     | `createInvitationAction`, `regenerateInvitationLinkAction`, `revokeInvitationAction`                                   | Organizers                                            |
+| Organizers      | `inviteAdministratorAction`, `changeUserRoleAction`                                                                    | Superadmins                                           |
+| Access          | `revokeUserAccessAction`                                                                                               | Organizers for a member; superadmins for an organizer |
+| Members         | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction`, `correctAttendanceAction`                   | Superadmins                                           |
+| Cards           | `searchCardHoldersAction`, `findCardHolderAction`, `prepareUsbCardAction`, `activateUsbCardAction`, `revokeCardAction` | Organizers                                            |
+| Kiosk           | `previewUsbKioskAction`, `previewKioskLookupAction`, `searchKioskMembersAction`                                        | Organizers                                            |
+| Events, rewards | `saveEventAction`, `setEventStatusAction`, `saveRewardAction`, `decideRedemptionAction`                                | Organizers                                            |
+| Readers         | `openReaderSessionAction`, `registerReaderAction`, `rotateReaderKeyAction`, `confirmReaderKeyAction`                   | Organizers                                            |
+| Delete for good | `deleteRecordAction`                                                                                                   | Superadmins                                           |
 
-Two Server Actions, both for a signed-in organizer at AAL2. `pairReaderAction({ deviceId, epoch?, check? })` is called when a reader is connected by cable. If the reader already reports the current key's fingerprint it returns `{ ok, current: true }`; otherwise it writes a `reader.paired` audit row and returns the key for the browser to pass down the cable. It is limited to 20 new keys per organizer per 10 minutes. `openReaderSessionAction({ deviceId, epoch, clientNonce, readerNonce })` is called once per Bluetooth connection and returns the proof to send, the proof a genuine reader answers with, and the key for that session; never the pairing key. It is limited to 60 per organizer per minute and is not audited. The protocol is in `docs/usb-api.md`.
+Actions that make a one-time link return it to the form (`{ ok, email, link }`)
+and never put it in a redirect, so it stays out of browser history and server
+logs. The organizer copies it and sends it by hand.
 
-All other admin mutations are Server Actions (below). They require `getViewer().isAdmin` on the server and write an `audit_log` row; most finish with `redirect()` to the originating page with a notice/error query parameter. Link-returning actions instead return `{ ok, email, link }` to a client form (never a redirect URL), so tokens are not placed in browser history or server logs. Delivery is manual: the admin copies the link, sends it privately, and the app never calls an email provider.
+### Kiosk preview
 
-### Admin Server Actions
+`previewUsbKioskAction` takes the link read from a card;
+`previewKioskLookupAction` takes a member found by name, number or QR code. Each
+checks the card, the member, the session and its check-in or check-out time, and
+whether the photo changed recently, then creates a pending `device_scans` row
+that expires in three minutes and returns the member's preview. Nothing else
+changes until `/api/admin/kiosk/confirm`.
 
-| Area        | Actions                                                                                                                                                                                                                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Invitations | `createInvitationAction` (returns a one-time link), `regenerateInvitationLinkAction` (new link, reopening the invitation for 72 hours), `revokeInvitationAction`. Duplicate pending invitations blocked; the Auth user is rolled back if the invitation row fails. **No email is sent.** |
-| Members     | `setMemberStatusAction`, `adjustMemberPointsAction`, `sendRecoveryAction` (returns a one-time link; no email). Reasoned and audited.                                                                                                                                                     |
-| Cards       | `prepareUsbCardAction`, `activateUsbCardAction`, `revokeCardAction`. The legacy `prepareCardAction`/`completeWriteJobAction` remain server-side but are not exposed by the USB UI.                                                                                                       |
-| Events      | `saveEventAction` (event + exactly one main session + optional bonus), `setEventStatusAction`.                                                                                                                                                                                           |
-| Kiosk       | `previewUsbKioskAction` (USB read preview, transient scan), `confirmScanAction`, `correctAttendanceAction` — required reasons, audited state transitions.                                                                                                                                |
-| Rewards     | `saveRewardAction`, `decideRedemptionAction` (approve/fulfil/reject/cancel with refund).                                                                                                                                                                                                 |
-| Devices     | Legacy `createDeviceAction`, `updateDeviceAction` remain server-side only. There is no Devices tab; `/admin/devices` redirects to `/admin/cards`.                                                                                                                                        |
-| MFA         | `/admin-mfa` actions `enrollMfaAction`, `verifyMfaAction` (Supabase TOTP, AAL2 required for `/admin/*`).                                                                                                                                                                                 |
+### Readers
 
-## Server Actions
+`docs/usb-api.md` has the protocol. The four actions are its server side:
 
-Server Actions are POST requests generated by Next for same-origin forms; they are not a documented public API. They return serializable state objects (`{ ok?, message?, error? }`) except where they finish with `redirect()`. All inputs are parsed with Zod; all require an authenticated session unless noted.
+| Action                    | What it returns                                                        | Limit per organizer | Audited              |
+| ------------------------- | ---------------------------------------------------------------------- | ------------------- | -------------------- |
+| `openReaderSessionAction` | The proof to send, the proof a real reader answers with, a session key | 60 a minute         | No                   |
+| `registerReaderAction`    | A new key for a reader on the cable that has none                      | 20 in 10 minutes    | `reader.paired`      |
+| `rotateReaderKeyAction`   | The key that replaces a connected reader's                             | 20 in 10 minutes    | `reader.key_rotated` |
+| `confirmReaderKeyAction`  | Nothing; retires the versions older than the one the reader holds      | None                | No                   |
 
-| Action                                    | File                                  | Auth                 | Behavior                                                                                                                                                                                                                                                                                                              |
-| ----------------------------------------- | ------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `signInAction(prev, formData)`            | `app/(auth)/login/actions.ts`         | none                 | Email/password login via Supabase. Normalizes email. Rejects inactive memberships and signs out. Redirects member → `/member`, admin-only → `/admin`, otherwise `/invite/accept`. Returns a generic error for bad credentials.                                                                                        |
-| `completeSetupAction(prev, formData)`     | `app/(auth)/invite/accept/actions.ts` | signed-in, no member | Requires name, password ≥12 with letter+digit, matching confirmation, consent, and a photo. Re-encodes the photo, sets the password, generates slug + public number, calls `complete_member_setup`, audits, redirects to `/member?welcome=1`. Retries on unique collisions; never creates a member without a profile. |
-| `updateProfileAction(prev, formData)`     | `app/(member)/member/actions.ts`      | active member        | Validates display name (2–60), about (≤280), ≤6 `https://` links; optionally replaces the photo (2 MB, JPEG/PNG/WebP, re-encoded, old object deleted); audits before/after; revalidates member + public profile.                                                                                                      |
-| `updatePrivacyAction(prev, formData)`     | same                                  | active member        | Reads all 12 visibility booleans, updates the profile, audits before/after, revalidates member/public/leaderboard.                                                                                                                                                                                                    |
-| `requestRedemptionAction(prev, formData)` | same                                  | active member        | Validates reward id, quantity 1–5, idempotency key (8–64). Calls `redeem_reward` (server-computed cost/balance). Maps `insufficient_points`, `out_of_stock`, `reward_unavailable` to messages. Audits.                                                                                                                |
-| `cancelRedemptionAction(formData)`        | same                                  | active member        | Verifies the redemption belongs to the caller and is `requested`/`approved`; calls `decide_redemption(action = cancel, reason = "Cancelled by member")`; audits; revalidates.                                                                                                                                         |
+`openReaderSessionAction` never returns a reader's key. The other two do,
+because the browser has to pass it to the reader: in the clear down the cable
+for a reader with no key, and inside the sealed session for a rotation.
 
-## Errors and validation
+## Idempotency
 
-- Route handlers use `lib/api.ts`: `jsonOk` sets `Cache-Control: no-store`; `ApiError` maps to a stable `{ error: { code, message, requestId, details? } }` shape; unknown database errors are mapped for known domain codes and otherwise return a generic 500 with a request ID. Raw database errors are not returned.
-- The two auth route handlers use the simpler `{ error: string }` shape described above.
-- Server Actions return `{ error }` or `{ ok, message }` for display; they do not expose stack traces.
-- Zod rejects unknown/oversized input at action boundaries. Photo files are limited to 2 MB and validated by decoding, not by filename.
+| Operation         | What makes a retry safe                                                            |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| Points and stars  | `point_ledger.source_key` is unique; `grant_points` returns the first grant        |
+| Attendance reward | One attendance per member and session; its grant key changes only after a reversal |
+| Reward request    | `(member_id, idempotency_key)` is unique; a repeat returns the same request        |
+| Member setup      | `complete_member_setup` returns the member already made for that account           |
+| Reader key change | Asking twice for the next version returns the key already stored                   |
 
-## Idempotency and rate limiting
+## The retired device API
 
-| Operation          | Mechanism                                                                                |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| Point/star grant   | `point_ledger.source_key` unique; `grant_points` returns the existing id on retry        |
-| Attendance reward  | `source_key = attendance:<attendance id>`; one attendance per member/session             |
-| Redemption request | unique `(member_id, idempotency_key)`; repeated key returns the same redemption          |
-| Card write         | single-use job + nonce; completion rejects non-open jobs; read-back required for success |
-| Token lookup       | fixed-window limiter in Postgres (`consume_rate_limit`)                                  |
-| Invite acceptance  | `complete_member_setup` returns the existing member for the Auth user                    |
-
-## Device API (legacy, retained for historical data)
-
-Headers: `x-device-id`, `x-device-timestamp` (Unix seconds), `x-request-id` (unique nonce), and `x-device-signature` (lowercase HMAC-SHA-256); JSON bodies; HTTPS with certificate validation. The signed string is `METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(body)`. Device keys are encrypted server-side, signatures are compared in constant time, clocks must be within 120 seconds, and nonces are retained for ten minutes. Existing devices must rotate their secrets after migration 0007. Disabled/revoked devices are rejected; each device has a 120/min auth and 40/min scan budget.
-
-| Method/path                               | Behavior                                                                                                                                                                                                |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/device/v1/heartbeat`           | Validates credentials, records last-seen/firmware, returns server-assigned mode and session.                                                                                                            |
-| `POST /api/device/v1/scans`               | Validates a 43-char token, resolves the active card server-side, ensures the session window is open, and inserts a pending scan (unique per device/idempotency key). Never awards attendance or points. |
-| `POST /api/device/v1/write-jobs/claim`    | Writer mode only; claims one queued job for this device, decrypts the short-lived card URL, marks it claimed.                                                                                           |
-| `POST /api/device/v1/write-jobs/complete` | Reports `written`/`failed`; `written` requires read-back match; activates the card and destroys the job payload.                                                                                        |
-
-Scan responses: `{ scanId, status, action, expiresAt }`; claim returns `{ job: null }` or `{ job: { id, cardUrl, expiresAt } }`. Tokens are never logged. The firmware client targets these exact paths.
-
-| Method/path                                      | Purpose                                                                             |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `POST /api/device/v1/heartbeat`                  | Authenticate device, report firmware/mode/diagnostics, receive server-assigned mode |
-| `POST /api/device/v1/scans`                      | Submit one parsed card token + idempotency key; creates a pending scan only         |
-| `POST /api/device/v1/write-jobs/claim`           | Claim one queued write job bound to this device                                     |
-| `POST /api/device/v1/write-jobs/:jobId/complete` | Report written/failed with read-back result                                         |
-
-TLS certificate validation is mandatory; payload size/content type, idempotency and rate limits are checked before any database write.
+`/api/device/v1/*` and `GET /api/admin/kiosk/pending` belong to a WiFi reader
+that no longer exists. They are still deployed, need a signed request from a
+registered device, and none is registered. Do not build on them.

@@ -5,12 +5,12 @@
 #include "reader_crypto.h"
 
 /**
- * What the reader remembers across power cycles: the Bluetooth pairing key it
- * was given over the cable, the key's epoch, and whether Bluetooth is allowed.
+ * What the reader remembers across power cycles: its key, the key's number
+ * (its epoch), and whether Bluetooth is allowed.
  *
- * The key only ever arrives over USB. Without one the radio stays off, so a
- * reader that was never plugged into an organizer's computer cannot be reached
- * wirelessly at all.
+ * The first key arrives over the cable, normally straight after flashing. A
+ * later one arrives inside a session opened with the key it replaces. Without
+ * a key the radio stays off and the reader does nothing but take one.
  */
 class PairingStore {
  public:
@@ -26,8 +26,8 @@ class PairingStore {
   void SetBluetoothEnabled(bool enabled);
 
   /**
-   * A short fingerprint of the key, so the server can tell whether the reader
-   * holds the current one without the key leaving the reader again.
+   * A short fingerprint of the key, so whoever set it can tell the reader kept
+   * it without the key leaving the reader again.
    */
   void KeyCheck(char out[17]) const;
 

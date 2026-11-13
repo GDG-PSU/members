@@ -2,8 +2,8 @@ import {
   BluetoothLink,
   type BluetoothDeviceLike,
   type BluetoothLike,
-  type OpenReaderSession,
 } from '@/lib/reader/bluetooth-link';
+import type { ReaderBroker } from '@/lib/reader/handshake';
 import {
   LinkClosedError,
   errorMessage,
@@ -13,7 +13,7 @@ import {
 } from '@/lib/reader/link';
 import {
   READER_SERVICE,
-  supportsBluetooth,
+  isSecureReader,
   type ReaderEvent,
   type ReaderInfo,
   type ReaderResponse,
@@ -21,21 +21,9 @@ import {
 } from '@/lib/reader/protocol';
 import { SerialLink, type SerialLike, type SerialPortLike } from '@/lib/reader/serial-link';
 
-export type ReaderPairingGrant =
-  | { ok: true; current: true }
-  | { ok: true; current: false; key: string; epoch: number; check: string }
-  | { ok: false; error: string };
-
-export type ReaderDeps = {
+export type ReaderDeps = ReaderBroker & {
   serial: SerialLike | null;
   bluetooth: BluetoothLike | null;
-  /** Asks the server for the key a reader on the cable should hold. */
-  pairReader(input: {
-    deviceId: string;
-    epoch?: number;
-    check?: string;
-  }): Promise<ReaderPairingGrant>;
-  openSession: OpenReaderSession;
   /** How long the link is kept after the last page using it has gone. */
   releaseAfterMs?: number;
   /** How long to keep trying Bluetooth after a link is lost. */
@@ -73,10 +61,10 @@ export const EMPTY_READER_SNAPSHOT: ReaderSnapshot = {
 };
 
 const FRIENDLY: Record<string, string> = {
-  not_paired:
-    'This reader has not been set up for Bluetooth. Plug it in with a cable once, then try again.',
+  not_paired: 'This reader has no key yet. Plug it in with a cable to set it up.',
   auth_failed:
-    'The reader did not accept this site. Plug it in with a cable once to set it up again.',
+    'The reader did not accept this site. If it was set up somewhere else, erase it and flash it again.',
+  bad_epoch: 'The reader already holds a newer key. Disconnect, connect it again, and retry.',
   forbidden: 'Sign in again, then connect the reader.',
 };
 
@@ -127,7 +115,6 @@ export class ReaderManager {
   private status = '';
   private error = '';
   private log: string[] = [];
-  private readonly pairChecked = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private snapshot: ReaderSnapshot;
 
@@ -306,6 +293,7 @@ export class ReaderManager {
       const link = await SerialLink.open(
         port,
         this.hooksFor(() => holder.link),
+        this.deps,
       );
       holder.link = link;
       this.usb = link;
@@ -315,12 +303,11 @@ export class ReaderManager {
       const ble = this.ble;
       this.ble = null;
       await ble?.close();
-      if (supportsBluetooth(link.info) && link.info?.mode === 'bluetooth') {
+      if (isSecureReader(link.info) && link.info?.mode === 'bluetooth') {
         await link.send('transport.set', { mode: 'auto' }, 3000).catch(() => {});
       }
       this.status = 'Connected.';
       this.error = '';
-      void this.ensurePaired(link);
     } catch (error) {
       // A port that appeared by itself and is not a reader is nobody's problem.
       if (asked || !this.active) {
@@ -347,7 +334,7 @@ export class ReaderManager {
     try {
       const link = await BluetoothLink.open(
         device,
-        this.deps.openSession,
+        this.deps,
         quietly
           ? { ...this.hooksFor(() => holder.link), onStatus: () => {} }
           : this.hooksFor(() => holder.link),
@@ -372,46 +359,6 @@ export class ReaderManager {
       if (!quietly) this.opening -= 1;
       if (bridging) this.bridges -= 1;
       this.wake();
-      this.emit();
-    }
-  }
-
-  /** Once a reader is on the cable, it is given what it needs for Bluetooth later. */
-  private async ensurePaired(link: SerialLink) {
-    const info = link.info;
-    const bluetooth = info?.bluetooth;
-    if (!supportsBluetooth(info) || !info?.deviceId || !bluetooth || bluetooth.enabled === false) {
-      return;
-    }
-    const mark = `${info.deviceId}:${bluetooth.epoch ?? 0}:${bluetooth.check ?? ''}`;
-    if (bluetooth.paired && this.pairChecked.has(mark)) return;
-
-    try {
-      const grant = await this.deps.pairReader({
-        deviceId: info.deviceId,
-        epoch: bluetooth.epoch,
-        check: bluetooth.check,
-      });
-      if (!grant.ok) {
-        this.addLog(`[bluetooth] ${grant.error}`);
-        return;
-      }
-      if (grant.current) {
-        this.pairChecked.add(mark);
-        return;
-      }
-      const reply = await link.send('pair.set', { key: grant.key, epoch: grant.epoch }, 4000);
-      if (reply.result?.check !== grant.check) {
-        throw new Error('The reader did not keep its Bluetooth key.');
-      }
-      this.pairChecked.add(`${info.deviceId}:${grant.epoch}:${grant.check}`);
-      await link.refreshInfo();
-      this.addLog('[bluetooth] This reader can now be used over Bluetooth.');
-    } catch (error) {
-      if (!(error instanceof LinkClosedError)) {
-        this.addLog(`[bluetooth] Could not set up Bluetooth: ${errorMessage(error)}`);
-      }
-    } finally {
       this.emit();
     }
   }
@@ -584,7 +531,7 @@ export class ReaderManager {
     // The reader on the cable is told to listen on Bluetooth too, in case it is
     // the one wanted. It appears in the chooser a moment later.
     const usb = this.usb;
-    const yielding = usb !== null && supportsBluetooth(usb.info);
+    const yielding = usb !== null && isSecureReader(usb.info);
     if (usb && yielding) {
       usb.setQuiet(true);
       void usb.send('transport.set', { mode: 'bluetooth' }, 3000).catch(() => {});
@@ -640,7 +587,7 @@ export class ReaderManager {
         this.ble = null;
         this.status = 'Connected.';
         this.emit();
-        if (supportsBluetooth(usb.info)) {
+        if (isSecureReader(usb.info)) {
           await usb.send('transport.set', { mode: 'auto' }, 3000).catch(() => {});
         }
         await ble?.close();
@@ -669,7 +616,7 @@ export class ReaderManager {
       this.status = '';
       this.emit();
       if (usb) {
-        if (supportsBluetooth(usb.info) && usb.info?.mode === 'bluetooth') {
+        if (isSecureReader(usb.info) && usb.info?.mode === 'bluetooth') {
           await usb.send('transport.set', { mode: 'auto' }, 1000).catch(() => {});
         }
         // The reader can offer Bluetooth straight away instead of waiting.
@@ -689,11 +636,44 @@ export class ReaderManager {
     try {
       await usb.send('bluetooth.set', { enabled: allowed }, 4000);
       await usb.refreshInfo();
-      if (allowed) await this.ensurePaired(usb);
     } catch (error) {
       this.error = friendly(error);
     }
     this.emit();
+  };
+
+  /**
+   * Gives the connected reader a new key, inside the session that is open. The
+   * new key is stored before the reader has it and the old one is retired only
+   * after, so a change that is cut short leaves the reader usable either way.
+   */
+  readonly rotateKey = async (): Promise<{ ok: boolean; message: string }> => {
+    const link = this.active;
+    const info = link?.info ?? null;
+    const epoch = info?.bluetooth?.epoch;
+    if (!link || !isSecureReader(info) || !info?.deviceId || !epoch) {
+      return { ok: false, message: 'Connect a reader with firmware 2.2.0 or later first.' };
+    }
+    const reader = { deviceId: info.deviceId, epoch };
+    try {
+      const grant = await this.deps.rotateKey(reader);
+      if (!grant.ok) return { ok: false, message: grant.error };
+      const kept = await link.send('pair.set', { key: grant.key, epoch: grant.epoch }, 4000);
+      if (kept.result?.check !== grant.check) {
+        return {
+          ok: false,
+          message: 'The reader did not keep the new key. Its old one still works.',
+        };
+      }
+      await this.deps.confirmKey({ deviceId: reader.deviceId, epoch: grant.epoch });
+      await link.refreshInfo();
+      this.addLog('[reader] This reader has a new key.');
+      return { ok: true, message: 'This reader has a new key. The old one no longer works.' };
+    } catch (error) {
+      return { ok: false, message: friendly(error) };
+    } finally {
+      this.emit();
+    }
   };
 
   /**

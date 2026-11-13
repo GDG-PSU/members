@@ -1,12 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { BluetoothDeviceLike, BluetoothLike } from '@/lib/reader/bluetooth-link';
-import {
-  READER_KEY_EPOCH,
-  deriveReaderKey,
-  readerKeyCheck,
-  readerSessionSecrets,
-} from '@/lib/reader/keys';
+import { newReaderKey, readerKeyCheck, readerSessionSecrets } from '@/lib/reader/keys';
 import { READER_RX, fromBase64Url, toBase64Url } from '@/lib/reader/protocol';
 import { ReaderManager, type ReaderDeps, type ReaderSnapshot } from '@/lib/reader/reader-manager';
 import type { SerialLike, SerialPortLike } from '@/lib/reader/serial-link';
@@ -36,7 +31,10 @@ function open(key: Buffer, direction: number, line: string): string {
   ]).toString('utf8');
 }
 
-/** Firmware 2.1.0, as far as the browser can tell. */
+const OPEN_COMMANDS = new Set(['info', 'ping', 'usb.release']);
+const CABLE_ONLY = new Set(['pair.clear', 'bluetooth.set', 'transport.set', 'usb.release']);
+
+/** Firmware 2.2.0, as far as the browser can tell. */
 class FakeReader {
   key: Buffer | null = null;
   epoch = 0;
@@ -45,13 +43,16 @@ class FakeReader {
   /** A computer has spoken over the cable and has not let go. */
   cableInUse = false;
   holdReads = false;
+  /** Every command the reader acted on, as `link:command`. */
   readonly seen: string[] = [];
+  /** Commands that arrived on the cable outside a session. */
+  readonly inTheClear: string[] = [];
   bluetooth: FakeBluetoothDevice | null = null;
 
   constructor(readonly deviceId: string) {}
 
   get name() {
-    return `GDG Reader ${this.deviceId.slice(-4).toUpperCase()}`;
+    return `GDG Reader ${this.deviceId.slice(6, 10).toUpperCase()}`;
   }
 
   /** Whether the radio is on, by the firmware's rule. */
@@ -59,8 +60,8 @@ class FakeReader {
     return this.key !== null && (this.mode === 'bluetooth' || !this.cableInUse);
   }
 
-  handle(command: Command, link: 'usb' | 'bluetooth'): Reply | null {
-    this.seen.push(`${link}:${command.cmd}`);
+  /** `sealed` is whether the command came inside an open session. */
+  handle(command: Command, link: 'usb' | 'bluetooth', sealed: boolean): Reply | null {
     const ok = (result?: Reply) => ({ id: command.id, ok: true, ...(result ? { result } : {}) });
     const fail = (error: string) => ({ id: command.id, ok: false, error });
 
@@ -68,15 +69,27 @@ class FakeReader {
       this.cableInUse = command.cmd !== 'usb.release';
       // The cable wins unless the organizer asked for Bluetooth.
       if (this.cableInUse && this.mode === 'auto') this.bluetooth?.dropFromReader('usb');
+      if (!sealed) this.inTheClear.push(command.cmd);
+    } else if (CABLE_ONLY.has(command.cmd)) {
+      return fail('usb_only');
     }
+    if (!sealed) {
+      const firstKey = command.cmd === 'pair.set' && this.key === null;
+      if (!OPEN_COMMANDS.has(command.cmd) && !firstKey) {
+        return fail(this.key ? 'locked' : 'not_paired');
+      }
+    }
+
+    this.seen.push(`${link}:${command.cmd}`);
     switch (command.cmd) {
       case 'info':
         return ok({
-          protocol: 3,
-          firmware: '2.1.0',
+          protocol: 4,
+          firmware: '2.2.0',
           deviceId: this.deviceId,
           transport: link === 'usb' ? 'usb-serial' : 'bluetooth',
           mode: this.mode,
+          locked: this.key !== null && !sealed,
           nfcReady: true,
           bluetooth: {
             name: this.name,
@@ -88,13 +101,14 @@ class FakeReader {
       case 'ping':
       case 'usb.release':
         return ok();
-      case 'pair.set':
-        if (link !== 'usb') return fail('usb_only');
+      case 'pair.set': {
+        const epoch = Number(command.epoch);
+        if (this.key && epoch <= this.epoch) return fail('bad_epoch');
         this.key = Buffer.from(fromBase64Url(String(command.key)) ?? []);
-        this.epoch = Number(command.epoch);
-        return ok({ check: readerKeyCheck(this.key) });
+        this.epoch = epoch;
+        return ok({ check: readerKeyCheck(this.key), epoch });
+      }
       case 'transport.set':
-        if (link !== 'usb') return fail('usb_only');
         this.mode = command.mode === 'bluetooth' ? 'bluetooth' : 'auto';
         if (this.mode === 'auto') this.bluetooth?.dropFromReader('usb');
         return ok();
@@ -107,15 +121,139 @@ class FakeReader {
   }
 }
 
+/** The reader's half of a session, the way SecureSession does it in the firmware. */
+class FakeSession {
+  private secure: { key: Buffer; sent: bigint; received: bigint } | null = null;
+  private nonces: { client: Uint8Array; reader: Uint8Array } | null = null;
+
+  constructor(private readonly reader: FakeReader) {}
+
+  get isOpen() {
+    return this.secure !== null;
+  }
+
+  end() {
+    this.secure = null;
+    this.nonces = null;
+  }
+
+  /** Answers a handshake command sent in the clear; null for anything else. */
+  auth(command: Command): { reply: Reply; failed: boolean } | null {
+    const key = this.reader.key;
+    const refuse = (error: string, failed: boolean) => ({
+      reply: { id: command.id, ok: false, error },
+      failed,
+    });
+
+    if (command.cmd === 'auth.begin') {
+      if (!key) return refuse('not_paired', false);
+      const client = fromBase64Url(String(command.nonce)) ?? new Uint8Array();
+      this.nonces = { client, reader: randomBytes(16) };
+      return {
+        failed: false,
+        reply: {
+          id: command.id,
+          ok: true,
+          result: {
+            deviceId: this.reader.deviceId,
+            epoch: this.reader.epoch,
+            nonce: toBase64Url(this.nonces.reader),
+          },
+        },
+      };
+    }
+    if (command.cmd === 'auth.finish') {
+      const nonces = this.nonces;
+      this.nonces = null;
+      if (!key || !nonces) return refuse('auth_out_of_order', true);
+      const secrets = readerSessionSecrets({
+        key,
+        deviceId: this.reader.deviceId,
+        epoch: this.reader.epoch,
+        clientNonce: nonces.client,
+        readerNonce: nonces.reader,
+      });
+      if (String(command.proof) !== secrets.clientProof.toString('base64url')) {
+        return refuse('auth_failed', true);
+      }
+      this.secure = { key: secrets.sessionKey, sent: BigInt(0), received: BigInt(0) };
+      return {
+        failed: false,
+        reply: {
+          id: command.id,
+          ok: true,
+          result: { proof: secrets.readerProof.toString('base64url') },
+        },
+      };
+    }
+    return null;
+  }
+
+  seal(message: Reply): string {
+    if (!this.secure) throw new Error('no session to seal with');
+    this.secure.sent += BigInt(1);
+    return seal(this.secure.key, 2, this.secure.sent, JSON.stringify(message));
+  }
+
+  /** Null when the line was not sealed by the session that is open. */
+  open(line: string): Command | null {
+    if (!this.secure) return null;
+    try {
+      const frame = fromBase64Url(line.slice(1)) ?? new Uint8Array();
+      const counter = Buffer.from(frame).readBigUInt64BE(0);
+      if (counter <= this.secure.received) return null;
+      const command = JSON.parse(open(this.secure.key, 1, line)) as Command;
+      this.secure.received = counter;
+      return command;
+    } catch {
+      return null;
+    }
+  }
+}
+
 class FakeSerialPort implements SerialPortLike {
   readable: ReadableStream<Uint8Array> | null = null;
   writable: WritableStream<Uint8Array> | null = null;
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  private readonly session: FakeSession;
 
-  constructor(readonly reader: FakeReader) {}
+  constructor(readonly reader: FakeReader) {
+    this.session = new FakeSession(reader);
+  }
+
+  private say(line: string) {
+    this.controller?.enqueue(new TextEncoder().encode(line + '\n'));
+  }
+
+  private receive(line: string) {
+    if (line.startsWith('#')) {
+      const command = this.session.open(line);
+      if (!command) {
+        this.session.end();
+        this.say('{"event":"locked"}');
+        return;
+      }
+      const reply = this.reader.handle(command, 'usb', true);
+      if (reply) this.say(this.session.seal(reply));
+      if (command.cmd === 'usb.release') this.session.end();
+      return;
+    }
+
+    const command = JSON.parse(line) as Command;
+    const handshake = this.session.auth(command);
+    if (handshake) {
+      this.reader.cableInUse = true;
+      this.say(JSON.stringify(handshake.reply));
+      return;
+    }
+    const reply = this.reader.handle(command, 'usb', false);
+    if (reply) this.say(JSON.stringify(reply));
+    if (command.cmd === 'usb.release') this.session.end();
+  }
 
   async open() {
     const decoder = new TextDecoder();
+    this.session.end();
     this.readable = new ReadableStream<Uint8Array>({
       start: (controller) => {
         this.controller = controller;
@@ -124,11 +262,7 @@ class FakeSerialPort implements SerialPortLike {
     this.writable = new WritableStream<Uint8Array>({
       write: (chunk) => {
         for (const line of decoder.decode(chunk).split('\n')) {
-          if (!line.trim()) continue;
-          const reply = this.reader.handle(JSON.parse(line) as Command, 'usb');
-          if (reply) {
-            this.controller?.enqueue(new TextEncoder().encode(JSON.stringify(reply) + '\n'));
-          }
+          if (line.trim()) this.receive(line.trim());
         }
       },
     });
@@ -141,6 +275,19 @@ class FakeSerialPort implements SerialPortLike {
   pull() {
     this.reader.cableInUse = false;
     this.controller?.error(new Error('The device has been lost.'));
+  }
+
+  /** The reader loses power for a moment and starts again. */
+  restart() {
+    this.session.end();
+    this.say(
+      JSON.stringify({
+        event: 'ready',
+        protocol: 4,
+        firmware: '2.2.0',
+        deviceId: this.reader.deviceId,
+      }),
+    );
   }
 }
 
@@ -182,8 +329,7 @@ class FakeBluetoothDevice implements BluetoothDeviceLike {
   readonly id: string;
   readonly name: string;
   private connected = false;
-  private secure: { key: Buffer; sent: bigint } | null = null;
-  private nonces: { client: Uint8Array; reader: Uint8Array } | null = null;
+  private readonly session: FakeSession;
   private buffer = '';
   private gone: (() => void)[] = [];
   private notify: ((event: Event) => void)[] = [];
@@ -193,6 +339,7 @@ class FakeBluetoothDevice implements BluetoothDeviceLike {
   constructor(readonly reader: FakeReader) {
     this.id = reader.deviceId;
     this.name = reader.name;
+    this.session = new FakeSession(reader);
     reader.bluetooth = this;
 
     this.tx = {
@@ -224,10 +371,14 @@ class FakeBluetoothDevice implements BluetoothDeviceLike {
     const gatt = {
       connected: false,
       connect: async () => {
+        // A reader told to listen on Bluetooth is on the air a moment later.
+        for (let waited = 0; waited < 150 && !this.reader.reachable; waited += 5) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
         if (!this.reader.reachable) throw new Error('Bluetooth device is no longer in range.');
         this.connected = true;
         gatt.connected = true;
-        this.secure = null;
+        this.session.end();
         this.buffer = '';
         return gatt;
       },
@@ -251,7 +402,7 @@ class FakeBluetoothDevice implements BluetoothDeviceLike {
     if (!this.connected) return;
     this.connected = false;
     this.gatt.connected = false;
-    this.secure = null;
+    this.session.end();
     for (const listener of [...this.gone]) listener();
   }
 
@@ -263,62 +414,36 @@ class FakeBluetoothDevice implements BluetoothDeviceLike {
   }
 
   private send(message: Reply) {
-    let line = JSON.stringify(message);
-    if (this.secure) {
-      this.secure.sent += BigInt(1);
-      line = seal(this.secure.key, 2, this.secure.sent, line);
-    }
+    const line = this.session.isOpen ? this.session.seal(message) : JSON.stringify(message);
     const bytes = new TextEncoder().encode(line + '\n');
     this.tx.value = new DataView(bytes.buffer);
     for (const listener of [...this.notify]) listener({ target: this.tx } as unknown as Event);
   }
 
   private receive(line: string) {
-    if (this.secure) {
-      const reply = this.reader.handle(
-        JSON.parse(open(this.secure.key, 1, line)) as Command,
-        'bluetooth',
-      );
+    if (this.session.isOpen) {
+      // Anything the session did not seal ends it, as on the real reader.
+      const command = this.session.open(line);
+      if (!command) {
+        this.end();
+        return;
+      }
+      const reply = this.reader.handle(command, 'bluetooth', true);
       if (reply) this.send(reply);
       return;
     }
 
     const command = JSON.parse(line) as Command;
-    const key = this.reader.key;
-    if (command.cmd === 'auth.begin' && key) {
-      const client = fromBase64Url(String(command.nonce)) ?? new Uint8Array();
-      this.nonces = { client, reader: randomBytes(16) };
-      this.send({
-        id: command.id,
-        ok: true,
-        result: {
-          deviceId: this.reader.deviceId,
-          epoch: this.reader.epoch,
-          nonce: toBase64Url(this.nonces.reader),
-        },
-      });
-    } else if (command.cmd === 'auth.finish' && key && this.nonces) {
-      const secrets = readerSessionSecrets({
-        key,
-        deviceId: this.reader.deviceId,
-        epoch: this.reader.epoch,
-        clientNonce: this.nonces.client,
-        readerNonce: this.nonces.reader,
-      });
-      if (String(command.proof) !== secrets.clientProof.toString('base64url')) {
-        this.send({ id: command.id, ok: false, error: 'auth_failed' });
-        this.end();
-        return;
-      }
-      this.send({
-        id: command.id,
-        ok: true,
-        result: { proof: secrets.readerProof.toString('base64url') },
-      });
-      this.secure = { key: secrets.sessionKey, sent: BigInt(0) };
-    } else {
-      this.send({ id: command.id, ok: false, error: key ? 'auth_required' : 'not_paired' });
+    const handshake = this.session.auth(command);
+    if (!handshake) {
+      this.send({ id: command.id, ok: false, error: 'auth_required' });
+      return;
     }
+    // The reader's own proof goes out in the clear; the session is already open.
+    const bytes = new TextEncoder().encode(JSON.stringify(handshake.reply) + '\n');
+    this.tx.value = new DataView(bytes.buffer);
+    for (const listener of [...this.notify]) listener({ target: this.tx } as unknown as Event);
+    if (handshake.failed) this.end();
   }
 }
 
@@ -337,29 +462,40 @@ const managers: ReaderManager[] = [];
 function setup() {
   const serial = new FakeSerial();
   const bluetooth = new FakeBluetooth();
-  let pairings = 0;
+  /** The website's side: every reader's keys by version, as `reader_keys` holds them. */
+  const stored = new Map<string, Map<number, Buffer>>();
+  const versions = (deviceId: string) => {
+    const known = stored.get(deviceId) ?? new Map<number, Buffer>();
+    stored.set(deviceId, known);
+    return known;
+  };
+  const grant = (key: Buffer, epoch: number) => ({
+    ok: true as const,
+    key: key.toString('base64url'),
+    epoch,
+    check: readerKeyCheck(key),
+  });
+  let registrations = 0;
+
   const deps: ReaderDeps = {
     serial,
     bluetooth,
     releaseAfterMs: 20,
     reconnectForMs: 3000,
-    pairReader: async ({ deviceId, epoch, check }) => {
-      const key = deriveReaderKey(deviceId);
-      if (epoch === READER_KEY_EPOCH && check === readerKeyCheck(key)) {
-        return { ok: true, current: true };
-      }
-      pairings += 1;
-      return {
-        ok: true,
-        current: false,
-        key: key.toString('base64url'),
-        epoch: READER_KEY_EPOCH,
-        check: readerKeyCheck(key),
-      };
+    registerReader: async ({ deviceId }) => {
+      registrations += 1;
+      const known = versions(deviceId);
+      const epoch = Math.max(0, ...known.keys()) + 1;
+      const key = newReaderKey();
+      known.set(epoch, key);
+      return grant(key, epoch);
     },
     openSession: async ({ deviceId, epoch, clientNonce, readerNonce }) => {
+      const known = versions(deviceId);
+      const key = known.get(epoch);
+      if (!key) return { ok: false, error: 'This site does not hold this reader’s key.' };
       const secrets = readerSessionSecrets({
-        key: deriveReaderKey(deviceId),
+        key,
         deviceId,
         epoch,
         clientNonce: fromBase64Url(clientNonce) ?? new Uint8Array(),
@@ -370,22 +506,48 @@ function setup() {
         proof: secrets.clientProof.toString('base64url'),
         expect: secrets.readerProof.toString('base64url'),
         sessionKey: secrets.sessionKey.toString('base64url'),
+        older: [...known.keys()].some((version) => version < epoch),
       };
+    },
+    rotateKey: async ({ deviceId, epoch }) => {
+      const known = versions(deviceId);
+      if (!known.has(epoch)) return { ok: false, error: 'That is not a reader this site knows.' };
+      const next = known.get(epoch + 1) ?? newReaderKey();
+      known.set(epoch + 1, next);
+      return grant(next, epoch + 1);
+    },
+    confirmKey: async ({ deviceId, epoch }) => {
+      const known = versions(deviceId);
+      if (!known.has(epoch)) return;
+      for (const version of [...known.keys()]) if (version < epoch) known.delete(version);
     },
   };
   const manager = new ReaderManager(deps);
   managers.push(manager);
   const history: ReaderSnapshot[] = [];
   manager.subscribe(() => history.push(manager.getSnapshot()));
-  return { manager, serial, bluetooth, history, pairings: () => pairings };
-}
 
-/** A reader that has already been on an organizer's cable once. */
-function pairedReader(deviceId: string): FakeReader {
-  const reader = new FakeReader(deviceId);
-  reader.key = deriveReaderKey(deviceId);
-  reader.epoch = READER_KEY_EPOCH;
-  return reader;
+  /** A reader that was given its key when it was flashed, as the tool does. */
+  const flashed = (deviceId: string): FakeReader => {
+    const reader = new FakeReader(deviceId);
+    reader.key = newReaderKey();
+    reader.epoch = 1;
+    versions(deviceId).set(1, reader.key);
+    return reader;
+  };
+
+  return {
+    manager,
+    serial,
+    bluetooth,
+    history,
+    flashed,
+    /** The versions of a reader's key the website still holds. */
+    held: (deviceId: string) => [...versions(deviceId).keys()].sort(),
+    keyHeld: (deviceId: string, epoch: number) => versions(deviceId).get(epoch) ?? null,
+    hold: (deviceId: string, epoch: number, key: Buffer) => versions(deviceId).set(epoch, key),
+    registrations: () => registrations,
+  };
 }
 
 async function until(condition: () => boolean, what: string) {
@@ -404,37 +566,137 @@ afterEach(async () => {
 });
 
 describe('the reader connection', () => {
-  it('connects a known reader by its cable and sets it up for Bluetooth', async () => {
-    const { manager, serial, pairings } = setup();
+  it('opens a session on the cable, so nothing but the handshake goes in the clear', async () => {
+    const { manager, serial, registrations, flashed } = setup();
+    const reader = flashed(READER_A);
+    reader.card = 'https://example.test/c/token';
+    serial.ports = [new FakeSerialPort(reader)];
+
+    manager.retain();
+    await until(() => manager.getSnapshot().connected, 'the cable');
+    expect(manager.getSnapshot()).toMatchObject({ transport: 'usb', error: '' });
+    expect(manager.getSnapshot().info?.locked).toBe(false);
+
+    const read = await manager.send('nfc.read');
+    expect(read.result?.uri).toBe('https://example.test/c/token');
+    // A reader flashed with its key is never given another one by a page.
+    expect(registrations()).toBe(0);
+    expect(reader.seen).not.toContain('usb:pair.set');
+    expect(new Set(reader.inTheClear)).toEqual(new Set(['info']));
+  });
+
+  it('gives a reader that has no key one of its own, over the cable', async () => {
+    const { manager, serial, registrations, keyHeld } = setup();
     const reader = new FakeReader(READER_A);
     serial.ports = [new FakeSerialPort(reader)];
 
     manager.retain();
     await until(() => manager.getSnapshot().connected, 'the cable');
-    expect(manager.getSnapshot().transport).toBe('usb');
-
-    await until(() => manager.getSnapshot().info?.bluetooth?.paired === true, 'pairing');
-    expect(reader.key?.equals(deriveReaderKey(READER_A))).toBe(true);
-    expect(pairings()).toBe(1);
-    // The key is the only thing sent to set it up, and only over the cable.
+    expect(registrations()).toBe(1);
+    expect(reader.epoch).toBe(1);
+    expect(reader.key?.equals(keyHeld(READER_A, 1) ?? Buffer.alloc(0))).toBe(true);
+    expect(manager.getSnapshot().info?.bluetooth?.paired).toBe(true);
     expect(reader.seen.filter((entry) => entry.endsWith('pair.set'))).toEqual(['usb:pair.set']);
   });
 
-  it('does not send a reader the key it already has', async () => {
-    const { manager, serial, pairings } = setup();
-    const reader = pairedReader(READER_A);
-    serial.ports = [new FakeSerialPort(reader)];
+  it('refuses a reader on the cable whose key this site does not hold', async () => {
+    const { manager, serial } = setup();
+    const stranger = new FakeReader(READER_A);
+    stranger.key = newReaderKey();
+    stranger.epoch = 3;
+    serial.ports = [new FakeSerialPort(stranger)];
 
+    await manager.connectUsb();
+    expect(manager.getSnapshot().connected).toBe(false);
+    expect(manager.getSnapshot().error).toContain('does not hold this reader');
+    // It was asked what it is, and nothing else.
+    expect(stranger.seen).toEqual(['usb:info']);
+  });
+
+  it('opens a new session when the reader restarts, and sends the command again', async () => {
+    const { manager, serial, history, flashed } = setup();
+    const reader = flashed(READER_A);
+    reader.card = 'https://example.test/c/token';
+    const port = new FakeSerialPort(reader);
+    serial.ports = [port];
     manager.retain();
     await until(() => manager.getSnapshot().connected, 'the cable');
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(pairings()).toBe(0);
-    expect(reader.seen).not.toContain('usb:pair.set');
+    history.length = 0;
+
+    reader.holdReads = true;
+    const read = manager.send('nfc.read');
+    await until(() => reader.seen.includes('usb:nfc.read'), 'the read to start');
+    reader.holdReads = false;
+    port.restart();
+
+    expect((await read).result?.uri).toBe('https://example.test/c/token');
+    expect(history.every((state) => state.connected)).toBe(true);
+    expect(manager.getSnapshot().error).toBe('');
+  });
+
+  it('gives the reader a new key inside its session and retires the old one', async () => {
+    const { manager, serial, bluetooth, held, keyHeld, flashed } = setup();
+    const reader = flashed(READER_A);
+    reader.card = 'https://example.test/c/token';
+    const first = reader.key;
+    serial.ports = [new FakeSerialPort(reader)];
+    manager.retain();
+    await until(() => manager.getSnapshot().connected, 'the cable');
+
+    expect(await manager.rotateKey()).toMatchObject({ ok: true });
+    expect(reader.epoch).toBe(2);
+    expect(reader.key?.equals(first ?? Buffer.alloc(0))).toBe(false);
+    expect(reader.key?.equals(keyHeld(READER_A, 2) ?? Buffer.alloc(0))).toBe(true);
+    expect(held(READER_A)).toEqual([2]);
+    expect(manager.getSnapshot().info?.bluetooth?.epoch).toBe(2);
+    // The new key went inside the session, and the session carries on.
+    expect(reader.inTheClear).not.toContain('pair.set');
+    expect((await manager.send('nfc.read')).result?.uri).toBe('https://example.test/c/token');
+
+    // The next session, on either link, opens with the new key.
+    await manager.disconnect();
+    bluetooth.choice = new FakeBluetoothDevice(reader);
+    await manager.connectBluetooth();
+    expect(manager.getSnapshot()).toMatchObject({ connected: true, transport: 'bluetooth' });
+    expect(await manager.rotateKey()).toMatchObject({ ok: true });
+    expect(reader.epoch).toBe(3);
+    expect(reader.seen).toContain('bluetooth:pair.set');
+    expect(held(READER_A)).toEqual([3]);
+  });
+
+  it('finishes a key change that was cut short, whichever key the reader ended with', async () => {
+    const { manager, serial, held, hold, keyHeld, flashed } = setup();
+
+    // The website stored a new key, but this reader never received it.
+    const behind = flashed(READER_A);
+    hold(READER_A, 2, newReaderKey());
+    serial.ports = [new FakeSerialPort(behind)];
+    manager.retain();
+    await until(() => manager.getSnapshot().connected, 'the cable');
+    expect(held(READER_A)).toEqual([1, 2]);
+    // Asking again hands out the key already stored, not a third one.
+    const waiting = keyHeld(READER_A, 2);
+    expect(await manager.rotateKey()).toMatchObject({ ok: true });
+    expect(behind.key?.equals(waiting ?? Buffer.alloc(0))).toBe(true);
+    expect(held(READER_A)).toEqual([2]);
+    await manager.disconnect();
+
+    // This reader took its new key, but the website never heard that it had.
+    const ahead = flashed(READER_B);
+    const next = newReaderKey();
+    hold(READER_B, 2, next);
+    ahead.key = next;
+    ahead.epoch = 2;
+    serial.ports = [new FakeSerialPort(ahead)];
+    await manager.connectUsb();
+    expect(manager.getSnapshot().connected).toBe(true);
+    await until(() => held(READER_B).length === 1, 'the old key to be retired');
+    expect(held(READER_B)).toEqual([2]);
   });
 
   it('uses Bluetooth when there is no cable, with every line sealed', async () => {
-    const { manager, bluetooth } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, bluetooth, flashed } = setup();
+    const reader = flashed(READER_A);
     reader.card = 'https://example.test/c/token';
     bluetooth.choice = new FakeBluetoothDevice(reader);
 
@@ -450,10 +712,9 @@ describe('the reader connection', () => {
   });
 
   it('refuses a reader that cannot prove it holds its key', async () => {
-    const { manager, bluetooth } = setup();
-    const impostor = new FakeReader(READER_A);
+    const { manager, bluetooth, flashed } = setup();
+    const impostor = flashed(READER_A);
     impostor.key = Buffer.alloc(32, 9);
-    impostor.epoch = READER_KEY_EPOCH;
     bluetooth.choice = new FakeBluetoothDevice(impostor);
 
     await manager.connectBluetooth();
@@ -473,12 +734,12 @@ describe('the reader connection', () => {
 
     await manager.connectBluetooth();
     expect(manager.getSnapshot().connected).toBe(false);
-    expect(manager.getSnapshot().error).toContain('has not been set up for Bluetooth');
+    expect(manager.getSnapshot().error).toContain('has no key yet');
   });
 
   it('moves to the cable when the reader is plugged in, and finishes the read in flight', async () => {
-    const { manager, serial, bluetooth, history } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, serial, bluetooth, history, flashed } = setup();
+    const reader = flashed(READER_A);
     bluetooth.choice = new FakeBluetoothDevice(reader);
     manager.retain();
     await manager.connectBluetooth();
@@ -501,9 +762,9 @@ describe('the reader connection', () => {
   });
 
   it('prefers a reader on the cable even when a different one is on Bluetooth', async () => {
-    const { manager, serial, bluetooth } = setup();
-    const wireless = pairedReader(READER_A);
-    const wired = pairedReader(READER_B);
+    const { manager, serial, bluetooth, flashed } = setup();
+    const wireless = flashed(READER_A);
+    const wired = flashed(READER_B);
     bluetooth.choice = new FakeBluetoothDevice(wireless);
     manager.retain();
     await manager.connectBluetooth();
@@ -515,8 +776,8 @@ describe('the reader connection', () => {
   });
 
   it('lets the organizer choose Bluetooth with a cable plugged in, and go back', async () => {
-    const { manager, serial, bluetooth } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, serial, bluetooth, flashed } = setup();
+    const reader = flashed(READER_A);
     serial.ports = [new FakeSerialPort(reader)];
     manager.retain();
     await until(() => manager.getSnapshot().connected, 'the cable');
@@ -542,8 +803,8 @@ describe('the reader connection', () => {
   });
 
   it('keeps the cable when the Bluetooth chooser is closed', async () => {
-    const { manager, serial } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, serial, flashed } = setup();
+    const reader = flashed(READER_A);
     serial.ports = [new FakeSerialPort(reader)];
     manager.retain();
     await until(() => manager.getSnapshot().connected, 'the cable');
@@ -554,8 +815,8 @@ describe('the reader connection', () => {
   });
 
   it('falls back to Bluetooth when the cable is pulled', async () => {
-    const { manager, serial, bluetooth, history } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, serial, bluetooth, history, flashed } = setup();
+    const reader = flashed(READER_A);
     bluetooth.choice = new FakeBluetoothDevice(reader);
     manager.retain();
     await manager.connectBluetooth();
@@ -571,8 +832,8 @@ describe('the reader connection', () => {
   });
 
   it('goes back to the cable when a chosen Bluetooth link fails', async () => {
-    const { manager, serial, bluetooth } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, serial, bluetooth, flashed } = setup();
+    const reader = flashed(READER_A);
     serial.ports = [new FakeSerialPort(reader)];
     manager.retain();
     await until(() => manager.getSnapshot().connected, 'the cable');
@@ -586,21 +847,21 @@ describe('the reader connection', () => {
   });
 
   it('says so when another computer takes the reader by its cable', async () => {
-    const { manager, bluetooth } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, bluetooth, flashed } = setup();
+    const reader = flashed(READER_A);
     bluetooth.choice = new FakeBluetoothDevice(reader);
     manager.retain();
     await manager.connectBluetooth();
 
     // A cable this browser has nothing to do with.
-    reader.handle({ id: 1, cmd: 'info' }, 'usb');
+    reader.handle({ id: 1, cmd: 'info' }, 'usb', false);
     await until(() => !manager.getSnapshot().connected, 'the link to end');
     expect(manager.getSnapshot().error).toContain('Another computer');
   });
 
   it('lets the reader go a moment after the last page using it closes', async () => {
-    const { manager, serial } = setup();
-    const reader = pairedReader(READER_A);
+    const { manager, serial, flashed } = setup();
+    const reader = flashed(READER_A);
     serial.ports = [new FakeSerialPort(reader)];
 
     const release = manager.retain();
@@ -614,6 +875,6 @@ describe('the reader connection', () => {
     again();
     await until(() => !manager.getSnapshot().connected, 'the link to be let go');
     // The reader was told, so it need not wait before offering Bluetooth.
-    expect(reader.seen).toContain('usb:usb.release');
+    await until(() => reader.seen.includes('usb:usb.release'), 'the reader to be told');
   });
 });

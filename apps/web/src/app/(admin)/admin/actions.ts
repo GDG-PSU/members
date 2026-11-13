@@ -31,18 +31,9 @@ import {
 import { newYorkInputToIso } from '@/lib/format';
 import { SITE_URL } from '@/lib/env';
 import { issueSignInLink } from '@/lib/auth/sign-in-links';
-import {
-  READER_KEY_EPOCH,
-  deriveReaderKey,
-  readerKeyCheck,
-  readerSessionSecrets,
-} from '@/lib/reader/keys';
-import {
-  READER_DEVICE_ID,
-  READER_KEY_CHECK,
-  READER_NONCE,
-  fromBase64Url,
-} from '@/lib/reader/protocol';
+import { loadReaderKey, retireReaderKeys, storeReaderKey } from '@/lib/reader/key-store';
+import { newReaderKey, readerKeyCheck, readerSessionSecrets } from '@/lib/reader/keys';
+import { READER_DEVICE_ID, READER_NONCE, fromBase64Url } from '@/lib/reader/protocol';
 import { withinRateLimit } from '@/lib/security/rate-limit';
 
 async function requireAdminActor() {
@@ -1825,67 +1816,101 @@ export async function decideRedemptionAction(formData: FormData) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Readers over Bluetooth                                                     */
+/* Card readers                                                               */
 /* -------------------------------------------------------------------------- */
 
-export type ReaderPairing =
-  | { ok: true; current: true }
-  | { ok: true; current: false; key: string; epoch: number; check: string }
-  | { ok: false; error: string };
+const UNKNOWN_READER = 'That is not a reader this site knows.';
+const readerRef = z.object({
+  deviceId: z.string().regex(READER_DEVICE_ID),
+  epoch: z.number().int().min(1),
+});
+
+export type ReaderKeyGrant =
+  { ok: true; key: string; epoch: number; check: string } | { ok: false; error: string };
+
+function grantFor(key: Buffer, epoch: number): ReaderKeyGrant {
+  return { ok: true, key: key.toString('base64url'), epoch, check: readerKeyCheck(key) };
+}
 
 /**
- * Gives a reader on this organizer's cable the key it needs to be used over
- * Bluetooth later. The cable is what makes this safe: only someone holding the
- * reader can plug it in. A reader that already has the current key gets nothing,
- * so the key crosses the browser once per reader, not once per visit.
+ * Gives a reader that has no key the one it will keep. Readers normally get
+ * theirs when they are flashed; this is for one that was erased, or flashed
+ * without the tool. Such a reader takes a key only over its cable, so only
+ * someone holding it can do this.
  */
-export async function pairReaderAction(input: {
-  deviceId: string;
-  epoch?: number;
-  check?: string;
-}): Promise<ReaderPairing> {
+export async function registerReaderAction(input: { deviceId: string }): Promise<ReaderKeyGrant> {
   const { user } = await requireAdminActor();
-  const parsed = z
-    .object({
-      deviceId: z.string().regex(READER_DEVICE_ID),
-      epoch: z.number().int().optional(),
-      check: z.string().regex(READER_KEY_CHECK).optional(),
-    })
-    .safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'That is not a reader this site knows.' };
-
-  const key = deriveReaderKey(parsed.data.deviceId);
-  const check = readerKeyCheck(key);
-  if (parsed.data.epoch === READER_KEY_EPOCH && parsed.data.check === check) {
-    return { ok: true, current: true };
-  }
-  if (!(await withinRateLimit(`reader:pair:${user.id}`, 20, 600))) {
+  const parsed = readerRef.pick({ deviceId: true }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: UNKNOWN_READER };
+  if (!(await withinRateLimit(`reader:register:${user.id}`, 20, 600))) {
     return {
       ok: false,
       error: 'Too many readers were set up at once. Try again in a few minutes.',
     };
   }
 
-  await audit(user.id, 'reader.paired', 'reader', parsed.data.deviceId, null, null, {
-    epoch: READER_KEY_EPOCH,
-  });
-  return {
-    ok: true,
-    current: false,
-    key: key.toString('base64url'),
-    epoch: READER_KEY_EPOCH,
-    check,
-  };
+  const key = newReaderKey();
+  const epoch = await storeReaderKey({ deviceId: parsed.data.deviceId, key, actor: user.id });
+  if (!epoch) return { ok: false, error: 'The reader could not be set up. Try again.' };
+  await audit(user.id, 'reader.paired', 'reader', parsed.data.deviceId, null, null, { epoch });
+  return grantFor(key, epoch);
+}
+
+/**
+ * Makes the key that replaces the one a connected reader holds. The browser
+ * passes it to the reader inside the session it already has open, then calls
+ * confirmReaderKeyAction. Until that, the old key still works, so a change that
+ * is cut short locks nobody out; asking again returns the same new key.
+ */
+export async function rotateReaderKeyAction(input: {
+  deviceId: string;
+  epoch: number;
+}): Promise<ReaderKeyGrant> {
+  const { user } = await requireAdminActor();
+  const parsed = readerRef.safeParse(input);
+  if (!parsed.success) return { ok: false, error: UNKNOWN_READER };
+  const { deviceId, epoch } = parsed.data;
+  if (!(await loadReaderKey(deviceId, epoch))) return { ok: false, error: UNKNOWN_READER };
+  if (!(await withinRateLimit(`reader:rotate:${user.id}`, 20, 600))) {
+    return { ok: false, error: 'Too many key changes at once. Try again in a few minutes.' };
+  }
+
+  const next = epoch + 1;
+  let stored = await loadReaderKey(deviceId, next);
+  if (!stored) {
+    await storeReaderKey({ deviceId, key: newReaderKey(), actor: user.id, version: next });
+    stored = await loadReaderKey(deviceId, next);
+  }
+  if (!stored) return { ok: false, error: 'The new key could not be saved. Try again.' };
+  await audit(user.id, 'reader.key_rotated', 'reader', deviceId, null, { epoch }, { epoch: next });
+  return grantFor(stored.key, next);
+}
+
+/**
+ * Retires a reader's older keys. Called once the reader has proved, to this
+ * organizer's browser, that it holds the version named.
+ */
+export async function confirmReaderKeyAction(input: {
+  deviceId: string;
+  epoch: number;
+}): Promise<{ ok: boolean }> {
+  await requireAdminActor();
+  const parsed = readerRef.safeParse(input);
+  if (!parsed.success) return { ok: false };
+  await retireReaderKeys(parsed.data.deviceId, parsed.data.epoch);
+  return { ok: true };
 }
 
 export type ReaderSession =
-  { ok: true; proof: string; expect: string; sessionKey: string } | { ok: false; error: string };
+  | { ok: true; proof: string; expect: string; sessionKey: string; older: boolean }
+  | { ok: false; error: string };
 
 /**
- * Opens one Bluetooth session with a reader. The pairing key stays here: the
- * browser gets the proof to send, the proof a genuine reader answers with, and
- * a key that seals this session only. Someone whose access was removed can no
- * longer open a session, whatever their browser remembers.
+ * Opens one session with a reader, over its cable or over Bluetooth. The
+ * reader's key stays here: the browser gets the proof to send, the proof a
+ * genuine reader answers with, and a key that seals this session only. Someone
+ * whose access was removed can no longer open a session, whatever their browser
+ * remembers.
  */
 export async function openReaderSessionAction(input: {
   deviceId: string;
@@ -1894,32 +1919,29 @@ export async function openReaderSessionAction(input: {
   readerNonce: string;
 }): Promise<ReaderSession> {
   const { user } = await requireAdminActor();
-  const parsed = z
-    .object({
-      deviceId: z.string().regex(READER_DEVICE_ID),
-      epoch: z.number().int(),
+  const parsed = readerRef
+    .extend({
       clientNonce: z.string().regex(READER_NONCE),
       readerNonce: z.string().regex(READER_NONCE),
     })
     .safeParse(input);
   const clientNonce = parsed.success ? fromBase64Url(parsed.data.clientNonce) : null;
   const readerNonce = parsed.success ? fromBase64Url(parsed.data.readerNonce) : null;
-  if (!parsed.success || !clientNonce || !readerNonce) {
-    return { ok: false, error: 'That is not a reader this site knows.' };
+  if (!parsed.success || !clientNonce || !readerNonce) return { ok: false, error: UNKNOWN_READER };
+  if (!(await withinRateLimit(`reader:session:${user.id}`, 60, 60))) {
+    return { ok: false, error: 'Too many reader connections at once. Try again in a minute.' };
   }
-  if (parsed.data.epoch !== READER_KEY_EPOCH) {
+
+  const stored = await loadReaderKey(parsed.data.deviceId, parsed.data.epoch);
+  if (!stored) {
     return {
       ok: false,
       error:
-        'This reader needs setting up again. Plug it in with a cable once, then use Bluetooth.',
+        'This site does not hold this reader’s key. Erase the reader and flash it again to set it up.',
     };
   }
-  if (!(await withinRateLimit(`reader:session:${user.id}`, 60, 60))) {
-    return { ok: false, error: 'Too many Bluetooth connections at once. Try again in a minute.' };
-  }
-
   const secrets = readerSessionSecrets({
-    key: deriveReaderKey(parsed.data.deviceId),
+    key: stored.key,
     deviceId: parsed.data.deviceId,
     epoch: parsed.data.epoch,
     clientNonce,
@@ -1930,5 +1952,6 @@ export async function openReaderSessionAction(input: {
     proof: secrets.clientProof.toString('base64url'),
     expect: secrets.readerProof.toString('base64url'),
     sessionKey: secrets.sessionKey.toString('base64url'),
+    older: stored.hasOlder,
   };
 }

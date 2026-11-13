@@ -27,6 +27,8 @@ export interface ReaderLink {
   readonly transport: ReaderTransport;
   readonly info: ReaderInfo | null;
   send(cmd: string, extra?: Record<string, unknown>, timeoutMs?: number): Promise<ReaderResponse>;
+  /** Asks the reader what it is again, after something about it was changed. */
+  refreshInfo(): Promise<ReaderResponse>;
   close(): Promise<void>;
 }
 

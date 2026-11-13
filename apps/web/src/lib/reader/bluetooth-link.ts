@@ -6,17 +6,16 @@ import {
   type LinkHooks,
   type ReaderLink,
 } from '@/lib/reader/link';
+import { openReaderSession, type ReaderBroker } from '@/lib/reader/handshake';
 import {
   LineBuffer,
   READER_RX,
   READER_SERVICE,
   READER_TX,
-  fromBase64Url,
-  toBase64Url,
   type ReaderInfo,
   type ReaderResponse,
 } from '@/lib/reader/protocol';
-import { SecureChannel } from '@/lib/reader/secure-channel';
+import type { SecureChannel } from '@/lib/reader/secure-channel';
 
 type CharacteristicLike = {
   value?: DataView | null;
@@ -50,22 +49,10 @@ export type BluetoothLike = {
   getDevices?(): Promise<BluetoothDeviceLike[]>;
 };
 
-export type ReaderSessionGrant =
-  { ok: true; proof: string; expect: string; sessionKey: string } | { ok: false; error: string };
-
-/** Asks the server to vouch for this browser to one reader, for one session. */
-export type OpenReaderSession = (input: {
-  deviceId: string;
-  epoch: number;
-  clientNonce: string;
-  readerNonce: string;
-}) => Promise<ReaderSessionGrant>;
-
 // One write the stack can carry whatever was negotiated, well under the 512-byte
 // limit on a characteristic value.
 const WRITE_BYTES = 180;
 const CONNECT_TIMEOUT_MS = 15_000;
-const NOT_OURS = 'That is not a reader this site knows. Nothing was sent to it.';
 
 function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -87,9 +74,7 @@ function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<
  * The reader over Bluetooth Low Energy, through Web Bluetooth.
  *
  * Anyone nearby can connect to a Bluetooth device, and anyone can pretend to be
- * one. So before a single command is sent, the reader has to prove it holds its
- * pairing key and this browser has to prove a signed-in organizer is behind it.
- * The server does the proving for the browser. After that every line is sealed.
+ * one, so nothing is sent until a session is open (handshake.ts).
  */
 export class BluetoothLink implements ReaderLink {
   readonly transport = 'bluetooth' as const;
@@ -113,13 +98,13 @@ export class BluetoothLink implements ReaderLink {
 
   static async open(
     device: BluetoothDeviceLike,
-    openSession: OpenReaderSession,
+    broker: ReaderBroker,
     hooks: LinkHooks,
     connectTimeoutMs = CONNECT_TIMEOUT_MS,
   ): Promise<BluetoothLink> {
     const link = new BluetoothLink(device, hooks);
     try {
-      await link.start(openSession, connectTimeoutMs);
+      await link.start(broker, connectTimeoutMs);
     } catch (error) {
       await link.close();
       throw error;
@@ -127,7 +112,7 @@ export class BluetoothLink implements ReaderLink {
     return link;
   }
 
-  private async start(openSession: OpenReaderSession, connectTimeoutMs: number) {
+  private async start(broker: ReaderBroker, connectTimeoutMs: number) {
     const gatt = this.device.gatt;
     if (!gatt) throw new Error('This reader cannot be reached over Bluetooth.');
 
@@ -145,24 +130,7 @@ export class BluetoothLink implements ReaderLink {
     await this.tx.startNotifications();
 
     this.hooks.onStatus('Checking the reader…');
-    const clientNonce = crypto.getRandomValues(new Uint8Array(16));
-    const begun = await this.send('auth.begin', { nonce: toBase64Url(clientNonce) });
-    const { deviceId, epoch, nonce: readerNonce } = begun.result ?? {};
-    if (!deviceId || typeof epoch !== 'number' || !readerNonce) throw new Error(NOT_OURS);
-
-    const grant = await openSession({
-      deviceId,
-      epoch,
-      clientNonce: toBase64Url(clientNonce),
-      readerNonce,
-    });
-    if (!grant.ok) throw new Error(grant.error);
-
-    const finished = await this.send('auth.finish', { proof: grant.proof });
-    const sessionKey = fromBase64Url(grant.sessionKey);
-    // Only a reader holding the pairing key can give this answer.
-    if (finished.result?.proof !== grant.expect || !sessionKey) throw new Error(NOT_OURS);
-    this.channel = await SecureChannel.create(sessionKey);
+    this.channel = await openReaderSession((cmd, extra) => this.send(cmd, extra), broker);
 
     const info = await this.send('info');
     this.info = info.result ?? null;

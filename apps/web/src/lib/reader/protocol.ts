@@ -8,8 +8,14 @@ export const READER_SERVICE = '7c1f0001-5b0a-4f6e-9a54-6d5b2c8e41a7';
 export const READER_RX = '7c1f0002-5b0a-4f6e-9a54-6d5b2c8e41a7';
 export const READER_TX = '7c1f0003-5b0a-4f6e-9a54-6d5b2c8e41a7';
 
-/** Firmware from this protocol on knows ping, pairing and Bluetooth. */
-export const BLUETOOTH_PROTOCOL = 3;
+/** Firmware from this protocol on answers ping, which tells it a computer is on its cable. */
+export const KEEP_ALIVE_PROTOCOL = 3;
+/**
+ * Firmware from this protocol on (2.2.0) holds a key of its own and obeys only a
+ * session opened with it, on the cable and over Bluetooth. Older firmware works
+ * over the cable only, with no session.
+ */
+export const SECURE_PROTOCOL = 4;
 
 export const READER_DEVICE_ID = /^esp32-[0-9a-f]{12}$/;
 /** 16 bytes as unpadded base64url. */
@@ -21,10 +27,12 @@ export type ReaderTransport = 'usb' | 'bluetooth';
 export type ReaderBluetoothInfo = {
   name?: string;
   enabled?: boolean;
+  /** The reader holds a key. */
   paired?: boolean;
   state?: string;
+  /** The key's version. */
   epoch?: number;
-  /** A fingerprint of the pairing key; never the key. */
+  /** A fingerprint of the key; never the key. */
   check?: string;
 };
 
@@ -35,6 +43,8 @@ export type ReaderInfo = {
   chipId?: string;
   transport?: string;
   mode?: string;
+  /** Asked outside a session of a reader that holds a key. */
+  locked?: boolean;
   nfcReady?: boolean;
   nfcFirmware?: number;
   uptimeMs?: number;
@@ -67,8 +77,13 @@ export type ReaderEvent = {
   deviceId?: string;
 };
 
-export function supportsBluetooth(info: ReaderInfo | null): boolean {
-  return (info?.protocol ?? 0) >= BLUETOOTH_PROTOCOL;
+export function sendsKeepAlive(info: ReaderInfo | null): boolean {
+  return (info?.protocol ?? 0) >= KEEP_ALIVE_PROTOCOL;
+}
+
+/** Holds a key, needs a session, and can be used over Bluetooth. */
+export function isSecureReader(info: ReaderInfo | null): boolean {
+  return (info?.protocol ?? 0) >= SECURE_PROTOCOL;
 }
 
 export function toBase64Url(bytes: Uint8Array): string {

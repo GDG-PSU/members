@@ -6,7 +6,12 @@
 
 namespace {
 
-constexpr int kProtocol = 3;
+constexpr int kProtocol = 4;
+
+// Only the main loop handles cable lines, one at a time.
+char usbPlain[GDG_PLAIN_BYTES + 1];
+char usbReply[GDG_PLAIN_BYTES + 1];
+char usbWire[GDG_LINE_BYTES + 2];
 
 String ChipId() {
   char value[17] = {0};
@@ -15,11 +20,20 @@ String ChipId() {
   return String(value);
 }
 
-/** Commands that decide who may use Bluetooth are taken from the cable only. */
+/** Commands that decide how the reader may be reached are taken from the cable only. */
 bool IsCableOnly(const char* cmd) {
-  return strcmp(cmd, "pair.set") == 0 || strcmp(cmd, "pair.clear") == 0 ||
-         strcmp(cmd, "bluetooth.set") == 0 || strcmp(cmd, "transport.set") == 0 ||
+  return strcmp(cmd, "pair.clear") == 0 || strcmp(cmd, "bluetooth.set") == 0 ||
+         strcmp(cmd, "transport.set") == 0 || strcmp(cmd, "usb.release") == 0;
+}
+
+/** What the cable answers before a session is open. None of it touches a card. */
+bool IsOpenCommand(const char* cmd) {
+  return strcmp(cmd, "info") == 0 || strcmp(cmd, "ping") == 0 ||
          strcmp(cmd, "usb.release") == 0;
+}
+
+bool IsHandshake(const char* cmd) {
+  return strcmp(cmd, "auth.begin") == 0 || strcmp(cmd, "auth.finish") == 0;
 }
 
 }  // namespace
@@ -32,6 +46,7 @@ void ReaderApi::Begin(NfcLane* nfc, BleLink* ble, PairingStore* store) {
 
   const String chipId = ChipId();
   snprintf(deviceId_, sizeof(deviceId_), "esp32-%s", chipId.c_str());
+  usbSession_.Begin(deviceId_, GDG_FIRMWARE_VERSION, store);
 
   Serial.println("[usb] JSON control API ready");
   Serial.printf("[usb] device id %s\n", deviceId_);
@@ -43,6 +58,7 @@ void ReaderApi::AnnounceReady() {
   doc["protocol"] = kProtocol;
   doc["firmware"] = GDG_FIRMWARE_VERSION;
   doc["deviceId"] = deviceId_;
+  usbReplySealed_ = false;
   Send(Link::Usb, doc);
 }
 
@@ -59,7 +75,7 @@ void ReaderApi::TickUsb(uint32_t now) {
       discardingLine_ = false;
       if (complete) {
         line_[lineLength_] = '\0';
-        HandleLine(Link::Usb, line_, now);
+        HandleUsbLine(now);
       }
       lineLength_ = 0;
       continue;
@@ -69,6 +85,7 @@ void ReaderApi::TickUsb(uint32_t now) {
       // The rest of this line is not a command, so nothing may parse it as one.
       discardingLine_ = true;
       lineLength_ = 0;
+      usbReplySealed_ = false;
       SendError(Link::Usb, 0, "line_too_long");
       continue;
     }
@@ -77,10 +94,31 @@ void ReaderApi::TickUsb(uint32_t now) {
 }
 
 void ReaderApi::HandleBluetoothLine(const char* line) {
-  HandleLine(Link::Bluetooth, line, millis());
+  // BleLink passes on only what an open session sealed.
+  HandleLine(Link::Bluetooth, line, millis(), true);
 }
 
-void ReaderApi::HandleLine(Link link, const char* line, uint32_t now) {
+void ReaderApi::HandleUsbLine(uint32_t now) {
+  if (line_[0] != '#') {
+    HandleLine(Link::Usb, line_, now, false);
+    return;
+  }
+
+  size_t plainLength = 0;
+  if (!usbSession_.Open(line_, lineLength_, usbPlain, GDG_PLAIN_BYTES, plainLength)) {
+    // Not sealed by a session this reader has open. The computer is told, so
+    // it can open one again, for instance after the reader restarted.
+    usbSession_.End();
+    Serial.println("{\"event\":\"locked\"}");
+    return;
+  }
+  usbPlain[plainLength] = '\0';
+  HandleLine(Link::Usb, usbPlain, now, true);
+}
+
+void ReaderApi::HandleLine(Link link, const char* line, uint32_t now, bool sealed) {
+  if (link == Link::Usb) usbReplySealed_ = sealed;
+
   JsonDocument doc;
   const DeserializationError parseError = deserializeJson(doc, line);
   if (parseError) {
@@ -105,8 +143,25 @@ void ReaderApi::HandleLine(Link link, const char* line, uint32_t now) {
     return;
   }
 
+  if (!sealed) {
+    if (IsHandshake(cmd)) {
+      char reply[256];
+      usbSession_.HandleAuth(cmd, id, doc, reply, sizeof(reply));
+      Serial.println(reply);
+      lastUsbFrameMs_ = millis();
+      return;
+    }
+    // A reader with no key takes one from whoever holds its cable. Once it has
+    // one, the key changes only inside a session opened with it.
+    const bool firstKey = strcmp(cmd, "pair.set") == 0 && !store_->HasKey();
+    if (!IsOpenCommand(cmd) && !firstKey) {
+      SendError(link, id, store_->HasKey() ? "locked" : "not_paired");
+      return;
+    }
+  }
+
   if (strcmp(cmd, "info") == 0) {
-    SendInfo(link, id);
+    SendInfo(link, id, sealed);
   } else if (strcmp(cmd, "ping") == 0) {
     SendOk(link, id);
   } else if (strcmp(cmd, "nfc.status") == 0) {
@@ -118,11 +173,14 @@ void ReaderApi::HandleLine(Link link, const char* line, uint32_t now) {
   } else if (strcmp(cmd, "reboot") == 0) {
     HandleReboot(link, id);
   } else if (strcmp(cmd, "pair.set") == 0) {
-    HandlePairSet(id, doc["key"] | "", doc["epoch"] | 0L);
+    HandlePairSet(link, id, doc["key"] | "", doc["epoch"] | 0L);
   } else if (strcmp(cmd, "pair.clear") == 0) {
-    store_->ClearKey();
-    ble_->SetKey(nullptr, 0);
     SendOk(link, id);
+    // With no key there is nothing left for any session to stand on.
+    store_->ClearKey();
+    mode_ = TransportMode::Auto;
+    ble_->Drop("off");
+    usbSession_.End();
   } else if (strcmp(cmd, "bluetooth.set") == 0) {
     if (!doc["enabled"].is<bool>()) {
       SendError(link, id, "missing_enabled");
@@ -134,9 +192,10 @@ void ReaderApi::HandleLine(Link link, const char* line, uint32_t now) {
     HandleTransportSet(id, doc["mode"] | "");
   } else if (strcmp(cmd, "usb.release") == 0) {
     // The computer is done with the cable, so Bluetooth need not wait for the
-    // session to time out.
+    // session to time out, and whoever plugs in next starts from nothing.
     SendOk(link, id);
     usbSeen_ = false;
+    usbSession_.End();
   } else {
     SendError(link, id, "unknown_cmd");
   }
@@ -147,19 +206,23 @@ void ReaderApi::HandleLine(Link link, const char* line, uint32_t now) {
 }
 
 void ReaderApi::Send(Link link, JsonDocument& doc) {
-  if (link == Link::Usb) {
+  if (link == Link::Usb && !usbReplySealed_) {
     serializeJson(doc, Serial);
     Serial.println();
     return;
   }
 
-  char out[GDG_BLE_PLAIN_BYTES + 1];
-  if (measureJson(doc) > GDG_BLE_PLAIN_BYTES) {
-    ble_->SendLine("{\"id\":0,\"ok\":false,\"error\":\"reply_too_long\"}");
+  static const char kTooLong[] = "{\"id\":0,\"ok\":false,\"error\":\"reply_too_long\"}";
+  const bool fits = measureJson(doc) <= GDG_PLAIN_BYTES;
+  if (fits) serializeJson(doc, usbReply, sizeof(usbReply));
+  const char* reply = fits ? usbReply : kTooLong;
+
+  if (link == Link::Bluetooth) {
+    ble_->SendLine(reply);
     return;
   }
-  serializeJson(doc, out, sizeof(out));
-  ble_->SendLine(out);
+  const size_t length = usbSession_.Seal(reply, usbWire, sizeof(usbWire));
+  if (length > 0) Serial.println(usbWire);
 }
 
 void ReaderApi::SendOk(Link link, long id) {
@@ -177,7 +240,7 @@ void ReaderApi::SendError(Link link, long id, const char* error) {
   Send(link, doc);
 }
 
-void ReaderApi::SendInfo(Link link, long id) {
+void ReaderApi::SendInfo(Link link, long id, bool trusted) {
   JsonDocument doc;
   doc["id"] = id;
   doc["ok"] = true;
@@ -188,6 +251,8 @@ void ReaderApi::SendInfo(Link link, long id) {
   result["chipId"] = ChipId();
   result["transport"] = link == Link::Usb ? "usb-serial" : "bluetooth";
   result["mode"] = mode_ == TransportMode::Bluetooth ? "bluetooth" : "auto";
+  // True when this reader will do nothing more until a session is opened.
+  result["locked"] = store_->HasKey() && !trusted;
   result["nfcReady"] = nfc_ != nullptr && nfc_->IsReady();
   result["nfcFirmware"] = nfc_ != nullptr ? nfc_->FirmwareVersion() : 0;
   result["uptimeMs"] = millis();
@@ -270,31 +335,41 @@ void ReaderApi::HandleReboot(Link link, long id) {
   ESP.restart();
 }
 
-void ReaderApi::HandlePairSet(long id, const char* key, long epoch) {
+void ReaderApi::HandlePairSet(Link link, long id, const char* key, long epoch) {
   uint8_t bytes[gdgcrypto::kKeyBytes];
   size_t length = 0;
   if (epoch < 1 ||
       !gdgcrypto::Base64UrlDecode(key, strlen(key), bytes, sizeof(bytes), length) ||
       length != sizeof(bytes)) {
-    SendError(Link::Usb, id, "bad_key");
+    SendError(link, id, "bad_key");
+    return;
+  }
+  // A new key always carries a later number than the one it replaces, so the
+  // website can tell which of the two the reader ended up with.
+  if (store_->HasKey() && static_cast<uint32_t>(epoch) <= store_->Epoch()) {
+    gdgcrypto::Wipe(bytes, sizeof(bytes));
+    SendError(link, id, "bad_epoch");
     return;
   }
 
   const bool stored = store_->SetKey(bytes, static_cast<uint32_t>(epoch));
   gdgcrypto::Wipe(bytes, sizeof(bytes));
   if (!stored) {
-    SendError(Link::Usb, id, "key_not_saved");
+    SendError(link, id, "key_not_saved");
     return;
   }
-  ble_->SetKey(store_->Key(), store_->Epoch());
 
+  // Sessions already open carry on: each has its own key, made from the one
+  // this replaces. The next one to open needs the new key.
   JsonDocument doc;
   doc["id"] = id;
   doc["ok"] = true;
   char check[17];
   store_->KeyCheck(check);
-  doc["result"]["check"] = check;
-  Send(Link::Usb, doc);
+  JsonObject result = doc["result"].to<JsonObject>();
+  result["check"] = check;
+  result["epoch"] = store_->Epoch();
+  Send(link, doc);
 }
 
 void ReaderApi::HandleTransportSet(long id, const char* mode) {

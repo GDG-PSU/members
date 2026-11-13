@@ -8,7 +8,9 @@ export type FakeReaderAction =
   | 'plug'
   /** The cable comes out; the reader keeps its power. */
   | 'unplug'
-  /** The reader now holds a key the server never gave it. */
+  /** The reader loses power for a moment and starts again. */
+  | 'restart'
+  /** The reader now holds a key the website never stored. */
   | 'swapKey'
   | 'restoreKey'
   /** The organizer closes the browser's Bluetooth chooser without choosing. */
@@ -16,10 +18,11 @@ export type FakeReaderAction =
   | 'openChooser';
 
 /**
- * A stand-in for a reader with firmware 2.1.0, whose card contents the test
+ * A stand-in for a reader with firmware 2.2.0, whose card contents the test
  * controls through `window.__cardUri`. It has a cable (Web Serial) and a radio
- * (Web Bluetooth), follows the firmware's rule for when the radio is on, and
- * does the real handshake and sealing, so the page's own code is what is tested.
+ * (Web Bluetooth), obeys only a session opened with its key on either, follows
+ * the firmware's rule for when the radio is on, and does the real handshake and
+ * sealing, so the page's own code is what is tested.
  */
 export async function installFakeReader(page: Page) {
   await page.addInitScript((deviceId) => {
@@ -28,6 +31,8 @@ export async function installFakeReader(page: Page) {
 
     const RX = '7c1f0002-5b0a-4f6e-9a54-6d5b2c8e41a7';
     const KEY_ITEM = '__readerKey';
+    const OPEN_COMMANDS = ['info', 'ping', 'usb.release'];
+    const CABLE_ONLY = ['pair.clear', 'transport.set', 'usb.release', 'bluetooth.set'];
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     const state = window as unknown as {
@@ -72,12 +77,14 @@ export async function installFakeReader(page: Page) {
       return bytes;
     };
 
-    // The pairing key outlives a page load, as it does in the reader's own storage.
+    // The key outlives a page load, as it does in the reader's own storage.
     const reader = {
       mode: 'auto' as 'auto' | 'bluetooth',
       cableInUse: false,
       /** Every line that went over the air, as an eavesdropper would see it. */
       air: [] as string[],
+      /** Every line that went down the cable, in either direction. */
+      cable: [] as string[],
       key: () => {
         const stored = localStorage.getItem(KEY_ITEM);
         return stored ? fromBase64Url(stored) : null;
@@ -92,32 +99,44 @@ export async function installFakeReader(page: Page) {
           '',
         );
       },
-      handle: async (command: Command, link: 'usb' | 'bluetooth'): Promise<Reply> => {
+      /** `sealed` is whether the command came inside an open session. */
+      handle: async (
+        command: Command,
+        link: 'usb' | 'bluetooth',
+        sealed: boolean,
+      ): Promise<Reply> => {
         const ok = (result?: Reply) => ({
           id: command.id,
           ok: true,
           ...(result ? { result } : {}),
         });
         const fail = (error: string) => ({ id: command.id, ok: false, error });
-        const cableOnly = ['pair.set', 'transport.set', 'usb.release', 'bluetooth.set'];
-        if (link === 'bluetooth' && cableOnly.includes(command.cmd)) return fail('usb_only');
+        if (link === 'bluetooth' && CABLE_ONLY.includes(command.cmd)) return fail('usb_only');
 
         if (link === 'usb') {
           reader.cableInUse = command.cmd !== 'usb.release';
           // The cable wins unless the organizer asked for Bluetooth.
           if (reader.cableInUse && reader.mode === 'auto') radio.dropFromReader('usb');
         }
+        if (!sealed) {
+          const firstKey = command.cmd === 'pair.set' && reader.key() === null;
+          if (!OPEN_COMMANDS.includes(command.cmd) && !firstKey) {
+            return fail(reader.key() ? 'locked' : 'not_paired');
+          }
+        }
+
         switch (command.cmd) {
           case 'info':
             return ok({
-              protocol: 3,
-              firmware: '2.1.0',
+              protocol: 4,
+              firmware: '2.2.0',
               deviceId,
               transport: link === 'usb' ? 'usb-serial' : 'bluetooth',
               mode: reader.mode,
+              locked: reader.key() !== null && !sealed,
               nfcReady: true,
               bluetooth: {
-                name: 'GDG Reader 0001',
+                name: 'GDG Reader 0000',
                 enabled: true,
                 paired: reader.key() !== null,
                 ...(reader.key() ? { epoch: reader.epoch(), check: await reader.check() } : {}),
@@ -127,9 +146,10 @@ export async function installFakeReader(page: Page) {
           case 'usb.release':
             return ok();
           case 'pair.set':
+            if (reader.key() && Number(command.epoch) <= reader.epoch()) return fail('bad_epoch');
             localStorage.setItem(KEY_ITEM, String(command.key));
             localStorage.setItem(`${KEY_ITEM}Epoch`, String(command.epoch));
-            return ok({ check: await reader.check() });
+            return ok({ check: await reader.check(), epoch: reader.epoch() });
           case 'transport.set':
             reader.mode = command.mode === 'bluetooth' ? 'bluetooth' : 'auto';
             if (reader.mode === 'auto') radio.dropFromReader('usb');
@@ -148,6 +168,101 @@ export async function installFakeReader(page: Page) {
       },
     };
 
+    /** The reader's half of a session, as SecureSession does it in the firmware. */
+    const makeSession = () => {
+      let secure: { key: CryptoKey; sent: bigint; received: bigint } | null = null;
+      let nonces: { client: Uint8Array; reader: Uint8Array } | null = null;
+
+      const proofFor = async (label: string) => {
+        const key = reader.key();
+        if (!key || !nonces) return new Uint8Array();
+        const transcript = encoder.encode(
+          `${label}\0gdg-reader-auth-v1\0${deviceId}\0${reader.epoch()}\0`,
+        );
+        return hmac(key, concat(transcript, nonces.client, nonces.reader));
+      };
+
+      return {
+        isOpen: () => secure !== null,
+        end: () => {
+          secure = null;
+          nonces = null;
+        },
+        /** Answers a handshake command sent in the clear; null for anything else. */
+        auth: async (command: Command): Promise<{ reply: Reply; failed: boolean } | null> => {
+          const refuse = (error: string, failed: boolean) => ({
+            reply: { id: command.id, ok: false, error },
+            failed,
+          });
+          if (command.cmd === 'auth.begin') {
+            if (!reader.key()) return refuse('not_paired', false);
+            nonces = {
+              client: fromBase64Url(String(command.nonce)),
+              reader: crypto.getRandomValues(new Uint8Array(16)),
+            };
+            return {
+              failed: false,
+              reply: {
+                id: command.id,
+                ok: true,
+                result: { deviceId, epoch: reader.epoch(), nonce: toBase64Url(nonces.reader) },
+              },
+            };
+          }
+          if (command.cmd === 'auth.finish') {
+            if (!reader.key() || !nonces) return refuse('auth_out_of_order', true);
+            if (String(command.proof) !== toBase64Url(await proofFor('client'))) {
+              nonces = null;
+              return refuse('auth_failed', true);
+            }
+            const sessionKey = await crypto.subtle.importKey(
+              'raw',
+              (await proofFor('session')) as BufferSource,
+              { name: 'AES-GCM' },
+              false,
+              ['encrypt', 'decrypt'],
+            );
+            const proof = toBase64Url(await proofFor('reader'));
+            nonces = null;
+            secure = { key: sessionKey, sent: BigInt(0), received: BigInt(0) };
+            return { failed: false, reply: { id: command.id, ok: true, result: { proof } } };
+          }
+          return null;
+        },
+        seal: async (message: Reply): Promise<string> => {
+          if (!secure) throw new Error('no session to seal with');
+          secure.sent += BigInt(1);
+          const iv = nonceFor(2, secure.sent);
+          const sealed = new Uint8Array(
+            await crypto.subtle.encrypt(
+              { name: 'AES-GCM', iv },
+              secure.key,
+              encoder.encode(JSON.stringify(message)),
+            ),
+          );
+          return `#${toBase64Url(concat(iv.subarray(4), sealed))}`;
+        },
+        /** Null when the line was not sealed by the session that is open. */
+        unseal: async (line: string): Promise<Command | null> => {
+          if (!secure) return null;
+          try {
+            const frame = fromBase64Url(line.slice(1));
+            const counter = new DataView(frame.buffer).getBigUint64(0);
+            if (counter <= secure.received) return null;
+            const plain = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv: nonceFor(1, counter) },
+              secure.key,
+              frame.subarray(8),
+            );
+            secure.received = counter;
+            return JSON.parse(decoder.decode(plain)) as Command;
+          } catch {
+            return null;
+          }
+        },
+      };
+    };
+
     /* ------------------------------ the cable ------------------------------ */
 
     const serialListeners: Record<string, ((event: Event) => void)[]> = {
@@ -157,14 +272,47 @@ export async function installFakeReader(page: Page) {
     let plugged = true;
     // A real browser only tells a page about ports it was already allowed to use.
     let permitted = false;
+    const cableSession = makeSession();
 
     class FakeSerialPort {
       readable: ReadableStream<Uint8Array> | null = null;
       writable: WritableStream<Uint8Array> | null = null;
       private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
 
+      say(line: string) {
+        reader.cable.push(line);
+        this.controller?.enqueue(encoder.encode(line + '\n'));
+      }
+
+      private async receive(line: string) {
+        reader.cable.push(line);
+        if (line.startsWith('#')) {
+          const command = await cableSession.unseal(line);
+          if (!command) {
+            cableSession.end();
+            this.say('{"event":"locked"}');
+            return;
+          }
+          this.say(await cableSession.seal(await reader.handle(command, 'usb', true)));
+          if (command.cmd === 'usb.release') cableSession.end();
+          return;
+        }
+
+        const command = JSON.parse(line) as Command;
+        const handshake = await cableSession.auth(command);
+        if (handshake) {
+          reader.cableInUse = true;
+          this.say(JSON.stringify(handshake.reply));
+          return;
+        }
+        this.say(JSON.stringify(await reader.handle(command, 'usb', false)));
+        if (command.cmd === 'usb.release') cableSession.end();
+      }
+
       async open() {
         if (!plugged) throw new Error('The device has been lost.');
+        // Opening the port restarts a real reader, which ends any session.
+        cableSession.end();
         this.readable = new ReadableStream<Uint8Array>({
           start: (controller) => {
             this.controller = controller;
@@ -173,9 +321,7 @@ export async function installFakeReader(page: Page) {
         this.writable = new WritableStream<Uint8Array>({
           write: async (chunk) => {
             for (const line of decoder.decode(chunk).split('\n')) {
-              if (!line.trim()) continue;
-              const reply = await reader.handle(JSON.parse(line) as Command, 'usb');
-              this.controller?.enqueue(encoder.encode(JSON.stringify(reply) + '\n'));
+              if (line.trim()) await this.receive(line.trim());
             }
           },
         });
@@ -192,6 +338,13 @@ export async function installFakeReader(page: Page) {
         } catch {
           // The port was not open.
         }
+      }
+
+      restart() {
+        cableSession.end();
+        reader.mode = 'auto';
+        radio.end();
+        this.say(JSON.stringify({ event: 'ready', protocol: 4, firmware: '2.2.0', deviceId }));
       }
 
       getInfo() {
@@ -220,8 +373,7 @@ export async function installFakeReader(page: Page) {
 
     let chooserOpen = true;
     let connected = false;
-    let secure: { key: CryptoKey; sent: bigint } | null = null;
-    let nonces: { client: Uint8Array; reader: Uint8Array } | null = null;
+    const airSession = makeSession();
     let incoming = '';
     let work: Promise<void> = Promise.resolve();
     let goneListeners: (() => void)[] = [];
@@ -237,37 +389,22 @@ export async function installFakeReader(page: Page) {
       },
     };
 
-    const proofFor = async (label: string) => {
-      const key = reader.key();
-      if (!key || !nonces) return new Uint8Array();
-      const transcript = encoder.encode(
-        `${label}\0gdg-reader-auth-v1\0${deviceId}\0${reader.epoch()}\0`,
-      );
-      return hmac(key, concat(transcript, nonces.client, nonces.reader));
-    };
-
     const radio = {
       end: () => {
         if (!connected) return;
         connected = false;
         gatt.connected = false;
-        secure = null;
+        airSession.end();
         for (const listener of [...goneListeners]) listener();
       },
-      send: async (message: Reply) => {
-        let line = JSON.stringify(message);
-        if (secure) {
-          secure.sent += BigInt(1);
-          const iv = nonceFor(2, secure.sent);
-          const sealed = new Uint8Array(
-            await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, secure.key, encoder.encode(line)),
-          );
-          line = `#${toBase64Url(concat(iv.subarray(4), sealed))}`;
-        }
+      say: (line: string) => {
         reader.air.push(line);
         const bytes = encoder.encode(line + '\n');
         tx.value = new DataView(bytes.buffer);
         for (const listener of [...valueListeners]) listener({ target: tx } as unknown as Event);
+      },
+      send: async (message: Reply) => {
+        radio.say(airSession.isOpen() ? await airSession.seal(message) : JSON.stringify(message));
       },
       /** The reader lets go of Bluetooth, saying which link took over. */
       dropFromReader: (takenBy: string) => {
@@ -279,57 +416,26 @@ export async function installFakeReader(page: Page) {
       },
       receive: async (line: string) => {
         reader.air.push(line);
-        if (secure) {
-          const frame = fromBase64Url(line.slice(1));
-          const counter = new DataView(frame.buffer).getBigUint64(0);
-          const plain = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv: nonceFor(1, counter) },
-            secure.key,
-            frame.subarray(8),
-          );
-          const command = JSON.parse(decoder.decode(plain)) as Command;
-          await radio.send(await reader.handle(command, 'bluetooth'));
+        if (airSession.isOpen()) {
+          // Anything the session did not seal ends it, as on the real reader.
+          const command = await airSession.unseal(line);
+          if (!command) {
+            radio.end();
+            return;
+          }
+          await radio.send(await reader.handle(command, 'bluetooth', true));
           return;
         }
 
         const command = JSON.parse(line) as Command;
-        const key = reader.key();
-        if (command.cmd === 'auth.begin' && key) {
-          nonces = {
-            client: fromBase64Url(String(command.nonce)),
-            reader: crypto.getRandomValues(new Uint8Array(16)),
-          };
-          await radio.send({
-            id: command.id,
-            ok: true,
-            result: { deviceId, epoch: reader.epoch(), nonce: toBase64Url(nonces.reader) },
-          });
-        } else if (command.cmd === 'auth.finish' && key && nonces) {
-          if (String(command.proof) !== toBase64Url(await proofFor('client'))) {
-            await radio.send({ id: command.id, ok: false, error: 'auth_failed' });
-            radio.end();
-            return;
-          }
-          const sessionKey = await crypto.subtle.importKey(
-            'raw',
-            (await proofFor('session')) as BufferSource,
-            { name: 'AES-GCM' },
-            false,
-            ['encrypt', 'decrypt'],
-          );
-          await radio.send({
-            id: command.id,
-            ok: true,
-            result: { proof: toBase64Url(await proofFor('reader')) },
-          });
-          secure = { key: sessionKey, sent: BigInt(0) };
-        } else {
-          await radio.send({
-            id: command.id,
-            ok: false,
-            error: key ? 'auth_required' : 'not_paired',
-          });
+        const handshake = await airSession.auth(command);
+        if (!handshake) {
+          await radio.send({ id: command.id, ok: false, error: 'auth_required' });
+          return;
         }
+        // The reader's own proof goes out in the clear; the session is already open.
+        radio.say(JSON.stringify(handshake.reply));
+        if (handshake.failed) radio.end();
       },
     };
 
@@ -353,7 +459,7 @@ export async function installFakeReader(page: Page) {
         if (!reader.reachable()) throw new Error('Bluetooth Device is no longer in range.');
         connected = true;
         gatt.connected = true;
-        secure = null;
+        airSession.end();
         incoming = '';
         return gatt;
       },
@@ -364,7 +470,7 @@ export async function installFakeReader(page: Page) {
     };
     const device = {
       id: 'fake-reader',
-      name: 'GDG Reader 0001',
+      name: 'GDG Reader 0000',
       gatt,
       addEventListener: (_type: string, listener: () => void) => {
         goneListeners.push(listener);
@@ -393,6 +499,8 @@ export async function installFakeReader(page: Page) {
 
     state.__reader = {
       air: reader.air,
+      cable: reader.cable,
+      epoch: () => reader.epoch(),
       plug: () => {
         plugged = true;
         if (permitted) {
@@ -408,6 +516,7 @@ export async function installFakeReader(page: Page) {
           listener({ target: port } as unknown as Event);
         }
       },
+      restart: () => port.restart(),
       swapKey: () => {
         localStorage.setItem(`${KEY_ITEM}Real`, localStorage.getItem(KEY_ITEM) ?? '');
         localStorage.setItem(KEY_ITEM, toBase64Url(crypto.getRandomValues(new Uint8Array(32))));
@@ -441,5 +550,19 @@ export async function fakeReader(page: Page, action: FakeReaderAction) {
 export async function overTheAir(page: Page): Promise<string> {
   return page.evaluate(() =>
     (window as unknown as { __reader: { air: string[] } }).__reader.air.join('\n'),
+  );
+}
+
+/** Everything that went down the reader's cable, in both directions. */
+export async function overTheCable(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    (window as unknown as { __reader: { cable: string[] } }).__reader.cable.join('\n'),
+  );
+}
+
+/** The version of the key the stand-in reader holds; 0 when it has none. */
+export async function readerKeyVersion(page: Page): Promise<number> {
+  return page.evaluate(() =>
+    (window as unknown as { __reader: { epoch: () => number } }).__reader.epoch(),
   );
 }

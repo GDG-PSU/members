@@ -7,6 +7,8 @@ import {
   fakeReader,
   installFakeReader,
   overTheAir,
+  overTheCable,
+  readerKeyVersion,
   setCard,
 } from './support/fake-reader';
 import { baseUrl, hasSupabaseAdminCredentials, loadTestEnv, siteOrigin } from './support/env';
@@ -154,11 +156,14 @@ test.describe('every member and organizer workflow', () => {
 
   /** Moves a person's link back in time, as if it had been made that long ago. */
   async function ageLink(authUserId: string, hoursAgo: number, lifetimeHours: number) {
+    // One reading of the clock: two a millisecond apart make a 72-hour link a
+    // millisecond too long, and the table refuses it.
+    const made = Date.now() - hoursAgo * HOUR;
     const { error } = await supabase()
       .from('sign_in_links')
       .update({
-        created_at: new Date(Date.now() - hoursAgo * HOUR).toISOString(),
-        expires_at: new Date(Date.now() - (hoursAgo - lifetimeHours) * HOUR).toISOString(),
+        created_at: new Date(made).toISOString(),
+        expires_at: new Date(made + lifetimeHours * HOUR).toISOString(),
       })
       .eq('auth_user_id', authUserId);
     expect(error).toBeNull();
@@ -1027,31 +1032,99 @@ test.describe('every member and organizer workflow', () => {
     activeCardUrl = replacementUrl;
   });
 
-  test('a reader set up over its cable works over Bluetooth, and the cable always wins', async () => {
+  test('a reader obeys only a signed-in organizer, on its cable and over Bluetooth', async () => {
     const badge = (link: 'USB' | 'Bluetooth') => adminPage.getByLabel(`Connected by ${link}`);
     const overBluetooth = 'https://example.test/read-over-bluetooth';
+    const overCable = 'https://example.test/read-over-the-cable';
     // Next.js keeps an announcer with the same role outside the page's own content.
     const alerts = adminPage.locator('main').getByRole('alert');
+    const read = async (link: string) => {
+      await setCard(adminPage, link);
+      await adminPage.getByRole('button', { name: 'Read a card' }).click();
+      await expect(adminPage.locator('p.break-all')).toHaveText(link, { timeout: 10_000 });
+      await setCard(adminPage, null);
+    };
+    const storedVersions = async () => {
+      const { data } = await supabase()
+        .from('reader_keys')
+        .select('version')
+        .eq('device_id', FAKE_READER_ID)
+        .order('version');
+      return (data ?? []).map((row) => row.version as number);
+    };
+    const audited = async (action: string) => {
+      const { data } = await supabase()
+        .from('audit_log')
+        .select('before, after')
+        .eq('action', action)
+        .eq('actor_auth_id', adminAuthId)
+        .eq('target_id', FAKE_READER_ID);
+      return data ?? [];
+    };
 
     await adminPage.goto('/admin/cards');
     await adminPage.getByRole('button', { name: 'Connect reader' }).click();
     await expect(badge('USB')).toBeVisible({ timeout: 15_000 });
-
-    // Being plugged in once is all it takes to set a reader up for Bluetooth,
-    // and it is only set up once however often it is plugged in after that.
     await adminPage.getByText('Reader tools').click();
     await expect(adminPage.getByText('Bluetooth is ready.')).toBeVisible({ timeout: 15_000 });
-    const { data: pairings } = await supabase()
-      .from('audit_log')
-      .select('actor_auth_id, after')
-      .eq('action', 'reader.paired')
-      .eq('actor_auth_id', adminAuthId)
-      .eq('target_id', FAKE_READER_ID);
-    expect(pairings).toHaveLength(1);
-    // The entry says a reader was set up, and holds nothing that could open one.
-    expect(pairings?.[0]?.after).toEqual({ epoch: 1 });
 
-    // With no cable, the reader is used over Bluetooth.
+    // The stand-in reader had no key the first time it was plugged in, so the
+    // site gave it one then, once. The entry holds nothing that could open one.
+    const version = await readerKeyVersion(adminPage);
+    expect(version).toBeGreaterThan(0);
+    expect(await audited('reader.paired')).toEqual([{ before: null, after: { epoch: version } }]);
+    await expect.poll(storedVersions).toEqual([version]);
+
+    // On the cable too, only the handshake goes in the clear.
+    await read(overCable);
+    const cable = await overTheCable(adminPage);
+    expect(cable).toContain('auth.begin');
+    expect(cable).not.toContain('nfc.read');
+    expect(cable).not.toContain('read-over-the-cable');
+
+    // A reader that restarts has to be shown the key again, and the page does it.
+    await fakeReader(adminPage, 'restart');
+    await read(overCable);
+    await expect(alerts).toHaveCount(0);
+
+    // Rotate key: the reader gets a new key inside its session, and the old one is gone.
+    await adminPage.getByRole('button', { name: 'Rotate key' }).click();
+    const dialog = adminPage.getByRole('dialog');
+    await expect(dialog).toContainText('Give GDG Reader 0000 a new key?');
+    await dialog.getByRole('button', { name: 'Rotate key' }).click();
+    await expect(
+      adminPage.getByText('This reader has a new key. The old one no longer works.'),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(await readerKeyVersion(adminPage)).toBe(version + 1);
+    expect(await audited('reader.key_rotated')).toEqual([
+      { before: { epoch: version }, after: { epoch: version + 1 } },
+    ]);
+    await expect.poll(storedVersions).toEqual([version + 1]);
+    await read(overCable);
+
+    // A link typed by hand is written as it is and read back.
+    const byHand = 'https://example.test/written-by-hand';
+    const linkField = adminPage.locator('#manual-card-link');
+    const writeLink = adminPage.getByRole('button', { name: 'Write link' });
+    await linkField.fill('http://example.test/not-https');
+    await expect(writeLink).toBeDisabled();
+    await expect(adminPage.getByText('The link must start with https://')).toBeVisible();
+    await linkField.fill(byHand);
+    await setCard(adminPage, 'https://example.test/what-was-there');
+    await writeLink.click();
+    await expect(
+      adminPage.getByText('The link is on the card and reads back the same.'),
+    ).toBeVisible({ timeout: 15_000 });
+    expect(
+      await adminPage.evaluate(() => (window as unknown as { __cardUri: string }).__cardUri),
+    ).toBe(byHand);
+    await expect(linkField).toHaveValue('');
+    await setCard(adminPage, null);
+    await expect(adminPage.getByText('Reader connected')).toBeVisible({ timeout: 15_000 });
+
+    // With no cable, the reader is used over Bluetooth, with its new key.
     await adminPage.getByRole('button', { name: 'Disconnect' }).click();
     await expect(adminPage.getByText('Reader not connected')).toBeVisible();
     await fakeReader(adminPage, 'unplug');
@@ -1059,10 +1132,7 @@ test.describe('every member and organizer workflow', () => {
     await expect(badge('Bluetooth')).toBeVisible({ timeout: 15_000 });
     await expect(adminPage.getByText('Reader connected')).toBeVisible();
 
-    await setCard(adminPage, overBluetooth);
-    await adminPage.getByRole('button', { name: 'Read a card' }).click();
-    await expect(adminPage.locator('p.break-all')).toHaveText(overBluetooth, { timeout: 10_000 });
-    await setCard(adminPage, null);
+    await read(overBluetooth);
     // Someone listening nearby sees the handshake and nothing they can read.
     const air = await overTheAir(adminPage);
     expect(air).toContain('auth.begin');
@@ -1079,10 +1149,7 @@ test.describe('every member and organizer workflow', () => {
     // The organizer can still ask for Bluetooth with the cable in, and go back.
     await adminPage.getByRole('button', { name: 'Switch to Bluetooth' }).click();
     await expect(badge('Bluetooth')).toBeVisible({ timeout: 15_000 });
-    await setCard(adminPage, overBluetooth);
-    await adminPage.getByRole('button', { name: 'Read a card' }).click();
-    await expect(adminPage.locator('p.break-all')).toHaveText(overBluetooth, { timeout: 10_000 });
-    await setCard(adminPage, null);
+    await read(overBluetooth);
     await adminPage.getByRole('button', { name: 'Switch to USB' }).click();
     await expect(badge('USB')).toBeVisible({ timeout: 15_000 });
 
@@ -1098,14 +1165,18 @@ test.describe('every member and organizer workflow', () => {
     await expect(badge('Bluetooth')).toBeVisible({ timeout: 20_000 });
     await expect(adminPage.getByText('Reader connected')).toBeVisible();
 
-    // A reader that cannot prove it holds its key is refused, and is sent nothing.
+    // A reader that cannot prove it holds its key is refused on both links, and
+    // is sent nothing.
     await adminPage.getByRole('button', { name: 'Disconnect' }).click();
     await fakeReader(adminPage, 'swapKey');
     await adminPage.getByRole('button', { name: 'Use Bluetooth' }).click();
-    await expect(alerts).toContainText('did not accept this site', {
-      timeout: 15_000,
-    });
+    await expect(alerts).toContainText('did not accept this site', { timeout: 15_000 });
     await expect(adminPage.getByText('Reader not connected')).toBeVisible();
+    await fakeReader(adminPage, 'plug');
+    await adminPage.getByRole('button', { name: 'Connect reader' }).click();
+    await expect(alerts).toContainText('did not accept this site', { timeout: 15_000 });
+    await expect(adminPage.getByText('Reader not connected')).toBeVisible();
+    expect(await overTheCable(adminPage)).not.toContain('nfc.');
     await fakeReader(adminPage, 'restoreKey');
   });
 

@@ -9,7 +9,7 @@ GDG@PSU is a student-run community at Penn State. This notice describes what the
 - **Membership:** member-since date, public member number, membership status and internal account identifiers.
 - **Participation:** event attendance (check-in/check-out times, session, duration, qualification), points ledger and stars ledger, reward requests and redemptions.
 - **Cards:** card status and issuance/revocation events (never the printed card token in logs), plus organizer audit records of actions taken on your account.
-- **Reader:** the card reader is a local browser peripheral, on a USB cable or over Bluetooth. The app does not register it, store a secret for it, or collect firmware/last-seen telemetry. The audit log records when an organizer sets a reader up for Bluetooth, with the reader's device ID. What a reader sends over Bluetooth is encrypted, so a card's link cannot be read by someone nearby. No card UID is used as a credential.
+- **Reader:** the card reader is driven by an organizer's browser, on a USB cable or over Bluetooth, and never reaches the network. The site stores a key for each reader, sealed, and the audit log records when a reader is set up or given a new key, with the reader's device ID. It keeps nothing about what a reader read. What passes between the reader and the browser is encrypted, so a card's link cannot be read by someone nearby. No card UID is used as a credential.
 
 Payment processing is out of scope. Do not send payment-card details to organizers for this system.
 

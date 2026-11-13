@@ -3,12 +3,12 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/stream_buffer.h>
-#include <mbedtls/gcm.h>
 
 #include <atomic>
 
 #include "gdg_config.h"
-#include "reader_crypto.h"
+#include "pairing_store.h"
+#include "secure_session.h"
 
 class NimBLEServer;
 class NimBLECharacteristic;
@@ -17,10 +17,9 @@ class NimBLECharacteristic;
  * The reader's Bluetooth Low Energy link.
  *
  * It carries the same newline-delimited JSON as the cable, over one GATT
- * service with a write characteristic and a notify characteristic. Unlike the
- * cable, radio is reachable by anyone nearby, so nothing is trusted until both
- * ends have proved they hold the pairing key, and every frame after that is
- * sealed with a key made for that one session.
+ * service with a write characteristic and a notify characteristic. Radio is
+ * reachable by anyone nearby, so a connection gets a few seconds to open a
+ * SecureSession and is dropped the moment it sends anything else.
  *
  * NimBLE runs its callbacks on its own task. They only hand bytes and events
  * across; everything else happens in Tick(), on the main loop.
@@ -30,11 +29,9 @@ class BleLink {
   enum class State : uint8_t { Off, Advertising, Connected, Secure };
   using LineHandler = void (*)(const char* line, void* context);
 
-  void Begin(const char* deviceId, const char* firmware);
+  void Begin(const char* deviceId, const char* firmware, const PairingStore* store);
   /** Commands from an authenticated session are passed here as plain JSON. */
   void SetHandler(LineHandler handler, void* context);
-  /** The pairing key, or nullptr when the reader has none. Ends any session. */
-  void SetKey(const uint8_t* key, uint32_t epoch);
 
   /** Whether the radio should be reachable. Tick() moves it there. */
   void SetWanted(bool wanted) { wanted_ = wanted; }
@@ -56,8 +53,6 @@ class BleLink {
   void OnWrite(const uint8_t* data, size_t length);
 
  private:
-  enum class AuthStage : uint8_t { None, Began };
-
   void EnsureStarted();
   void StartAdvertising();
   void StopAdvertising();
@@ -68,19 +63,15 @@ class BleLink {
   void HandleLine(uint32_t now);
   void HandleAuthLine(uint32_t now);
   void FailAuth(uint32_t now, long id, const char* code);
+  /** Keeps the radio quiet for a moment, then lets go of the caller. */
+  void Quiet(uint32_t now);
   bool Transmit(const char* text, size_t length);
   void SendPlainError(long id, const char* code);
-  bool BuildProof(const char* label, uint8_t out[gdgcrypto::kProofBytes]);
 
-  char deviceId_[32] = {0};
   char name_[24] = {0};
-  const char* firmware_ = "";
   LineHandler handler_ = nullptr;
   void* handlerContext_ = nullptr;
-
-  bool hasKey_ = false;
-  uint8_t key_[gdgcrypto::kKeyBytes] = {0};
-  uint32_t epoch_ = 0;
+  SecureSession session_;
 
   bool started_ = false;
   bool wanted_ = false;
@@ -101,16 +92,7 @@ class BleLink {
   uint32_t quietStartMs_ = 0;
   uint32_t quietForMs_ = 0;
 
-  AuthStage authStage_ = AuthStage::None;
-  uint8_t clientNonce_[gdgcrypto::kNonceBytes] = {0};
-  uint8_t readerNonce_[gdgcrypto::kNonceBytes] = {0};
-
-  mbedtls_gcm_context gcm_;
-  bool sessionKeyed_ = false;
-  uint64_t sendCounter_ = 0;
-  uint64_t lastReceiveCounter_ = 0;
-
-  char line_[GDG_BLE_LINE_BYTES];
+  char line_[GDG_LINE_BYTES];
   size_t lineLength_ = 0;
   bool discardingLine_ = false;
 };

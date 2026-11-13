@@ -1,15 +1,16 @@
 # Deployment
 
-Target: Next.js on **Vercel** at
-**https://members.gdgpsu.dev**, Supabase Postgres/Auth/Storage, and an
-ESP32 + PN532 reader on a USB cable or Bluetooth. The project's Vercel addresses,
+Next.js on **Vercel** at **https://members.gdgpsu.dev**, with Supabase for
+Postgres, Auth and Storage. The project's Vercel addresses,
 `mempass.vercel.app` and `members-bay-eight.vercel.app`, redirect to that domain.
-No campus WiFi or firmware server endpoint is required.
+The card readers need no network of their own.
 
-The hosted Supabase project is `potjjlmgnrqxseeendmx`. Compare its applied
-migrations with `supabase/migrations/` before a release: the application expects
-every migration in that folder, through `0014_security_hardening.sql`. Verify the
-Vercel deployment after a push before treating a checkout as the running release.
+The hosted Supabase project is `potjjlmgnrqxseeendmx`. A push to `main` deploys
+the app and, through the Supabase GitHub integration, applies any new file in
+`supabase/migrations/`. The two finish at different speeds, so for a few minutes
+one runs without the other. When the old app cannot run on the new schema, or
+the new app on the old one, push the schema first, confirm it applied, then push
+the app. The app expects every migration in that folder.
 
 ## 1. Vercel project
 
@@ -32,19 +33,23 @@ database with real member data.
 Set in Vercel → Project → Settings → Environment Variables for Production and
 Preview separately. Never commit values.
 
-| Name                            | Exposure       | Purpose                                                        |
-| ------------------------------- | -------------- | -------------------------------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL`          | Public         | Canonical origin for `/auth/confirm` links                     |
-| `NEXT_PUBLIC_SUPPORT_EMAIL`     | Public         | Support address (`gdg@psu.edu`)                                |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Public         | Supabase project URL                                           |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public         | Publishable key for the RLS-bound client                       |
-| `SUPABASE_SECRET_KEY`           | Server only    | Auth-admin and privileged operations                           |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Server only    | Legacy fallback if no secret key                               |
-| `CARD_WRITE_ENCRYPTION_KEY`     | Server only    | 32-byte base64 AES-GCM key; rotation invalidates stored tokens |
-| `DATABASE_URL`                  | Server/CI only | Migration/verification scripts only                            |
+| Name                            | Exposure       | Purpose                                                          |
+| ------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`          | Public         | The site's origin: one-time links and card links are built on it |
+| `NEXT_PUBLIC_SUPPORT_EMAIL`     | Public         | Support address (`gdg@psu.edu`)                                  |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Public         | Supabase project URL                                             |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public         | Publishable key for the RLS-bound client                         |
+| `SUPABASE_SECRET_KEY`           | Server only    | Auth-admin and privileged operations                             |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Server only    | Legacy fallback if no secret key                                 |
+| `CARD_WRITE_ENCRYPTION_KEY`     | Server only    | 32-byte base64 key that seals stored card links and reader keys  |
+| `DATABASE_URL`                  | Server/CI only | Migration/verification scripts only                              |
 
 The app validates required values at startup and fails closed. Preview must use
 a staging database or stay read-only; do not expose production member data.
+
+Changing `CARD_WRITE_ENCRYPTION_KEY` makes every stored card link and reader
+key unreadable: members' digital IDs stop showing their card, and every reader
+has to be erased, flashed and provisioned again.
 
 ## 3. Supabase Auth
 
@@ -59,13 +64,13 @@ the sign-up state as `disable_signup`.
   or recovery links, which keep working with sign-ups off.
 - Minimum password length 12, requiring letters and digits, matching the app.
 - Leaked password protection on, where the plan offers it.
-- Admin routes require AAL2. The invited administrator must set a password and
-  enroll TOTP at `/admin-mfa`.
-- No SMTP is configured. Admin → Invitations generates a one-time link; the
-  admin copies it into their own mailbox. The same applies to recovery links.
-- Generated links confirm at `/auth/confirm` on the app origin, so no Supabase
-  redirect allowlist entry is needed for them. Opening one only shows a Continue
-  button, so chat previews and mail scanners cannot use it up.
+- Organizer pages need a session verified with an authenticator app. A new
+  organizer sets a password and then sets the authenticator up at `/admin-mfa`.
+- No SMTP is configured. An organizer makes a one-time link on the People page
+  and sends it from their own mailbox; password reset links work the same way.
+- Those links open `/auth/confirm` on the app's own origin, so no Supabase
+  redirect allowlist entry is needed. Opening one only shows a Continue button,
+  so chat previews and mail scanners cannot use it up.
 
 ## 4. Production reset and first superadmin
 
@@ -100,48 +105,46 @@ The link works once, for 72 hours. Open it, press Continue, set a password, enro
 dashboard opens. Delete the file afterward, and do not send the
 link through this repository or chat.
 
-## 5. USB reader deployment
+## 5. Card readers
 
-1. Wire the PN532 to the ESP32 exactly as in `docs/hardware-bringup.md`.
-2. Build and flash from `firmware/kiosk-reader`; disconnect the PN532 only if
-   esptool loses the serial port during reset.
-3. In Chrome or Edge on the hosted admin origin, sign in with AAL2 and open
-   `/admin/cards`.
-4. Prepare a card URL, connect the lane with Web Serial, write it, verify the
-   read-back, and activate it.
-5. There is no device registration, WiFi onboarding, certificate, or PSU network
-   approval step for this reader.
-6. For attendance, open `/admin/kiosk`, choose the event session, connect the
-   lane, read a card, verify the member and photo, and confirm check-in or
-   check-out. A read is only a preview; it never changes attendance by itself.
+A reader works only for this site's signed-in organizers, because the site holds
+its key. Each reader is set up once, by whoever flashes it:
 
-Do not expose the serial port through a network proxy. Physical USB access can
-issue the same local commands; the admin/MFA session protects the web page, not
-the serial bus.
+```bash
+pio run -d firmware/kiosk-reader --target upload --upload-port COM3
+python firmware/kiosk-reader/tools/provision_reader.py --port COM3 --confirm potjjlmgnrqxseeendmx
+```
 
-## 6. Post-deploy verification
+The second command needs the production `NEXT_PUBLIC_SUPABASE_URL`, a service
+key and `CARD_WRITE_ENCRYPTION_KEY` in the environment or the root
+`.env.local`. It writes one row to `reader_keys` and one audit entry. Run it
+only after the site is on the version that matches the firmware: older pages
+would give a reader with no key one the current pages cannot use.
+
+There is nothing else to register. `docs/hardware-bringup.md` covers wiring and
+checking a reader, and `docs/operations-runbook.md` how organizers use one.
+
+## 6. After a deploy
 
 1. `/`, `/leaderboard`, `/events`, `/privacy` and `/login` return 200.
-2. `/admin` and `/admin/cards` redirect anonymous visitors to `/login`.
-3. The invited admin can set a password and complete TOTP at `/admin-mfa`. The
-   authenticator entry is named after the production host.
-4. Admin → Invitations generates a link whose origin is
-   `https://members.gdgpsu.dev` and whose path is `/auth/confirm`.
-5. `/admin/cards` lists active members; preparing a card returns a `/c/<43-char>`
-   URL and activation changes the card to active.
-6. A physical tag writes and reads back the same URL in Chrome/Edge.
-7. `/c/<active-token>` redirects to the member profile; revoked/unknown tokens
-   land on the neutral unavailable page.
-8. A superadmin sees **Users** and **Audit** and can choose Admin or Superadmin
-   in the staff invite form. A normal admin sees neither tab and gets no staff
-   invite form.
+2. `/admin` and `/admin/cards` send a signed-out visitor to `/login`.
+3. An organizer can sign in with their authenticator. A new one's authenticator
+   entry is named after the production host.
+4. A link made on the People page starts with `https://members.gdgpsu.dev` and
+   its path is `/auth/confirm`.
+5. On `/admin/cards`, **Connect reader** shows the reader connected, and
+   **Reader tools** shows its firmware and that Bluetooth is ready.
+6. A card written for a test person reads back, and its link opens their
+   profile. Switch it off and the link shows the neutral unavailable page.
+7. A superadmin sees the audit log and the manage pages; a normal admin does
+   not.
 
-## 7. Rollback
+## 7. Rolling back
 
-- Promote the previous Vercel deployment.
-- Migrations are forward-only; restore a dump into a disposable project to
-  investigate and write a corrective migration. Do not delete ledger or
-  attendance rows.
-- Rotate Supabase/Vercel secrets if exposed, then redeploy.
-- Generated invitation and recovery links are one-time; reissue them after a
-  domain or origin change.
+- Vercel can redeploy the previous build from its dashboard.
+- A migration is not rolled back: fix forward with a new one, and never delete
+  points or attendance rows to do it.
+- If a deploy breaks sign-in, check `NEXT_PUBLIC_SITE_URL` and the Auth Site URL
+  first. One-time links are built on the site's origin, so make new ones after
+  the origin changes.
+- If a secret was exposed, rotate it in Supabase and Vercel, then redeploy.

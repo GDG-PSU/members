@@ -14,9 +14,18 @@ loadTestEnv();
  *
  *   READER_PORT=COM3 pnpm e2e tests/e2e/reader-hardware.spec.ts --project=desktop-chromium
  *
- * It needs a reader with firmware 2.1.0 on that port, a Bluetooth adapter, a
+ * It needs a reader with firmware 2.2.0 on that port, a Bluetooth adapter, a
  * disposable Supabase stack, and Python with pyserial (READER_PYTHON, default
  * `python`). Close any other tab that is connected to the reader.
+ *
+ * Give the reader its key first, the way it is done after flashing, with the
+ * same stack in the environment:
+ *
+ *   python firmware/kiosk-reader/tools/provision_reader.py --port COM3
+ *
+ * That is part of what is tested: the pages have to open a session with a key
+ * the tool stored. Afterwards the reader belongs to the test stack; clear it
+ * with `provision_reader.py --port COM3 --clear` before the stack is stopped.
  *
  * Leave the reader empty, or put a spare writable card on it and set
  * READER_CARD=1. The card is then written by the real one-button writer, once
@@ -126,18 +135,6 @@ test.describe('a physical reader, over its cable and over Bluetooth', () => {
       await closed;
     });
 
-    // Start from a reader that has never been set up, so setting it up is tested
-    // every time and not only the first.
-    const opened = answered('opened');
-    tell({ op: 'open' });
-    await opened;
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    tell({ op: 'write', data: '{"id":1,"cmd":"pair.clear"}\n' });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const closed = answered('closed');
-    tell({ op: 'close' });
-    await closed;
-
     await page.addInitScript(() => {
       const bindings = window as unknown as {
         __bridgeOpen(): Promise<void>;
@@ -244,16 +241,35 @@ test.describe('a physical reader, over its cable and over Bluetooth', () => {
     if (adminId) await deleteAdminFixture(serviceClient(), adminId).catch(() => {});
   });
 
-  test('is set up by its cable, then used over Bluetooth, and the cable wins', async () => {
+  test('opens only for a signed-in organizer, on its cable and over Bluetooth', async () => {
+    const storedVersions = async (deviceId: string) => {
+      const { data } = await serviceClient()
+        .from('reader_keys')
+        .select('version')
+        .eq('device_id', deviceId)
+        .order('version');
+      return (data ?? []).map((row) => row.version as number);
+    };
+    const rotateKey = async () => {
+      await page.getByRole('button', { name: 'Rotate key' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Rotate key' }).click();
+      await expect(
+        page.getByText('This reader has a new key. The old one no longer works.'),
+      ).toBeVisible({ timeout: 20_000 });
+    };
+
     await page.goto('/admin/cards');
     await timed('connect by cable', async () => {
       await page.getByRole('button', { name: 'Connect reader' }).click();
       await expect(badge('USB')).toBeVisible({ timeout: 30_000 });
     });
     await page.getByText('Reader tools').click();
-    await expect(page.getByText(/esp32-[0-9a-f]{12} · firmware 2\.1\.\d+/)).toBeVisible();
+    const identity = page.getByText(/esp32-[0-9a-f]{12} · firmware 2\.2\.\d+/);
+    await expect(identity).toBeVisible();
+    const deviceId = /esp32-[0-9a-f]{12}/.exec((await identity.textContent()) ?? '')?.[0] ?? '';
 
-    // The real server action, the real cable, the reader's real storage.
+    // The session was opened with the key the flashing tool stored, by the real
+    // server action, over the real cable. The page had no key to give.
     const ready = page.getByText(/Bluetooth is ready\. .* it appears as GDG Reader [0-9A-F]{4}\./);
     await expect(ready).toBeVisible({ timeout: 20_000 });
     readerName = /GDG Reader [0-9A-F]{4}/.exec((await ready.textContent()) ?? '')?.[0] ?? '';
@@ -263,7 +279,14 @@ test.describe('a physical reader, over its cable and over Bluetooth', () => {
       .select('target_id')
       .eq('action', 'reader.paired')
       .eq('actor_auth_id', adminId);
-    expect(pairings).toHaveLength(1);
+    expect(pairings).toHaveLength(0);
+    const before = await storedVersions(deviceId);
+    expect(before).toHaveLength(1);
+
+    // Rotate key, in the real reader's storage: the old key is gone from both ends.
+    await timed('rotate the key over the cable', rotateKey);
+    const afterCable = (before[0] ?? 0) + 1;
+    await expect.poll(() => storedVersions(deviceId)).toEqual([afterCable]);
 
     // One button prepares the card, writes it, reads it back and switches it on.
     const writeCard = async () => {
@@ -302,6 +325,10 @@ test.describe('a physical reader, over its cable and over Bluetooth', () => {
     await expect(page.getByText('In use over Bluetooth.')).toBeVisible();
     await expect(alerts()).toHaveCount(0);
 
+    // The key can be changed over the air too, inside the sealed session.
+    await timed('rotate the key over Bluetooth', rotateKey);
+    await expect.poll(() => storedVersions(deviceId)).toEqual([afterCable + 1]);
+
     // Commands go over the air, sealed, for as long as the page keeps asking.
     if (withCard) {
       // What the cable wrote, the air reads.
@@ -328,8 +355,9 @@ test.describe('a physical reader, over its cable and over Bluetooth', () => {
       expect(cards?.map((card) => card.status as string).sort()).toEqual(['active', 'replaced']);
     } else {
       await page.getByRole('button', { name: 'Read a card' }).click();
-      // With its NFC module attached the reader keeps answering "no card" for as
-      // long as the page asks. Without one it says so, once, over the air.
+      // With nothing on it the reader keeps answering "no card" for as long as
+      // the page asks. With its NFC module unplugged, or something on it that
+      // is not a card it can read, it says so, once, over the air.
       await page.waitForTimeout(4000);
       await expect(alerts()).toHaveCount(0);
       const cancel = page.getByRole('button', { name: 'Cancel' });
@@ -337,8 +365,11 @@ test.describe('a physical reader, over its cable and over Bluetooth', () => {
         await cancel.click();
         console.log('  polled for a card over Bluetooth for 4 s');
       } else {
-        await expect(page.getByText('The NFC module is not responding.')).toBeVisible();
-        console.log('  the NFC module is unplugged, and the reader said so over Bluetooth');
+        const said = page.getByText(
+          /^(The NFC module is not responding.|This card type is not supported.|This card has no readable URL on it.|The card could not be read.)/,
+        );
+        await expect(said).toBeVisible();
+        console.log(`  the reader answered over Bluetooth: ${await said.textContent()}`);
       }
     }
     await expect(badge('Bluetooth')).toBeVisible();

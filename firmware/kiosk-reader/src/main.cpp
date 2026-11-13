@@ -5,6 +5,9 @@
 // cable, over Bluetooth. There is no WiFi, server, registration, heartbeat,
 // kiosk, or writer-job code: the reader never reaches the network by itself.
 //
+// The reader holds one key, put in after flashing, and obeys only a session
+// opened with it, on either link.
+//
 // The cable always wins. A reader cannot tell a charger from a computer
 // electrically, because the USB chip on the board is separate from the ESP32,
 // so "on USB" means a computer is talking over the cable.
@@ -34,12 +37,18 @@ void SetLed(bool on) {
 #endif
 }
 
-// Off: the NFC module is not answering. Steady: ready, on the cable or idle.
-// Slow blink: waiting for a Bluetooth connection. Steady with a short dip every
-// two seconds: in use over Bluetooth.
+// Off: the NFC module is not answering. Two quick flashes every two seconds:
+// the reader has no key, so it cannot be used yet. Steady: ready, on the cable
+// or idle. Slow blink: waiting for a Bluetooth connection. Steady with a short
+// dip every two seconds: in use over Bluetooth.
 void UpdateLed(uint32_t now) {
   if (!nfc.IsReady()) {
     SetLed(false);
+    return;
+  }
+  if (!store.HasKey()) {
+    const uint32_t phase = now % 2000;
+    SetLed(phase < 120 || (phase >= 240 && phase < 360));
     return;
   }
   switch (ble.state()) {
@@ -68,9 +77,9 @@ void OnBluetoothLine(const char* line, void* context) {
   static_cast<ReaderApi*>(context)->HandleBluetoothLine(line);
 }
 
-// Bluetooth is reachable only when the reader has been paired over the cable,
-// has not had Bluetooth switched off, and no computer is using the cable. The
-// organizer's override is the one exception to the last rule.
+// Bluetooth is reachable only when the reader holds a key, has not had
+// Bluetooth switched off, and no computer is using the cable. The organizer's
+// override is the one exception to the last rule.
 void UpdateTransport(uint32_t now) {
   if (!bootGraceOver && now >= GDG_USB_BOOT_GRACE_MS) bootGraceOver = true;
 
@@ -101,12 +110,11 @@ void setup() {
 
   store.Begin();
   api.Begin(&nfc, &ble, &store);
-  ble.Begin(api.deviceId(), GDG_FIRMWARE_VERSION);
+  ble.Begin(api.deviceId(), GDG_FIRMWARE_VERSION, &store);
   ble.SetHandler(OnBluetoothLine, &api);
-  ble.SetKey(store.HasKey() ? store.Key() : nullptr, store.Epoch());
 
-  Serial.printf("[boot] Bluetooth %s; no WiFi or server connection\n",
-                !store.HasKey() ? "not paired" : store.BluetoothEnabled() ? "paired" : "off");
+  Serial.printf("[boot] key %s; Bluetooth %s; no WiFi or server connection\n",
+                store.HasKey() ? "set" : "not set", store.BluetoothEnabled() ? "allowed" : "off");
   // A computer that just opened the port is waiting for this line.
   api.AnnounceReady();
 }

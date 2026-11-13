@@ -1,89 +1,82 @@
-# GDG@PSU NFC reader firmware
+# GDG@PSU card reader firmware
 
-ESP32 + PN532 firmware for the GDG@PSU member system. A lane is a local device:
-an admin browser drives it with a small JSON API to read and write NDEF card
-URLs, over the USB cable (Web Serial) or, when no computer is using the cable,
-over Bluetooth (Web Bluetooth). The firmware has no WiFi, server, registration,
-heartbeat, kiosk, or writer-job path, and never reaches the network by itself.
+Firmware for an ESP32 with a PN532. An organizer's browser drives the reader to
+read and write the link on a membership card, over the USB cable (Web Serial)
+or, when no computer is using the cable, over Bluetooth (Web Bluetooth). The
+reader has no WiFi and never reaches the network by itself.
 
-See [docs/hardware-bringup.md](../../docs/hardware-bringup.md) for wiring, what
-has been tested on a physical reader and what has not, and
-[docs/usb-api.md](../../docs/usb-api.md) for the protocol on both links.
-
-Firmware 2.0.1 reads only the NDEF TLV instead of the full tag capacity and
-retries transient page-read failures. Firmware 2.0.2 reports an overlong command
-line once instead of once per chunk. Firmware 2.1.0 adds Bluetooth, `ping`, and
-a `ready` line when it has finished starting. Re-run a write/read-back check
-before an event.
+- Wiring, flashing checklists and troubleshooting:
+  [docs/hardware-bringup.md](../../docs/hardware-bringup.md)
+- The protocol, the reader's key, and what the design protects:
+  [docs/usb-api.md](../../docs/usb-api.md)
 
 ## Layout
 
 ```text
-platformio.ini                 pinned platform + libraries
-include/gdg_config.h           pins, NFC limits and link timings (safe to commit)
-src/main.cpp                   boot, PN532 retry, which link is in use, status LED
-src/reader_api.cpp             the JSON commands, the same on both links
-src/ble_link.cpp               Bluetooth: the GATT service, handshake and sealing
-src/reader_crypto.cpp          HMAC-SHA-256, AES-256-GCM, base64url (mbedTLS)
-src/pairing_store.cpp          the pairing key, kept in the reader's own storage
-lib/nfc_lane/                  PN532 NTAG read/write + NDEF TLV parsing
-tools/reader_check.py          checks a physical reader over both links
+platformio.ini            pinned platform and libraries, firmware version
+include/gdg_config.h      pins, NFC limits and link timings
+src/main.cpp              start-up, which link is in use, the status light
+src/reader_api.cpp        the commands, and what each needs before it is obeyed
+src/secure_session.cpp    the handshake and sealed lines, for both links
+src/ble_link.cpp          Bluetooth: the GATT service and its connection
+src/reader_crypto.cpp     HMAC-SHA-256, AES-256-GCM, base64url (mbedTLS)
+src/pairing_store.cpp     the reader's key, kept in its own storage
+lib/nfc_lane/             PN532 read and write, NDEF parsing
+tools/provision_reader.py gives a flashed reader its key and stores it with the site
+tools/reader_check.py     checks a reader from the outside, over both links
+tools/reader_link.py      the protocol in Python, shared by the two tools
 ```
 
-No `secrets.h` is needed or read, and no secret is compiled in. The device ID
-reported by the API is derived from the ESP32 chip (`esp32-<chip-id>`); there is
-no device registration step.
+No secret is compiled in. The device ID is the chip's own (`esp32-<chip-id>`).
 
-## Build and flash
+## Flash a reader and put it into use
+
+Unplug the PN532 first if esptool loses the port, and close any browser tab
+connected to the reader: a tab holds the port.
 
 ```bash
-pio run
-pio run --target upload --upload-port COM3
-pio device monitor -b 115200
+pio run -d firmware/kiosk-reader --target upload --upload-port COM3
+pip install pyserial bleak cryptography
+python firmware/kiosk-reader/tools/provision_reader.py --port COM3
 ```
 
-If esptool loses the port while resetting the board, unplug the PN532 during
-the flash and reconnect it afterward. A browser tab connected to the reader
-holds the port, so disconnect it first.
+`provision_reader.py` gives the reader a random key of its own and stores the
+same key with the site named by `NEXT_PUBLIC_SUPABASE_URL`, a Supabase service
+key and `CARD_WRITE_ENCRYPTION_KEY`, read from the environment or the root
+`.env.local`. The first run against a hosted project only says which project it
+would write to; add the `--confirm <project-ref>` it prints. After that every
+organizer can use the reader, by cable or Bluetooth, and nobody else can.
+
+- A reader that already holds a key the site knows is given a new one.
+- `--clear` takes the key off the reader and forgets it on the site.
+- A reader holding a key the site does not know must be erased first:
+  `pio run -d firmware/kiosk-reader --target erase --upload-port COM3`, then
+  flash and provision again.
+
+Do not plug a reader with no key into a site still running older pages: they
+would give it a key the current pages cannot use, and it would need erasing.
 
 Bump `GDG_FIRMWARE_VERSION` in `platformio.ini` with any firmware change; `info`
-reports it to the admin page.
+reports it to the admin pages.
 
-## Which link is used
-
-The cable always wins. The ESP32 cannot tell a charger from a computer
-electrically, because the board's USB chip is separate from it, so "on USB" means
-a computer is talking over the cable. While one is, the radio is off. With no
-computer on the cable, a reader that has been paired offers Bluetooth; one that
-has not keeps its radio off. An organizer can ask for Bluetooth with the cable
-plugged in, from the admin page.
-
-## Bluetooth
-
-A reader is paired by being plugged into an organizer's computer once: the admin
-page gives it a key over the cable. Over Bluetooth nothing is answered until the
-reader and the browser have each proved they hold that key, and every line after
-that is sealed with a key made for that session. Commands that decide who may
-use Bluetooth are accepted from the cable only.
-
-The stack is NimBLE, built as a peripheral for one connection.
-
-## Checking a reader
+## Check a reader
 
 ```bash
-pip install pyserial bleak cryptography
-python tools/reader_check.py --port COM3 --bluetooth
+python firmware/kiosk-reader/tools/reader_check.py --port COM3 --bluetooth
 ```
 
-It runs the cable and Bluetooth checks from the outside, pairing the reader with
-a throwaway key and leaving it unpaired. The admin pages set it up again the next
-time it is plugged in.
+It needs a reader with no key and a Bluetooth adapter. It gives the reader a
+throwaway key, runs about 77 checks over the cable and over real radio, and
+takes the key off again, whatever happens along the way. Put no card on the
+reader: it only reads.
 
 ## Notes
 
-A browser must be Chrome or Edge on HTTPS or localhost. The CP210x is a USB-UART
-bridge; raw WebUSB would require an ESP32-S2/S3 with native USB.
-
-The browser verifies the read-back before the admin activates the pending card.
-There is no firmware-side URL host parser or server call; the firmware treats
-the URI as opaque NDEF bytes.
+- Chrome or Edge, on HTTPS or localhost. The board's CP210x is a USB serial
+  bridge; raw WebUSB would need an ESP32-S2/S3 with native USB.
+- The firmware treats a link as opaque bytes. It does not check that a link is a
+  membership card link; the admin page reads the card back before switching it
+  on.
+- The Bluetooth stack is NimBLE, built as a peripheral for one connection.
+- Firmware older than 2.2.0 has no key. The admin pages still talk to it over
+  the cable, in the clear, and say that it should be flashed.

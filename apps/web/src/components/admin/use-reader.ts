@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { openReaderSessionAction, pairReaderAction } from '@/app/(admin)/admin/actions';
+import {
+  confirmReaderKeyAction,
+  openReaderSessionAction,
+  registerReaderAction,
+  rotateReaderKeyAction,
+} from '@/app/(admin)/admin/actions';
 import type { BluetoothLike } from '@/lib/reader/bluetooth-link';
 import type { ReaderResponse } from '@/lib/reader/protocol';
 import {
@@ -21,8 +26,10 @@ function readerManager(): ReaderManager {
     manager = new ReaderManager({
       serial: browser.serial ?? null,
       bluetooth: browser.bluetooth ?? null,
-      pairReader: pairReaderAction,
       openSession: openReaderSessionAction,
+      registerReader: registerReaderAction,
+      rotateKey: rotateReaderKeyAction,
+      confirmKey: confirmReaderKeyAction,
     });
   }
   return manager;
@@ -43,6 +50,7 @@ const connectBluetooth = () => readerManager().connectBluetooth();
 const switchToUsb = () => readerManager().switchToUsb();
 const disconnect = () => readerManager().disconnect();
 const setBluetoothAllowed = (allowed: boolean) => readerManager().setBluetoothAllowed(allowed);
+const rotateKey = () => readerManager().rotateKey();
 
 export type Reader = ReaderSnapshot & {
   /** Connect by cable. */
@@ -52,6 +60,8 @@ export type Reader = ReaderSnapshot & {
   disconnect(): Promise<void>;
   sendCommand: typeof sendCommand;
   setBluetoothAllowed(allowed: boolean): Promise<void>;
+  /** Gives the connected reader a new key; says how it went. */
+  rotateKey(): Promise<{ ok: boolean; message: string }>;
 };
 
 /** The NFC reader, over its cable or over Bluetooth, whichever is in use. */
@@ -66,5 +76,6 @@ export function useReader(): Reader {
     disconnect,
     sendCommand,
     setBluetoothAllowed,
+    rotateKey,
   };
 }

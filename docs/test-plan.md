@@ -1,165 +1,209 @@
 # Test plan and results
 
-## Verified on 2026-11-05
+What the tests cover, what was run and when, and what has never been checked.
+This is the one place results are recorded; date every entry. How to run each
+suite is in `AGENTS.md`, section 7.
 
-Environment: a production build (`next start`) on `http://localhost:3100` against
-a local Supabase stack with every migration applied, plus one physical ESP32 +
-PN532 on COM3 with a writable NTAG215. Nothing here ran against production.
+## Latest run: 2026-11-13
 
-| Check               | Command                       | Result                                         |
-| ------------------- | ----------------------------- | ---------------------------------------------- |
-| Formatting          | `pnpm format:check`           | Pass                                           |
-| Lint / types        | `pnpm lint`, `pnpm typecheck` | Pass                                           |
-| Unit tests          | `pnpm test`                   | 91/91 pass                                     |
-| Production build    | `pnpm build`                  | Pass                                           |
-| Browser E2E         | `pnpm e2e`                    | 56 pass, 36 skipped; 46/46 on desktop Chromium |
-| Database/RLS/ledger | `pnpm db:verify`              | 114/114 pass on the local Supabase stack       |
-| Firmware compile    | `pio run`                     | Pass; firmware 2.0.2                           |
-| Physical reader     | USB JSON API on COM3          | 17/17 robustness checks on 2.0.2               |
-| Physical end to end | Browser app + real reader     | Pass on 2.0.2; see Hardware coverage           |
-| Camera QR scan      | Simulated camera, one-off     | Pass; check-in recorded as `qr`                |
-| Reset and bootstrap | `pnpm db:reset`               | Pass on the local stack only; see Reset        |
+A production build on `http://localhost:3100` against a local Supabase stack
+with every migration through 0021, and both physical readers on firmware 2.2.0.
+Nothing here ran against production, and none of it is deployed yet.
 
-The 36 skips are the signed-in specs on the mobile project, which run on desktop
-only. On mobile, the 10 public specs pass, and one desktop test checks that member
-and admin pages fit a phone-width viewport.
+| Check                     | Command                       | Result                                                 |
+| ------------------------- | ----------------------------- | ------------------------------------------------------ |
+| Formatting                | `pnpm format:check`           | Pass                                                   |
+| Lint and types            | `pnpm lint`, `pnpm typecheck` | Pass                                                   |
+| Unit tests                | `pnpm test`                   | 118 of 118                                             |
+| Production build          | `pnpm build`                  | Pass                                                   |
+| Database                  | `pnpm db:verify`              | 126 of 126 on the local stack                          |
+| Browser tests             | `pnpm e2e`                    | 57 pass, 39 skipped; 47 of 47 on desktop Chromium      |
+| Firmware build            | `pio run`                     | Pass; 2.2.0, 656 KB of a 1,310 KB slot                 |
+| Readers from outside      | `reader_check.py --bluetooth` | 77 of 77 on both readers; see below for one failed run |
+| Readers through the pages | `reader-hardware.spec.ts`     | Pass on one reader; see below for one timed-out run    |
 
-## What the browser suite covers
+The 39 skips are the signed-in specs on the mobile project, which run on desktop
+only, and the hardware spec when `READER_PORT` is not set. On mobile the 10
+public specs pass.
 
-`tests/e2e/workflows.spec.ts` drives every workflow through the real UI, using
-disposable accounts it creates and removes:
+## What each suite covers
 
-- **Access:** public sign-up refused, API keys refused on privileged functions,
-  staff sign-in with TOTP, returning TOTP, HttpOnly cookies, cross-site session
-  posts refused, normal-admin limits, and the login rate limit.
-- **Navigation:** the five admin tabs and four member tabs, which tab each page
-  lights, and the old invitation and privacy addresses leading to their new homes.
-- **Link lifetimes:** an invitation link lasting 72 hours and a password reset link
-  48; a link aged past its time showing a page that says so, with nothing to press;
-  the People page showing Not accepted for a member and an organizer; New link
-  reopening an invitation; and a cancelled, replaced or used link no longer working.
-- **Invitations and accounts:** revoke, re-issue, expired, and replayed links; links
-  surviving simulated chat previews and repeat opens until Continue is pressed;
-  setup validation; routing after sign-in and sign-out; session survival across a
-  token refresh; signing out one device; recovery; suspension; and user type
-  changes made from a person's manage page, behind a confirmation that names them.
-- **Members:** profile, photo and links, privacy switches that save as they are
-  flipped, the ID button on Home, the activity page saying why a session gave no
-  points, and forms keeping their values after a validation error.
-- **Organizers:** a new admin setting up their profile after the authenticator,
-  editing it, the public page with its Organizer badge, user type changes keeping
-  the profile and card, and organizers being refused points and check-in.
-- **Events:** the short form and its validation, the web address made from the
-  name, the two attendance rules becoming the stored times, no time shift on save,
-  publishing, cancelling and restoring, and adding and removing a bonus session.
-- **Kiosk:** reading with no button, a card not being read twice until it is
-  lifted, the confirm button's height, the 48-hour PSU ID rule, dismissing a
-  preview, reader errors, duplicate scans, a legacy minimum stay, and check-in by
-  name or by a typed QR link with the method recorded.
-- **Corrections:** every attendance correction a superadmin can make.
-- **Cards:** one button preparing, writing, reading back and switching a card on;
-  a spoiled write leaving the old card working; a replacement; a card switched
-  off; and several cards written in a row.
-- **Rewards:** request, cancel, re-request, approve, hand over, and reject with a
-  required reason, with the point balance checked after each step and handled
-  requests staying on the page as history.
-- **Permanent delete:** a normal admin not being offered it; a superadmin deleting
-  an invitation with its unused account, a handled reward request, a reward, a
-  card, an event with its attendance while the member's points stay, and a
-  member's account with its photos and sign-in; each delete appearing in the
-  audit log; and the audit log refusing a delete or an update from the service key.
-- **Audit and browser:** audit entries shown as sentences and filtered by topic,
-  audit contents, phone-width layout, the CSP, and uncaught page errors.
+### Unit tests (`apps/web/src/**/*.test.ts`)
 
-- **Readers:** a reader being set up for Bluetooth by its cable, once however often
-  it is plugged in; connecting by Bluetooth and reading a card with nothing readable
-  on the air; the page moving to the cable when it is plugged in; the organizer
-  choosing Bluetooth with the cable in and going back; falling back when the cable
-  is pulled; and a reader with the wrong key being refused.
+Pure logic: attendance rules, audit sentences, link rules, tokens, date helpers,
+and the reader code. For readers: the handshake against values made separately
+in Python, a key sealed by `provision_reader.py` opening on the website, the
+sealed channel against Node's own AES-GCM including a replayed and an altered
+line, and `ReaderManager` against a simulated reader that does the real
+handshake on both links. That last suite covers a session on the cable, a reader
+with no key being given one, a reader whose key the site does not hold being
+refused, a restart mid-command, a key change on each link, a key change cut
+short in both directions, and every switch between the cable and Bluetooth.
 
-These specs use a stand-in reader (`tests/e2e/support/fake-reader.ts`) with a fake
-Web Serial port and a fake Web Bluetooth radio. It follows the firmware's rule for
-when the radio is on and does the real handshake and sealing, and it returns
-`no_card` on first reads to prove that the wait loops recover when a card appears.
-`reader-hardware.spec.ts` runs the same journey against a physical reader and
-real radio when `READER_PORT` is set; it is skipped otherwise. `admin-invitation.spec.ts`
-and the public specs cover the rest. The suite skips a hosted Supabase project
-unless `E2E_ALLOW_HOSTED_SUPABASE=yes`, which must never be set for production.
+### Database checks (`scripts/db-verify.mjs`)
 
-## Hardware coverage
+Run inside a transaction against a disposable database: which API role can call
+or read what, RLS isolation between members, ledger and attendance invariants,
+permanent delete and the audit log that nothing can change, one-time links, and
+reader keys (versions, a key change keeping the key stored first, retiring old
+versions, and API roles being refused).
 
-Verified on a physical reader with firmware 2.1.0 on 2026-11-12 (details in
-`docs/hardware-bringup.md`, section 9b):
+### Browser tests (`tests/e2e`)
 
-- `firmware/kiosk-reader/tools/reader_check.py --bluetooth`, 44 of 44 checks over
-  the cable and over real radio: pairing by cable only, the handshake, sealed
-  commands, the wrong key, a replayed line and an unsealed line each ending the
-  session, a silent caller dropped after 8 seconds, the cable taking over, the
-  organizer's override, and Bluetooth switched off.
-- `reader-hardware.spec.ts`: the real Cards page, real Web Bluetooth and the real
-  server actions, through set-up by cable, connecting by Bluetooth, moving to the
-  cable, choosing Bluetooth and going back, and falling back to Bluetooth, with no
-  error shown. Only the serial port picker was stood in for.
-- The same spec with a real card: the one-button writer preparing, writing,
-  reading back and switching on a card over the cable; that card read over
-  Bluetooth; and a second card written the same way over Bluetooth, replacing the
-  first.
-- Straight to the reader over Bluetooth: a card read, written, read back, and
-  given its own link again.
+`workflows.spec.ts` drives every workflow through the real pages with accounts
+it creates and removes:
 
-Verified on the physical unit, firmware 2.0.2:
+- **Access:** sign-up refused, API keys refused on privileged functions,
+  organizer sign-in with an authenticator, HttpOnly cookies, cross-site session
+  posts refused, what a normal admin cannot open, the sign-in rate limit.
+- **Navigation:** the five admin tabs and four member tabs, and old addresses
+  leading to their new homes.
+- **Invitations and links:** 72 and 48 hour lifetimes, lapsed and replaced
+  links, the Not accepted status, links surviving chat previews until Continue
+  is pressed, setup validation, recovery, suspension, and user type changes.
+- **Members:** profile, photo, links, privacy switches that save as they are
+  flipped, the activity page, forms keeping their values after an error.
+- **Organizers:** setting up a profile, the public page with its badge, and
+  organizers being refused points and check-in.
+- **Events:** the short form, the derived check-in and check-out times,
+  publishing, cancelling, bonus sessions.
+- **Kiosk:** reading with no button, a card not read twice until lifted, the
+  48-hour PSU ID rule, duplicate scans, and check-in by name or QR code.
+- **Cards:** one button preparing, writing, reading back and switching a card
+  on; a spoiled write leaving the old card working; replacing and switching off.
+- **Readers:** the site giving a reader with no key one, once; nothing but the
+  handshake crossing the cable or the air in the clear; a reader that restarts
+  being given a new session unnoticed; Rotate key changing the key at both ends
+  and retiring the old one; the manual writer; every switch between the cable
+  and Bluetooth; and a reader with the wrong key refused on both links.
+- **Rewards:** request, cancel, approve, hand over and reject, with the balance
+  checked after each.
+- **Corrections and permanent delete:** every attendance correction, each kind
+  of delete, and the audit log refusing a change even from the service key.
+- **Audit and browser:** entries as sentences, phone-width layout, the CSP, and
+  uncaught page errors.
 
-- The real app through the real reader and card: invitation, member setup, prepare,
-  write, exact read-back, activate, the card URL resolving to the member's profile,
-  check-in, check-out, and 7 points with 7 stars granted. The test replaced only
-  `navigator.serial`, because its picker cannot be automated; the app's own lane
-  code still sent and received every byte on COM3.
-- The serial API directly: `info`, status, read, write, and read-back; malformed
-  JSON, unknown commands, bad URIs, and URIs too long for the card; an overlong line
-  producing one `line_too_long`.
-- With the PN532 powered off, a read returning `nfc_not_ready` in about 1.5 s
-  without hanging.
-- The always-on kiosk, read-only and with nothing on the reader: it connected and
-  polled about ten times a second for 18 seconds, with only `no_card` replies and
-  no errors.
+The reader specs use a stand-in (`tests/e2e/support/fake-reader.ts`) with a fake
+cable and a fake radio that follows the firmware's rules. `admin-invitation.spec.ts`
+uses an older, protocol 2 stand-in, which the pages still talk to in the clear.
 
-Not verified:
+### Reader tools (`firmware/kiosk-reader/tools`)
 
-- The kiosk over Bluetooth. It reads cards with the same command the Cards page
-  does, which was run, but the kiosk page itself was not.
-- A reader powered from a charger with no cable to the computer, Chrome or Edge
-  themselves over Bluetooth, and Chrome on Android.
-- The real Chrome/Edge port picker, and a Web Serial session on the hosted app.
-- A real card read through the always-on kiosk. The end-to-end pass above used the
-  old Read button, and the reader was empty for the always-on run.
-- The reader reconnecting by itself on a later visit, which depends on a real
-  browser remembering the port.
-- A real camera reading a real phone screen. The camera path was proved once with
-  Chromium's simulated camera playing a picture of a member's QR code.
-- A locked or too-small card, a card removed mid-write, a purchased card batch, and
-  two lanes running together.
+`reader_check.py` speaks the protocol to a real reader from outside: a reader
+with no key doing nothing but taking one; the cable refusing everything but
+`info`, `ping`, `usb.release` and the handshake; the wrong key, one proof per
+attempt, a replayed line and a command in the clear each refused; a key change
+in a session on each link; a restart; the same over real radio, with a silent
+caller dropped after 8 seconds; the cable taking over; the organizer's override;
+and Bluetooth switched off. `reader-hardware.spec.ts` runs the real Cards page
+against a real reader and real radio.
+
+## Hardware results
+
+### Firmware 2.2.0, 2026-11-13
+
+Both readers, `esp32-a4156cc92df4` ("GDG Reader A415") and `esp32-3c1c6cc92df4`
+("GDG Reader 3C1C"), on COM3 of a Windows 11 laptop with an Intel Bluetooth
+adapter.
+
+- **`reader_check.py --bluetooth`:** 77 of 77 in six of seven full runs across
+  the two readers. In the seventh, opening a cable session failed once just
+  after the reader came back on the air, the tool then crashed on a Bluetooth
+  connection error, and the reader was left holding its throwaway key and had
+  to be erased. Repeating that step 20 times and three more full runs did not
+  reproduce it. The tool now takes its key off whatever happens.
+- **`provision_reader.py`:** gave a reader its key against the local stack four
+  times and cleared it four times, and refused a hosted project without
+  `--confirm`.
+- **`reader-hardware.spec.ts`**, Playwright's Chromium with a window, real Web
+  Bluetooth, the real server actions on the local stack, the reader's key put in
+  by `provision_reader.py`. Two clean passes. One run timed out waiting 45
+  seconds for the reader in the Bluetooth chooser at **Switch to Bluetooth**;
+  the page stayed connected by cable and showed no error. One earlier run failed
+  only on an expectation in the spec, since corrected.
+
+  | Step                                       | Time    |
+  | ------------------------------------------ | ------- |
+  | Connect by cable, including the session    | 1.4 s   |
+  | Rotate key over the cable                  | 0.3 s   |
+  | Connect by Bluetooth                       | 4.0 s   |
+  | Rotate key over Bluetooth                  | 0.4 s   |
+  | Move to the cable when plugged in          | 1.4 s   |
+  | Switch to Bluetooth with the cable in      | 3.4 s   |
+  | Switch back to the cable                   | instant |
+  | Fall back to Bluetooth when the cable went | 7.0 s   |
+
+- **No card was written or read on 2.2.0.** The NFC modules were unplugged for
+  most of these runs. Through the page, over Bluetooth, the reader did answer
+  "no card" for four seconds, and "unsupported card" for something that was on
+  it.
+- Only the serial port picker was stood in for, and "pulling the cable" closed
+  the port while the reader kept its power.
+
+### Firmware 2.1.0, 2026-11-12
+
+One reader, with a card. The one-button writer prepared, wrote, read back and
+switched on a card over the cable (1.7 s), that card was read over Bluetooth
+(0.8 s), and a second was written over Bluetooth (1.7 s). Straight to the
+reader over Bluetooth, a card was read, written and read back. A command over
+Bluetooth took about 31 ms. The card sat slightly off the antenna and was found
+on 30 to 35 of every 40 reads, which is why the pages retry.
+
+### Firmware 2.0.2, 2026-11-04
+
+One reader, with a card, over the cable: the whole journey from invitation to
+points, through the real app. Malformed JSON, unknown commands, links too long
+for the card and an overlong line were each refused cleanly, and with the PN532
+powered off a read failed in about 1.5 s without hanging.
+
+## Production
+
+Read-only checks after each deploy, signed out. Nothing signed-in has ever been
+run on production by an agent.
+
+- **2026-11-12, `4e963dc`:** public pages load, admin pages send a signed-out
+  visitor to `/login`, and the two Vercel addresses redirect to the domain.
+- **2026-11-12, `7655a02`:** the `Permissions-Policy` allows serial and
+  Bluetooth to the site itself.
+- **2026-11-05:** migrations through 0020 are applied; `anon` can execute no
+  public function and `authenticated` only the three RLS helpers; a made-up
+  one-time link redirects to `/login?notice=invalid-link`.
+
+## Not verified
+
+**Readers**
+
+- Stored reader keys, the locked cable, Rotate key and the manual writer on
+  production. They are not deployed.
+- A card written or read on firmware 2.2.0, and the kiosk page with a real
+  reader on 2.2.0.
+- The site giving a real reader with no key one. On hardware the key always came
+  from `provision_reader.py`; the site's own path ran against the stand-in.
+- The kiosk over Bluetooth on any firmware.
+- A reader powered from a charger with no cable to the computer.
+- Chrome or Edge themselves, their serial port picker, and Chrome on Android.
+  Every run used Playwright's Chromium.
+- Two readers in use at once.
+- A reader reconnecting by itself on a later visit, which needs a real browser's
+  saved port permission.
+- A locked or too-small card, a card removed mid-write, and a purchased batch.
+
+**The deployed app, signed in**
+
+- Everything behind sign-in since `7472690`: the kiosk, the event form,
+  organizer profiles, the People and manage pages, the audit log, one-time
+  links made on production, and permanent delete, which an agent must not run
+  there.
+- A real camera reading a QR code from a real phone. It was proved once with
+  Chromium's simulated camera.
 - A production card written for a live member.
-
-## Reset
-
-`pnpm db:reset` was run on the local stack: every count reached zero, all 14
-migrations and the guard triggers stayed in place, no function became callable by
-`anon`, and a superadmin from `pnpm db:bootstrap-admin` then set a password, enrolled
-TOTP, and reached `/admin`.
-
-A person then ran the reset and the bootstrap on production. A read-only check
-afterward found only the first superadmin, with TOTP verified and an AAL2 session,
-and no members, invitations, events, cards, or photos. All 14 migrations and the
-guard triggers remain, and API role privileges are unchanged.
 
 ## Known gaps
 
-- No authenticated E2E run on the hosted app, which would need test accounts on
-  production.
-- No axe-core/manual screen-reader audit.
-- No load test or backup/restore rehearsal.
-- Legacy server device/kiosk paths remain for historical data but are not part of
-  the supported USB flow.
-- `pnpm verify` still reports its intentionally unimplemented release gates as
-  blocked. CI runs format, lint, typecheck, unit tests, and build, so the other
-  commands above were run separately.
+- No accessibility audit with axe or a screen reader.
+- No load test, and no rehearsed backup restore.
+- `pnpm verify` ends at a release-coverage gate that is deliberately blocked.
+- CI runs format, lint, typecheck, unit tests and the build. Everything else
+  above is run by hand.
+- In one of six full browser runs on 2026-11-05 the retired device API's
+  signature spec got a 500 once, then passed alone and on the next full run.

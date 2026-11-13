@@ -7,6 +7,7 @@
 #include "gdg_config.h"
 #include "nfc_lane.h"
 #include "pairing_store.h"
+#include "secure_session.h"
 
 /** Which link a command arrived on, and so where its answer goes. */
 enum class Link : uint8_t { Usb, Bluetooth };
@@ -21,18 +22,20 @@ enum class TransportMode : uint8_t { Auto, Bluetooth };
 /**
  * The reader's control API: newline-delimited JSON, the same commands on both
  * links. Boot and status logs are plain lines on the cable; a client ignores
- * any line that does not start with '{'.
+ * any line that does not start with '{' or '#'.
  *
- * The cable is trusted because it is physical. Bluetooth commands only reach
- * this class after BleLink has authenticated the session, and the commands that
- * decide who may use Bluetooth at all are accepted from the cable alone.
+ * A reader that holds a key obeys only a session opened with it, on the cable
+ * as on Bluetooth. Before that the cable answers `info`, `ping`, `usb.release`
+ * and the handshake, nothing else. A reader with no key takes one over the
+ * cable with `pair.set`, and does nothing else until it has it. The commands
+ * that decide how the reader may be reached are taken from the cable alone.
  */
 class ReaderApi {
  public:
   void Begin(NfcLane* nfc, BleLink* ble, PairingStore* store);
   /** Reads the serial port and answers every complete line. */
   void TickUsb(uint32_t now);
-  /** One authenticated command from the Bluetooth link. */
+  /** One command from an open Bluetooth session. */
   void HandleBluetoothLine(const char* line);
   /** Tells a waiting computer the reader has finished starting. */
   void AnnounceReady();
@@ -43,26 +46,30 @@ class ReaderApi {
   const char* deviceId() const { return deviceId_; }
 
  private:
-  void HandleLine(Link link, const char* line, uint32_t now);
+  void HandleUsbLine(uint32_t now);
+  void HandleLine(Link link, const char* line, uint32_t now, bool sealed);
   void Send(Link link, JsonDocument& doc);
   void SendOk(Link link, long id);
   void SendError(Link link, long id, const char* error);
-  void SendInfo(Link link, long id);
+  void SendInfo(Link link, long id, bool trusted);
   void SendStatus(Link link, long id);
   void HandleRead(Link link, long id);
   void HandleWrite(Link link, long id, const char* uri);
   void HandleReboot(Link link, long id);
-  void HandlePairSet(long id, const char* key, long epoch);
+  void HandlePairSet(Link link, long id, const char* key, long epoch);
   void HandleTransportSet(long id, const char* mode);
 
   NfcLane* nfc_ = nullptr;
   BleLink* ble_ = nullptr;
   PairingStore* store_ = nullptr;
+  SecureSession usbSession_;
   TransportMode mode_ = TransportMode::Auto;
   bool usbSeen_ = false;
+  /** Whether the answer to the cable command being handled is sealed. */
+  bool usbReplySealed_ = false;
   uint32_t lastUsbFrameMs_ = 0;
   char deviceId_[32] = {0};
-  char line_[1024];
+  char line_[GDG_LINE_BYTES];
   size_t lineLength_ = 0;
   bool discardingLine_ = false;
 };

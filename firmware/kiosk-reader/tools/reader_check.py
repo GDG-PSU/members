@@ -7,247 +7,34 @@
 It speaks the protocol in docs/usb-api.md from the outside, the way the admin
 pages do, so it shows what the firmware does without a browser in the way.
 
-The Bluetooth checks pair the reader with a throwaway key and leave it unpaired
-at the end. The admin pages set it up again the next time it is plugged in. Put
-no card on the reader while this runs: it only ever reads, never writes.
+The reader must hold no key when this starts. It is given a throwaway one, and
+left with none at the end, so run provision_reader.py afterwards to put it back
+into use. If the reader already holds a key, take it off first with
+`provision_reader.py --port COM3 --clear`. Put no card on the reader while this
+runs: it only ever reads, never writes.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
-import hashlib
-import hmac
 import json
 import os
 import sys
 import time
+import traceback
 
-import serial
-
-SERVICE = "7c1f0001-5b0a-4f6e-9a54-6d5b2c8e41a7"
-RX = "7c1f0002-5b0a-4f6e-9a54-6d5b2c8e41a7"
-TX = "7c1f0003-5b0a-4f6e-9a54-6d5b2c8e41a7"
-AUTH_CONTEXT = b"gdg-reader-auth-v1"
-TO_READER, TO_HOST = 1, 2
+from reader_link import PROTOCOL, Cable, b64, connect, find_reader, hang_up, key_check
 
 results: list[tuple[bool, str]] = []
+# Every key the reader was given, oldest first, so it can always be cleared.
+given: list[bytes] = []
 
 
 def check(ok: bool, what: str, detail: str = "") -> bool:
-    results.append((ok, what))
+    results.append((bool(ok), what))
     print(f"  {'PASS' if ok else 'FAIL'}  {what}{f'  ({detail})' if detail else ''}", flush=True)
-    return ok
-
-
-def b64(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-
-def unb64(text: str) -> bytes:
-    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
-
-
-def key_check(key: bytes) -> str:
-    return hmac.new(key, b"gdg-reader-kcv-v1", hashlib.sha256).digest()[:8].hex()
-
-
-def proof(key: bytes, label: bytes, device_id: str, epoch: int, client: bytes, reader: bytes) -> bytes:
-    message = b"\0".join([label, AUTH_CONTEXT, device_id.encode(), str(epoch).encode(), b""])
-    return hmac.new(key, message + client + reader, hashlib.sha256).digest()
-
-
-class Cable:
-    """The reader's USB serial port."""
-
-    def __init__(self, port: str):
-        self.port = serial.Serial()
-        self.port.port = port
-        self.port.baudrate = 115200
-        self.port.timeout = 0.05
-        # Left low so that opening the port does not restart the board by itself.
-        self.port.dtr = False
-        self.port.rts = False
-        self.port.open()
-        self.next_id = 0
-        self.events: list[dict] = []
-        self.pending = b""
-
-    def restart(self) -> None:
-        """Pulls the board's reset line, as a browser opening the port does."""
-        self.port.rts = True
-        time.sleep(0.12)
-        self.port.rts = False
-        self.pending = b""
-
-    def lines(self, seconds: float):
-        deadline = time.time() + seconds
-        while time.time() < deadline:
-            self.pending += self.port.read(4096)
-            while b"\n" in self.pending:
-                raw, self.pending = self.pending.split(b"\n", 1)
-                text = raw.decode("utf-8", "replace").strip()
-                if text.startswith("{"):
-                    try:
-                        yield json.loads(text)
-                    except json.JSONDecodeError:
-                        pass
-
-    def wait_event(self, name: str, seconds: float) -> dict | None:
-        for message in self.lines(seconds):
-            if message.get("event") == name:
-                return message
-            if "event" in message:
-                self.events.append(message)
-        return None
-
-    def send(self, cmd: str, seconds: float = 4.0, **extra) -> dict:
-        self.next_id += 1
-        request = {"id": self.next_id, "cmd": cmd, **extra}
-        self.port.write((json.dumps(request) + "\n").encode())
-        for message in self.lines(seconds):
-            if message.get("id") == self.next_id:
-                return message
-            if "event" in message:
-                self.events.append(message)
-        return {"ok": False, "error": "no_reply"}
-
-    def close(self) -> None:
-        self.port.close()
-
-
-class Radio:
-    """One Bluetooth connection to the reader."""
-
-    def __init__(self, client):
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-        self.aesgcm_type = AESGCM
-        self.client = client
-        self.buffer = b""
-        self.lines: asyncio.Queue[str] = asyncio.Queue()
-        self.session = None
-        self.sent = 0
-        self.received = 0
-        self.next_id = 0
-        self.events: list[dict] = []
-        self.last_sealed: str | None = None
-
-    async def start(self) -> None:
-        await self.client.start_notify(TX, self.on_notify)
-
-    def on_notify(self, _sender, data: bytearray) -> None:
-        self.buffer += bytes(data)
-        while b"\n" in self.buffer:
-            raw, self.buffer = self.buffer.split(b"\n", 1)
-            self.lines.put_nowait(raw.decode("utf-8", "replace").strip())
-
-    async def write_line(self, line: str) -> None:
-        data = (line + "\n").encode()
-        for offset in range(0, len(data), 180):
-            await self.client.write_gatt_char(RX, data[offset : offset + 180], response=True)
-
-    def nonce(self, direction: int, counter: int) -> bytes:
-        return bytes([direction, 0, 0, 0]) + counter.to_bytes(8, "big")
-
-    def seal(self, text: str) -> str:
-        self.sent += 1
-        sealed = self.session.encrypt(self.nonce(TO_READER, self.sent), text.encode(), None)
-        return "#" + b64(self.sent.to_bytes(8, "big") + sealed)
-
-    def open(self, line: str) -> dict:
-        frame = unb64(line[1:])
-        counter = int.from_bytes(frame[:8], "big")
-        if counter <= self.received:
-            raise ValueError("the reader repeated a counter")
-        self.received = counter
-        return json.loads(self.session.decrypt(self.nonce(TO_HOST, counter), frame[8:], None))
-
-    async def read(self, seconds: float) -> dict | None:
-        try:
-            line = await asyncio.wait_for(self.lines.get(), seconds)
-        except asyncio.TimeoutError:
-            return None
-        if self.session is not None:
-            return self.open(line) if line.startswith("#") else {"plain_after_auth": line}
-        return json.loads(line)
-
-    async def send(self, cmd: str, seconds: float = 6.0, **extra) -> dict:
-        self.next_id += 1
-        text = json.dumps({"id": self.next_id, "cmd": cmd, **extra})
-        if self.session is not None:
-            self.last_sealed = self.seal(text)
-            await self.write_line(self.last_sealed)
-        else:
-            await self.write_line(text)
-        deadline = time.time() + seconds
-        while time.time() < deadline:
-            message = await self.read(deadline - time.time())
-            if message is None:
-                break
-            if message.get("id") == self.next_id:
-                return message
-            if "event" in message:
-                self.events.append(message)
-        return {"ok": False, "error": "no_reply"}
-
-    async def authenticate(self, key: bytes) -> tuple[bool, str]:
-        client_nonce = os.urandom(16)
-        begun = await self.send("auth.begin", nonce=b64(client_nonce))
-        if not begun.get("ok"):
-            return False, begun.get("error", "?")
-        result = begun["result"]
-        reader_nonce = unb64(result["nonce"])
-        args = (result["deviceId"], result["epoch"], client_nonce, reader_nonce)
-        finished = await self.send("auth.finish", proof=b64(proof(key, b"client", *args)))
-        if not finished.get("ok"):
-            return False, finished.get("error", "?")
-        if unb64(finished["result"]["proof"]) != proof(key, b"reader", *args):
-            return False, "the reader's own proof is wrong"
-        self.session = self.aesgcm_type(proof(key, b"session", *args))
-        return True, result["deviceId"]
-
-    async def gone_within(self, seconds: float) -> bool:
-        deadline = time.time() + seconds
-        while time.time() < deadline:
-            if not self.client.is_connected:
-                return True
-            await asyncio.sleep(0.1)
-        return not self.client.is_connected
-
-
-async def find_reader(name: str, seconds: float):
-    """The reader if it is on the air, found by its service and its name."""
-    from bleak import BleakScanner
-
-    def matches(device, advertisement) -> bool:
-        uuids = [uuid.lower() for uuid in (advertisement.service_uuids or [])]
-        return SERVICE in uuids and (advertisement.local_name or device.name) == name
-
-    return await BleakScanner.find_device_by_filter(matches, timeout=seconds)
-
-
-async def connect(name: str, seconds: float = 12.0) -> Radio | None:
-    from bleak import BleakClient
-
-    device = await find_reader(name, seconds)
-    if device is None:
-        return None
-    client = BleakClient(device)
-    await client.connect()
-    radio = Radio(client)
-    await radio.start()
-    return radio
-
-
-async def hang_up(radio: Radio | None) -> None:
-    if radio is None:
-        return
-    try:
-        await radio.client.disconnect()
-    except Exception:
-        pass
+    return bool(ok)
 
 
 def cable_checks(cable: Cable) -> dict:
@@ -257,36 +44,92 @@ def cable_checks(cable: Cable) -> dict:
     check(ready is not None, "says when it has finished starting", str(ready and ready.get("firmware")))
 
     info = cable.send("info").get("result", {})
-    check(info.get("protocol") == 3, "speaks protocol 3", f"firmware {info.get('firmware')}")
+    check(info.get("protocol") == PROTOCOL, f"speaks protocol {PROTOCOL}", f"firmware {info.get('firmware')}")
     check(info.get("transport") == "usb-serial", "knows it is on the cable")
-    check("bluetooth" in info, "reports its Bluetooth state", json.dumps(info.get("bluetooth")))
+    check("bluetooth" in info, "reports its key and Bluetooth state", json.dumps(info.get("bluetooth")))
     check(info.get("mode") == "auto", "starts by preferring the cable")
     check(cable.send("ping").get("ok") is True, "answers a ping")
-    check(cable.send("nope").get("error") == "unknown_cmd", "refuses an unknown command")
     print(f"  ....  NFC module {'ready' if info.get('nfcReady') else 'NOT ready'}")
     return info
 
 
-async def bluetooth_checks(cable: Cable, info: dict) -> None:
-    name = info["bluetooth"]["name"]
-    key = os.urandom(32)
-    wrong = os.urandom(32)
-
-    print("Pairing over the cable")
-    cable.send("pair.clear")
-    cable.send("usb.release")
-    check(await find_reader(name, 6) is None, "stays off the air until it has been paired")
-
-    paired = cable.send("pair.set", key=b64(key), epoch=1)
-    check(paired.get("result", {}).get("check") == key_check(key), "stores the key it is given")
+def lock_checks(cable: Cable, key: bytes) -> bool:
+    """The cable obeys nothing but a session opened with the reader's key."""
+    print("A reader with no key")
+    check(cable.send("nfc.read").get("error") == "not_paired", "reads no card until it has a key")
+    check(cable.send("auth.begin", nonce=b64(os.urandom(16))).get("error") == "not_paired", "has no session to open yet")
     check(cable.send("pair.set", key="short", epoch=1).get("error") == "bad_key", "refuses a bad key")
-    bluetooth = cable.send("info")["result"]["bluetooth"]
-    check(bluetooth.get("paired") and "key" not in json.dumps(bluetooth), "never reports the key back")
+    paired = cable.send("pair.set", key=b64(key), epoch=1).get("result", {})
+    if paired.get("check") == key_check(key):
+        given.append(key)
+    check(paired.get("check") == key_check(key) and paired.get("epoch") == 1, "takes its first key over the cable")
+
+    print("The cable, locked")
+    info = cable.send("info").get("result", {})
+    check(info.get("locked") is True, "says it is locked")
+    check("key" not in json.dumps(info), "never reports the key back")
+    for cmd in ("nfc.read", "nfc.status", "pair.clear", "reboot"):
+        check(cable.send(cmd).get("error") == "locked", f"refuses {cmd} outside a session")
+    check(cable.send("pair.set", key=b64(os.urandom(32)), epoch=2).get("error") == "locked", "refuses a second key outside a session")
+    check(cable.send("transport.set", mode="bluetooth").get("error") == "locked", "refuses transport changes outside a session")
+
+    ok, error = cable.authenticate(os.urandom(32))
+    check(not ok and error == "auth_failed", "refuses the wrong key", error)
+    check(cable.send("auth.finish", proof=b64(os.urandom(32))).get("error") == "auth_out_of_order", "takes one proof per attempt")
+    ok, device_id = cable.authenticate(key)
+    if not check(ok, "opens a session for the right key", device_id):
+        return False
+
+    print("The cable, in a session")
+    info = cable.send("info").get("result", {})
+    check(info.get("locked") is False, "answers sealed commands")
+    started = time.time()
+    reads = [cable.send("nfc.read") for _ in range(5)]
+    each = (time.time() - started) / len(reads) * 1000
+    check(all("id" in r for r in reads), "reads over the cable", f"{each:.0f} ms each, { {r.get('error') or 'card' for r in reads} }")
+    check(cable.send("nope").get("error") == "unknown_cmd", "refuses an unknown command")
+    check(cable.send("nfc.read", sealed=False).get("error") == "locked", "still refuses a command sent in the clear")
+
+    cable.write_line(cable.session.last_sealed)
+    check(cable.wait_event("locked", 3) is not None, "ends the session on a replayed line")
+    check(cable.send("ping").get("error") == "locked_event", "and obeys nothing sealed with it afterwards")
+    check(cable.authenticate(key)[0], "opens a new session afterwards")
+
+    cable.release()
+    check(cable.send("nfc.read").get("error") == "locked", "is locked again once the computer lets go")
+    return True
+
+
+def key_change_checks(cable: Cable, key: bytes, new_key: bytes) -> bool:
+    print("Changing the key")
+    if not check(cable.authenticate(key)[0], "opens a session with the first key"):
+        return False
+    changed = cable.send("pair.set", key=b64(new_key), epoch=2).get("result", {})
+    if changed.get("check") == key_check(new_key):
+        given.append(new_key)
+    check(changed.get("check") == key_check(new_key) and changed.get("epoch") == 2, "takes a new key inside a session")
+    check(cable.send("pair.set", key=b64(os.urandom(32)), epoch=2).get("error") == "bad_epoch", "refuses a key that is not newer")
+    check(cable.send("ping").get("ok") is True, "keeps the session that made the change")
+    cable.release()
+    ok, error = cable.authenticate(key)
+    check(not ok and error == "auth_failed", "no longer accepts the old key", error)
+    check(cable.authenticate(new_key)[0], "accepts the new key")
+
+    cable.restart()
+    check(cable.wait_event("ready", 6) is not None, "restarts")
+    check(cable.send("nfc.read").get("error") == "locked", "is locked after a restart")
+    check(cable.authenticate(new_key)[0], "kept the new key across the restart")
+    cable.release()
+    return True
+
+
+async def bluetooth_checks(cable: Cable, info: dict, key: bytes) -> None:
+    name = info["bluetooth"]["name"]
 
     print("Bluetooth with no computer on the cable")
-    cable.send("ping")
+    cable.send("ping", sealed=False)
     check(await find_reader(name, 4) is None, "is off the air while a computer uses the cable")
-    cable.send("usb.release")
+    cable.release()
     started = time.time()
     radio = await connect(name)
     if not check(radio is not None, "appears once the cable is released", f"{time.time() - started:.1f}s"):
@@ -306,17 +149,26 @@ async def bluetooth_checks(cable: Cable, info: dict) -> None:
     each = (time.time() - started) / len(reads) * 1000
     outcomes = {r.get("error") or "card" for r in reads}
     check(all("id" in r for r in reads), "reads over Bluetooth", f"{each:.0f} ms each, {outcomes}")
-    check((await radio.send("pair.clear")).get("error") == "usb_only", "takes pairing commands from the cable only")
+    check((await radio.send("pair.clear")).get("error") == "usb_only", "gives its key up over the cable only")
     check((await radio.send("transport.set", mode="auto")).get("error") == "usb_only", "takes transport commands from the cable only")
 
-    await radio.write_line(radio.last_sealed)
+    newer = os.urandom(32)
+    # Counted as given before the answer comes back: the reader may have kept it
+    # even if the reply is lost.
+    given.append(newer)
+    changed = (await radio.send("pair.set", key=b64(newer), epoch=3)).get("result", {})
+    if check(changed.get("check") == key_check(newer), "takes a new key inside a Bluetooth session"):
+        key = newer
+    check((await radio.send("ping")).get("ok") is True, "keeps the session that made the change")
+
+    await radio.write_line(radio.session.last_sealed)
     check(await radio.gone_within(4), "hangs up on a replayed line")
     await hang_up(radio)
 
     print("People who should not get in")
     radio = await connect(name)
     if check(radio is not None, "comes back on the air after hanging up"):
-        ok, error = await radio.authenticate(wrong)
+        ok, error = await radio.authenticate(os.urandom(32))
         check(not ok and error == "auth_failed", "refuses the wrong key", error)
         check(await radio.gone_within(4), "hangs up after a failed proof")
         await hang_up(radio)
@@ -330,7 +182,7 @@ async def bluetooth_checks(cable: Cable, info: dict) -> None:
     radio = await connect(name)
     if check(radio is not None, "is still reachable afterwards"):
         ok, _ = await radio.authenticate(key)
-        check(ok, "still accepts the right key")
+        check(ok, "accepts the key it was given over the air")
         await radio.write_line(json.dumps({"id": 99, "cmd": "info"}))
         check(await radio.gone_within(4), "hangs up on an unsealed line after the handshake")
         await hang_up(radio)
@@ -338,20 +190,21 @@ async def bluetooth_checks(cable: Cable, info: dict) -> None:
     print("The cable wins")
     radio = await connect(name)
     if check(radio is not None, "is on Bluetooth again") and (await radio.authenticate(key))[0]:
-        check(cable.send("info").get("ok") is True, "answers the cable while on Bluetooth")
+        check(cable.send("info", sealed=False).get("ok") is True, "answers the cable while on Bluetooth")
         message = await radio.read(4)
         check(message == {"event": "transport", "to": "usb"}, "tells Bluetooth the cable took over", str(message))
         check(await radio.gone_within(4), "then lets go of Bluetooth")
         await hang_up(radio)
         quiet = True
         for _ in range(4):
-            cable.send("ping")
+            cable.send("ping", sealed=False)
             quiet = quiet and await find_reader(name, 2) is None
         check(quiet, "stays off the air while the cable keeps talking")
         started = time.time()
         check(await find_reader(name, 12) is not None, "returns to the air when the cable goes quiet", f"{time.time() - started:.1f}s")
 
     print("The organizer's choice")
+    check(cable.authenticate(key)[0], "opens a cable session")
     check(cable.send("transport.set", mode="bluetooth").get("ok") is True, "accepts being asked for Bluetooth")
     radio = await connect(name)
     if check(radio is not None, "is on the air with a computer on the cable") and (await radio.authenticate(key))[0]:
@@ -359,20 +212,30 @@ async def bluetooth_checks(cable: Cable, info: dict) -> None:
         for _ in range(3):
             held = held and cable.send("ping").get("ok") is True
             held = held and (await radio.send("ping")).get("ok") is True
-        check(held, "keeps Bluetooth while the cable talks")
+        check(held, "keeps both sessions while the cable talks")
         check(cable.send("transport.set", mode="auto").get("ok") is True, "accepts being told to prefer the cable again")
         check(await radio.gone_within(4), "and lets go of Bluetooth")
         await hang_up(radio)
 
     print("Switching Bluetooth off")
     check(cable.send("bluetooth.set", enabled=False).get("ok") is True, "accepts Bluetooth being switched off")
-    cable.send("usb.release")
-    check(await find_reader(name, 6) is None, "stays off the air while switched off")
     check(cable.send("transport.set", mode="bluetooth").get("error") == "bluetooth_off", "refuses to be asked for Bluetooth then")
+    cable.release()
+    check(await find_reader(name, 6) is None, "stays off the air while switched off")
+    check(cable.authenticate(key)[0], "still opens a cable session")
     cable.send("bluetooth.set", enabled=True)
-    cable.send("pair.clear")
-    cable.send("usb.release")
-    check(await find_reader(name, 6) is None, "is off the air again once unpaired")
+    cable.release()
+
+
+def clear_key(cable: Cable) -> bool:
+    """Takes the key off the reader, trying every key it was given, newest first."""
+    cable.session = None
+    for key in reversed(given):
+        if cable.authenticate(key)[0]:
+            cleared = cable.send("pair.clear").get("ok") is True
+            cable.session = None
+            return cleared
+    return False
 
 
 def main() -> int:
@@ -384,9 +247,38 @@ def main() -> int:
     cable = Cable(args.port)
     try:
         info = cable_checks(cable)
-        if args.bluetooth and info.get("protocol") == 3:
-            asyncio.run(bluetooth_checks(cable, info))
-            print("  ....  The reader is left unpaired. Plug it into the admin pages to set it up again.")
+        if info.get("protocol") != PROTOCOL:
+            print("  ....  This is not the firmware these checks are for. Flash the reader first.")
+        elif info.get("bluetooth", {}).get("paired"):
+            print("  ....  This reader holds a key, so nothing more can be checked from outside.")
+            print("        Take it off with provision_reader.py --clear, then run this again.")
+            check(False, "starts with no key")
+        else:
+            try:
+                key = os.urandom(32)
+                if lock_checks(cable, key):
+                    newer = os.urandom(32)
+                    if key_change_checks(cable, key, newer):
+                        key = newer
+                    if args.bluetooth:
+                        asyncio.run(bluetooth_checks(cable, info, key))
+            except Exception:
+                # Whatever went wrong, the reader must not be left holding a key
+                # that only this run knew.
+                traceback.print_exc()
+                check(False, "ran to the end")
+            finally:
+                if given:
+                    check(clear_key(cable), "gives its key up inside a cable session")
+            info = cable.send("info").get("result", {})
+            check(info.get("bluetooth", {}).get("paired") is False, "holds no key at the end")
+            if args.bluetooth:
+                cable.send("usb.release")
+                check(asyncio.run(find_reader(info["bluetooth"]["name"], 6)) is None, "is off the air with no key")
+            if info.get("bluetooth", {}).get("paired") is False:
+                print("  ....  The reader holds no key. Run provision_reader.py to put it back into use.")
+            else:
+                print("  ....  The reader still holds a key from this run. Erase it and flash it again.")
     finally:
         cable.close()
 

@@ -15,7 +15,8 @@ describe('describeAudit', () => {
     expect(describeAudit({ action: 'user.access_revoked' }, null)).toBe("removed someone's access");
     expect(describeAudit({ action: 'event.updated' })).toBe('changed an event');
     expect(describeAudit({ action: 'redemption.approve' })).toBe('approved a reward request');
-    expect(describeAudit({ action: 'reader.paired' })).toBe('set up a card reader for Bluetooth');
+    expect(describeAudit({ action: 'reader.paired' })).toBe('set up a card reader');
+    expect(describeAudit({ action: 'reader.key_rotated' })).toBe('gave a card reader a new key');
   });
 
   it('reads the outcome from what was recorded', () => {
@@ -94,6 +95,9 @@ describe('AUDIT_TOPICS', () => {
       'staff.profile_created',
       'card.revoked',
       'reader.paired',
+      'reader.provisioned',
+      'reader.key_rotated',
+      'reader.cleared',
       'attendance.check_in',
       'scan.rejected',
       'event.created',

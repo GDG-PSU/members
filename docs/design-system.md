@@ -22,19 +22,19 @@ in `apps/web/src/app/globals.css`, and every reusable component lives in `packag
 Defined once in `:root` and overridden under `.dark` in `globals.css`, then exposed to Tailwind through
 `@theme inline`.
 
-| Token                                  | Role                                               |
-| -------------------------------------- | -------------------------------------------------- |
-| `--background` / `--foreground`        | Page canvas and primary text                       |
-| `--card` / `--card-foreground`         | Surfaces and their text                            |
-| `--muted` / `--muted-foreground`       | Secondary fills and supporting copy                |
-| `--subtle`                             | Recessed bands (footer, empty states, table heads) |
-| `--border` / `--input`                 | Hairlines and control outlines                     |
-| `--ring`                               | Focus ring                                         |
-| `--primary` / `--primary-soft`         | Brand action, active navigation, soft highlights   |
-| `--secondary`                          | Teal supporting accent                             |
-| `--star`                               | Lifetime stars / rank one                          |
-| `--success` / `--warning` / `--danger` | Status roles                                       |
-| `--color-brand-blue                    | red                                                | yellow | green` | GDG four-dot mark and brand hairlines |
+| Token                                             | Role                                               |
+| ------------------------------------------------- | -------------------------------------------------- |
+| `--background` / `--foreground`                   | Page canvas and primary text                       |
+| `--card` / `--card-foreground`                    | Surfaces and their text                            |
+| `--muted` / `--muted-foreground`                  | Secondary fills and supporting copy                |
+| `--subtle`                                        | Recessed bands (footer, empty states, table heads) |
+| `--border` / `--input`                            | Hairlines and control outlines                     |
+| `--ring`                                          | Focus ring                                         |
+| `--primary` / `--primary-soft`                    | Brand action, active navigation, soft highlights   |
+| `--secondary`                                     | Teal supporting accent                             |
+| `--star`                                          | Lifetime stars / rank one                          |
+| `--success` / `--warning` / `--danger`            | Status roles                                       |
+| `--color-brand-blue`, `-red`, `-yellow`, `-green` | The GDG four-dot mark and brand hairlines          |
 
 Utilities: `bg-*`, `text-*`, `border-*`, plus `/opacity` modifiers (for example `bg-success/10`).
 Never hardcode a status color in a page.

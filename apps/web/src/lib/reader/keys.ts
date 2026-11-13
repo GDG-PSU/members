@@ -1,41 +1,22 @@
-import { createHash, createHmac, hkdfSync } from 'node:crypto';
-import { getEnv } from '@/lib/env';
+import { createHmac, randomBytes } from 'node:crypto';
 
 /**
- * Bluetooth pairing keys for the NFC readers.
+ * The key a card reader holds, and what is worked out from it.
  *
- * A reader's key is derived from a server secret and the reader's ID, so there
- * is nothing to store and nothing to look up. The key reaches the reader once,
- * over the cable. After that the browser never holds it: when a Bluetooth
- * session opens, the server works out the proofs and hands back only a key for
- * that one session, and only to a signed-in organizer.
- *
- * Raise READER_KEY_EPOCH to retire every reader's key at once, for instance
- * after a reader is lost. Each reader then pairs again the next time it is
- * plugged in. Changing CARD_WRITE_ENCRYPTION_KEY does the same.
+ * Each reader has a random key of its own, put in when it is flashed and stored
+ * sealed in `reader_keys` (lib/reader/key-store.ts). The reader obeys only a
+ * session opened with that key, on its cable and over Bluetooth alike. The
+ * browser does not hold the key for that: the server works out the proofs and
+ * hands back only a key for the one session, and only to a signed-in organizer.
  */
-export const READER_KEY_EPOCH = 1;
-
 const AUTH_CONTEXT = 'gdg-reader-auth-v1';
 const CHECK_LABEL = 'gdg-reader-kcv-v1';
 
-function pairingSecret(): Buffer {
-  // The same reading of the variable as lib/security/tokens.ts, then HKDF with
-  // its own label so this key is independent of the one that seals card tokens.
-  const raw = getEnv().CARD_WRITE_ENCRYPTION_KEY;
-  const decoded = Buffer.from(raw, 'base64');
-  const material =
-    decoded.length === 32 ? decoded : createHash('sha256').update(raw, 'utf8').digest();
-  return Buffer.from(hkdfSync('sha256', material, Buffer.alloc(0), 'gdg-reader-pairing-v1', 32));
+export function newReaderKey(): Buffer {
+  return randomBytes(32);
 }
 
-export function deriveReaderKey(deviceId: string, epoch: number = READER_KEY_EPOCH): Buffer {
-  return createHmac('sha256', pairingSecret())
-    .update(`reader-key\0${deviceId}\0${epoch}`, 'utf8')
-    .digest();
-}
-
-/** What the reader reports in `info`, so a stale key can be spotted without sending one. */
+/** What the reader reports in `info`, so a key can be recognized without being sent. */
 export function readerKeyCheck(key: Buffer): string {
   return createHmac('sha256', key)
     .update(CHECK_LABEL, 'utf8')
@@ -49,14 +30,14 @@ export type ReaderSessionSecrets = {
   clientProof: Buffer;
   /** What a genuine reader answers with. */
   readerProof: Buffer;
-  /** Seals every frame of this session, and no other. */
+  /** Seals every line of this session, and no other. */
   sessionKey: Buffer;
 };
 
 /**
  * Both nonces are in every value, so a recording of an earlier session proves
  * nothing and opens nothing. The firmware builds the same message in
- * BleLink::BuildProof.
+ * SecureSession::BuildProof.
  */
 export function readerSessionSecrets(input: {
   key: Buffer;

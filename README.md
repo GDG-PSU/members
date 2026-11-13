@@ -21,7 +21,7 @@ Membership is by invitation, so there is no public sign-up page.
 **For organizers**
 
 - Invite members and see who has joined
-- Write NFC cards using a USB reader
+- Write NFC cards with a card reader, by USB cable or Bluetooth
 - Check people in and out at events
 - Create events, manage rewards, and approve redemptions
 
@@ -34,7 +34,7 @@ Public pages show upcoming events, the leaderboard, and any member profile that'
 
 ## How check-in works
 
-1. A member taps their card on a USB reader plugged into an organizer's laptop.
+1. A member taps their card on a reader connected to an organizer's laptop.
 2. The kiosk page shows the member's name and photo.
 3. The organizer checks it's the right person and confirms.
 4. The member taps again on the way out. If they stayed long enough, they earn the event's points.
@@ -89,9 +89,10 @@ Delete the file when you're done.
 ### Using the card reader
 
 Writing cards and running the kiosk also need the reader hardware and Chrome or Edge, the browsers
-with Web Serial and Web Bluetooth. The reader plugs in with a USB cable, or works over Bluetooth
-once it has been plugged in a first time. See [hardware bring-up](docs/hardware-bringup.md) for
-wiring and the [firmware README](firmware/kiosk-reader/README.md) for flashing.
+with Web Serial and Web Bluetooth. The reader plugs in with a USB cable or works over Bluetooth, and
+only for a signed-in organizer: it is given a key when it is flashed, and the site holds the same
+key. See [hardware bring-up](docs/hardware-bringup.md) for wiring and the
+[firmware README](firmware/kiosk-reader/README.md) for flashing and setting a reader up.
 
 ## Useful commands
 
@@ -114,7 +115,7 @@ wiring and the [firmware README](firmware/kiosk-reader/README.md) for flashing.
 | `packages/ui`           | Shared design tokens and components       |
 | `packages/contracts`    | Shared validation schemas and types       |
 | `supabase/migrations`   | The database schema, rules, and functions |
-| `firmware/kiosk-reader` | Firmware for the USB card reader          |
+| `firmware/kiosk-reader` | Firmware and tools for the card reader    |
 | `scripts`               | Database checks and admin setup           |
 | `tests/e2e`             | Browser tests                             |
 | `docs`                  | Detailed documentation                    |
@@ -127,8 +128,11 @@ wiring and the [firmware README](firmware/kiosk-reader/README.md) for flashing.
 - [Threat model](docs/threat-model.md)
 - [Deployment](docs/deployment.md)
 - [Operations runbook](docs/operations-runbook.md)
-- [Test plan](docs/test-plan.md)
-- [USB protocol](docs/usb-api.md)
+- [Test plan and results](docs/test-plan.md)
+- [Card reader protocol](docs/usb-api.md)
+- [Hardware bring-up](docs/hardware-bringup.md)
+- [Backup and restore](docs/backup-restore.md)
+- [Design system](docs/design-system.md)
 
 [AGENTS.md](AGENTS.md) has the working rules for AI coding agents, along with the project's current
 status and open items.

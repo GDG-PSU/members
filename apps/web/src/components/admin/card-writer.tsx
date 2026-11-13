@@ -30,6 +30,8 @@ const STEP_LABELS: Record<Step, string> = {
   activating: 'Switching it on…',
 };
 const SEARCH_DELAY_MS = 250;
+// What a card holds comfortably; the reader refuses anything the card cannot take.
+const MANUAL_LINK_MAX = 240;
 
 /**
  * One action writes a card: it is prepared, written, read back and switched on
@@ -50,6 +52,9 @@ export function CardWriter({ initialHolder }: { initialHolder?: CardHolder | nul
   const [mustLift, setMustLift] = useState(false);
   const [readBack, setReadBack] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  const [manualLink, setManualLink] = useState('');
+  const [writingLink, setWritingLink] = useState(false);
+  const [toolMessage, setToolMessage] = useState<Message | null>(null);
   // Kept for a retry, so a failed write does not leave a trail of unused cards.
   const preparedRef = useRef<{ memberId: string; cardId: string; cardUrl: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -168,7 +173,42 @@ export function CardWriter({ initialHolder }: { initialHolder?: CardHolder | nul
     }
   }
 
-  const working = step !== 'idle';
+  const manualText = manualLink.trim();
+  const manualValid = /^https:\/\/\S+$/.test(manualText) && manualText.length <= MANUAL_LINK_MAX;
+
+  /**
+   * Writes a typed link to whatever card is on the reader, and reads it back.
+   * It makes nobody's card and switches nothing on; it is for testing a reader
+   * and for putting a known link back on a card.
+   */
+  async function writeLink() {
+    if (!manualValid || writingLink || reading || step !== 'idle') return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setWritingLink(true);
+    setToolMessage(null);
+    setReadBack(null);
+    try {
+      await waitForCard(() => sendCommand('nfc.write', { uri: manualText }), controller.signal);
+      const read = await sendCommand('nfc.read');
+      if (read.result?.uri !== manualText) throw new Error('read_back_mismatch');
+      setMustLift(true);
+      setManualLink('');
+      setToolMessage({
+        kind: 'success',
+        text: 'The link is on the card and reads back the same. Lift it off the reader.',
+      });
+    } catch (writeError) {
+      if (!controller.signal.aborted && !isAbortError(writeError)) {
+        setToolMessage({ kind: 'danger', text: laneErrorMessage(writeError) });
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setWritingLink(false);
+    }
+  }
+
+  const working = step !== 'idle' || writingLink;
   const readerLine = mustLift ? 'Lift the card off the reader' : 'Reader connected';
 
   return (
@@ -307,7 +347,68 @@ export function CardWriter({ initialHolder }: { initialHolder?: CardHolder | nul
             {readBack || 'The card has no link on it.'}
           </p>
         ) : null}
-        <ReaderDetails reader={reader} busy={working} />
+
+        <form
+          className="mt-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void writeLink();
+          }}
+        >
+          <Field
+            label="Write a link by hand"
+            htmlFor="manual-card-link"
+            hint="Writes exactly this link to the card on the reader and reads it back. It does not make anyone a card or switch one on."
+          >
+            <Input
+              id="manual-card-link"
+              value={manualLink}
+              onChange={(event) => setManualLink(event.target.value)}
+              autoComplete="off"
+              inputMode="url"
+              maxLength={MANUAL_LINK_MAX}
+              placeholder="https://"
+            />
+          </Field>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              disabled={
+                !connected || !manualValid || step !== 'idle' || reading || writingLink || mustLift
+              }
+            >
+              {writingLink ? 'Place a card on the reader…' : 'Write link'}
+            </Button>
+            {writingLink ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => abortRef.current?.abort()}
+              >
+                Cancel
+              </Button>
+            ) : null}
+            {manualText && !manualValid ? (
+              <p className="text-xs text-muted-foreground">
+                The link must start with https:// and have no spaces.
+              </p>
+            ) : null}
+          </div>
+        </form>
+        {toolMessage ? (
+          <Alert
+            variant={toolMessage.kind === 'success' ? 'success' : 'danger'}
+            role="status"
+            className="mt-3"
+          >
+            {toolMessage.text}
+          </Alert>
+        ) : null}
+
+        <ReaderDetails reader={reader} busy={working} tools />
       </details>
     </div>
   );

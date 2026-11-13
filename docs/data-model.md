@@ -1,16 +1,8 @@
 # Data model
 
-> **Current hardware note (2026-11-04):** The USB reader does not use devices,
-> device secrets, or card write jobs. The USB kiosk does use a short-lived
-> `device_scans` row with `device_id = null` as preview state before the admin
-> confirms; no device is registered. Cards are stored in `card_credentials`:
-> `prepare_card` creates a pending credential, the admin writes its URL locally,
-> and `activate_card` marks it active and replaces the member's previous card.
-> Legacy device tables are retained for historical records only.
+The schema's source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new numbered migration. The Supabase CLI and its GitHub integration are the one migration authority; the older `pnpm db:migrate` keeps a separate history and must not be mixed with them.
 
-The schema source of truth is `supabase/migrations/`. Never edit the hosted schema by hand; add a new migration. Use the Supabase CLI (`supabase db push`) or its GitHub integration as the single migration authority. The legacy `pnpm db:migrate` records a separate history and must never be mixed with the CLI.
-
-Current migration order:
+Migrations, in order:
 
 | File                                  | Purpose                                                                                 |
 | ------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -34,6 +26,7 @@ Current migration order:
 | `0018_organizer_profile_backfill.sql` | A placeholder organizer profile for each existing staff account                         |
 | `0019_superadmin_delete.sql`          | Permanent delete for superadmins, and an audit log nothing can change                   |
 | `0020_sign_in_links.sql`              | One-time invitation and reset links the app owns: 72 and 48 hours                       |
+| `0021_reader_keys.sql`                | A stored, sealed key for each card reader                                               |
 
 All instants are stored as `timestamptz` (UTC). Event wall-clock times are configured and rendered in `America/New_York` by the web app.
 
@@ -50,7 +43,7 @@ Server-assigned roles. Primary key `(auth_user_id, role)`; `admin` or `superadmi
 One row per invitation. Columns include normalized lowercase `email`, `status` (`pending`, `accepted`, `expired`, `revoked`), `paid_since`, optional internal `note`, Auth user reference, timestamps and `expires_at`, which is when its link stops working: 72 hours after the link was made, and again after each New link. Past that the People page shows the invitation as not accepted.
 
 - Partial unique index `member_invitations_one_live_pending` prevents two pending invitations for one email.
-- No invitation token is stored; Supabase Auth owns the single-use link.
+- No invitation token is stored. The link's token is hashed in `sign_in_links`.
 - Duplicate/expired/revoked handling is server-side. Acceptance is idempotent through `complete_member_setup`.
 
 ### `members`
@@ -77,7 +70,7 @@ Visibility flags (all boolean, stored as columns):
 
 Defaults are public, including `show_email`; members can hide email during setup. The public projection nulls fields according to these flags rather than relying on API filtering.
 
-## Cards and one-time writes
+## Cards and readers
 
 ### `card_credentials`
 
@@ -88,11 +81,11 @@ Defaults are public, including `show_email`; members can hide email during setup
 - `prepare_card` supersedes only an earlier unwritten card. The active card keeps working until `activate_card` replaces it, so an abandoned or failed write never strands a member. A lost card is revoked explicitly with `revoke_card`. A member's `/m/` URL never changes.
 - Plaintext tokens are never stored and never logged.
 
-### `card_write_jobs`
+### `reader_keys`
 
-`device_id`, `member_id`, `card_id`, encrypted `payload_ciphertext`, single-use `nonce`, `status` (`queued`, `claimed`, `written`, `failed`, `expired`, `cancelled`), expiry (30–900 seconds), claim/attempt metadata and bounded result JSON.
+One row per reader and key version: `device_id` (`esp32-` and twelve hex characters), `version`, `sealed_key`, `created_at` and `created_by`, which is null when the flashing tool stored the key. The key is sealed with `CARD_WRITE_ENCRYPTION_KEY`, which the database never holds, in the same `v1.<iv>.<tag>.<ciphertext>` envelope as a card's link. RLS is on with no policies, so only the server reads it.
 
-`queue_write_job` cancels prior open jobs for the card and requires an active device in `writer` mode. `claim_write_job` expires stale jobs and claims one `queued`, unexpired job with `FOR UPDATE SKIP LOCKED`. `complete_write_job` requires a read-back match for success, activates the card, and overwrites the payload with the literal `destroyed`.
+A reader normally has one row. During a key change it has two: `store_reader_key` adds the next version, the reader is given it, and `retire_reader_keys` removes the older rows once the reader has proved it holds the new one. `store_reader_key` leaves a version that already exists alone, so a change that was cut short is finished with the key already stored.
 
 ## Events and attendance
 
@@ -147,17 +140,15 @@ Member, reward, snapshotted reward name/unit cost, quantity (1–5), points debi
 
 `redeem_reward` locks the member row then the reward row, checks inventory and the ledger-derived balance inside the transaction, writes the negative ledger entry, decrements inventory, and returns the same redemption for a repeated idempotency key. `decide_redemption` handles approve/fulfil/reject/cancel; reject/cancel insert a `redemption_refund` entry and restock inventory. Stars are untouched.
 
-## Devices, scans, audit, rate limits
-
-### `devices` (legacy)
-
-Unique public `device_id` (`^[a-z0-9][a-z0-9-]{2,31}$`), lane label, `secret_hash` (only a verifier is stored), status (`active`, `disabled`, `revoked`), mode (`kiosk`, `writer`), optional event/session assignment, firmware/last-seen metadata, rotation timestamp.
-
-Device credentials are independent of user identity. A secret is shown once at provisioning/rotation; the plaintext is never stored.
+## Scans, links, audit, rate limits
 
 ### `device_scans`
 
-A scan is intent only: optional device (null for the USB kiosk), resolved member, card, session, suggested `action`, status (`pending`, `confirmed`, `rejected`, `expired`), expiry (default 3 minutes), confirming admin. The USB kiosk creates a short-lived pending row from `previewUsbKioskAction`; attendance and points change only through `confirm_scan` from an authenticated admin action.
+A kiosk preview, and nothing more: the member, card and session it is for, the suggested `action`, a status (`pending`, `confirmed`, `rejected`, `expired`), an expiry three minutes on, and the organizer who confirmed it. `device_id` is null: the column belongs to the retired WiFi reader. Attendance and points change only through `confirm_scan`.
+
+### `devices` and `card_write_jobs` (retired)
+
+Tables of the WiFi reader that once called the server itself. They hold no rows the current app reads and nothing writes to them. Their functions (`queue_write_job`, `claim_write_job`, `complete_write_job`) remain for the same reason.
 
 ### `sign_in_links`
 
@@ -169,7 +160,7 @@ Append-only admin/security actions: action, target type/id, reason, redacted bef
 
 ### `rate_limit_counters`
 
-`(bucket, window_start)` primary key with hit count. `consume_rate_limit(bucket, limit, seconds)` is atomic and service-role only. It backs card lookups (per client), sign-in (per client and per account), TOTP verification and photo uploads (per account), kiosk confirmation and device requests. Client addresses and emails are hashed before they become bucket names.
+`(bucket, window_start)` primary key with hit count. `consume_rate_limit(bucket, limit, seconds)` is atomic and service-role only. It backs card lookups (per client), sign-in (per client and per account), authenticator codes and photo uploads (per account), kiosk confirmations, and reader sessions, set-ups and key changes (per organizer). Client addresses and emails are hashed before they become bucket names.
 
 ## Views
 
@@ -214,9 +205,6 @@ The public pages and `/api/public/*` read the two projections with the server-on
 | `prepare_card(...)`           | service_role          | Creates a pending card, supersedes an earlier unwritten one        |
 | `activate_card(...)`          | service_role          | Activates one card, replaces the previous active card              |
 | `revoke_card(...)`            | service_role          | Revokes pending/active card                                        |
-| `queue_write_job(...)`        | service_role          | One-use encrypted URL payload                                      |
-| `claim_write_job(...)`        | service_role          | Device-scoped claim with locking                                   |
-| `complete_write_job(...)`     | service_role          | Read-back gate, payload destruction                                |
 | `complete_member_setup(...)`  | service_role          | Idempotent invite acceptance                                       |
 | `confirm_scan(...)`           | service_role          | Admin-confirmed attendance state machine                           |
 | `correct_attendance(...)`     | service_role          | Audited corrections/reversals                                      |
@@ -225,6 +213,8 @@ The public pages and `/api/public/*` read the two projections with the server-on
 | `delete_record(kind, id, by)` | service_role          | Superadmin-only permanent delete with its audit entry              |
 | `issue_sign_in_link(...)`     | service_role          | Stores a new one-time link and removes the person's earlier ones   |
 | `redeem_sign_in_link(hash)`   | service_role          | Spends an unused, unexpired link; returns who it is for            |
+| `store_reader_key(...)`       | service_role          | Stores a reader's sealed key at a version, or the next free one    |
+| `retire_reader_keys(...)`     | service_role          | Removes the versions older than the one a reader holds             |
 
 All domain functions are `SECURITY DEFINER` with `search_path = ''` and schema-qualified objects. Write functions can be executed only by `service_role`; the web server authorizes the actor before calling them.
 

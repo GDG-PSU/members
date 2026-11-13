@@ -91,7 +91,13 @@ export function describeAudit(
     case 'card.revoked':
       return `switched off ${whose} card`;
     case 'reader.paired':
-      return 'set up a card reader for Bluetooth';
+      return 'set up a card reader';
+    case 'reader.provisioned':
+      return 'gave a card reader its key from the flashing tool';
+    case 'reader.key_rotated':
+      return 'gave a card reader a new key';
+    case 'reader.cleared':
+      return 'took the key off a card reader with the flashing tool';
     case 'event.created':
       return `created ${titled('event')}`;
     case 'event.updated':

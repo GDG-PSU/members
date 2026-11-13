@@ -3,6 +3,7 @@
 ## Principles
 
 - The database is the source of truth for identity, attendance, ledger and audit history. Storage holds profile photos.
+- Stored card links and reader keys are sealed with `CARD_WRITE_ENCRYPTION_KEY`, which is not in the database. A restore is only useful together with that key: without it members' digital IDs lose their card link and every reader has to be erased and set up again.
 - **Never restore by deleting or rewriting ledger rows.** If data is wrong, restore to a disposable environment, reconcile, and apply an audited compensating entry in production.
 - Test restores against a disposable Supabase project, never over the live one.
 - Supabase plan-level backups/PITR are not configured by this repository. Enable them in the Supabase dashboard according to the plan the organization buys, and record the retention window.
@@ -52,7 +53,7 @@ Notes:
 5. Start the app against the restored project with a non-production env file, sign in with a test account, and check a public profile, leaderboard, member dashboard and one card redirect.
 6. Record the drill date, dump size, restore duration and any warnings. Destroy the disposable project when finished.
 
-A completed restore drill is **not recorded** for this build. This document is a procedure, not evidence.
+No restore drill has been recorded. This is a procedure, not evidence.
 
 ## Storage (profile photos)
 
@@ -73,10 +74,9 @@ If photos cannot be recovered, ask affected members to re-upload. Do not guess o
 | Wrong member status         | Restore status in admin UI with reason; audit records it                                                                              |
 | Failed migration            | Stop deploys; restore the pre-migration dump into a disposable project; fix forward with a new migration; do not hand-edit production |
 | Deleted Auth user           | Recreate only with an approved identity decision; membership/ledger history will not silently reappear                                |
-| Compromised service key     | Rotate in Supabase and Vercel immediately; redeploy; review audit log and device secrets                                              |
+| Compromised service key     | Rotate in Supabase and Vercel immediately; redeploy; review the audit log; use Rotate key on each reader                              |
 
-## What is explicitly not covered
+## What is not covered
 
-- Automated scheduled backups, PITR retention, and off-site backup replication are not configured by this repository.
-- A full Auth-user export/restore has not been rehearsed.
-- The restore procedure above has not been executed for this project (no disposable project/authorization was available).
+- Scheduled backups, point-in-time recovery and off-site copies are not configured by this repository.
+- No restore, and no export and restore of Auth users, has been rehearsed for this project.
