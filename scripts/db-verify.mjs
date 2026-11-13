@@ -935,6 +935,75 @@ try {
     invitationDefault.rows[0].column_default,
   );
 
+  // ---- Reader keys (migration 0021) ------------------------------------------
+  // One sealed key per reader and version. A key change stores the new version
+  // beside the old one, and the old goes only once the reader holds the new.
+  const readerId = 'esp32-00000000d0c5';
+  const storeKey = async (version, sealed) =>
+    (
+      await client.query('select public.store_reader_key($1, $2, $3, $4) as version', [
+        readerId,
+        version,
+        sealed,
+        adminId,
+      ])
+    ).rows[0].version;
+  const readerKeys = async () =>
+    (
+      await client.query(
+        'select version, sealed_key from public.reader_keys where device_id = $1 order by version',
+        [readerId],
+      )
+    ).rows;
+  check('a reader with no key yet is given version 1', (await storeKey(null, 'v1.a.b.c')) === 1);
+  check(
+    'the next key with no version given takes the next one',
+    (await storeKey(null, 'v1.d.e.f')) === 2,
+  );
+  await storeKey(3, 'v1.g.h.i');
+  await storeKey(3, 'v1.j.k.l');
+  const pending = await readerKeys();
+  check(
+    'asking twice for the same version keeps the key stored first',
+    pending.length === 3 && pending[2].sealed_key === 'v1.g.h.i',
+    JSON.stringify(pending.map((row) => row.version)),
+  );
+  const retireKeys = async (version) =>
+    (await client.query('select public.retire_reader_keys($1, $2) as removed', [readerId, version]))
+      .rows[0].removed;
+  check('nothing is retired for a version that was never stored', (await retireKeys(9)) === 0);
+  check('older keys are retired once the reader holds a newer one', (await retireKeys(3)) === 2);
+  const kept = await readerKeys();
+  check('the key the reader holds stays', kept.length === 1 && kept[0].version === 3);
+  await expectError(
+    'a key that is not sealed is refused',
+    'select public.store_reader_key($1, 4, $2, $3)',
+    [readerId, 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8', adminId],
+    'check constraint',
+  );
+  await expectError(
+    'a key for something that is not a reader is refused',
+    'select public.store_reader_key($1, null, $2, $3)',
+    ['laptop', 'v1.a.b.c', adminId],
+    'check constraint',
+  );
+  await expectDenied('anon cannot read reader keys', 'anon', 'select 1 from public.reader_keys');
+  await expectDenied(
+    'members cannot read reader keys',
+    'authenticated',
+    'select 1 from public.reader_keys',
+  );
+  await expectDenied(
+    'members cannot store a reader key',
+    'authenticated',
+    `select public.store_reader_key('esp32-00000000d0c5', null, 'v1.a.b.c', null)`,
+  );
+  await expectDenied(
+    'members cannot retire reader keys',
+    'authenticated',
+    `select public.retire_reader_keys('esp32-00000000d0c5', 1)`,
+  );
+
   // ---- Permanent delete (migration 0019) ------------------------------------
   // Only a superadmin deletes, every delete is recorded, points and stars stay,
   // and nothing can delete the record of it.
