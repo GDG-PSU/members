@@ -10,6 +10,9 @@ constexpr uint8_t kFirstDataPage = 4;
 constexpr uint8_t kCapabilityPage = 3;
 constexpr uint8_t kNtagMagic = 0xE1;
 constexpr uint8_t kNtagVersion = 0x10;
+// What the capability container reports: 144 bytes on an NTAG213, 496 on an
+// NTAG215 and 872 on an NTAG216, the largest card accepted.
+constexpr uint16_t kLargestTagBytes = 872;
 constexpr uint8_t kNdefMessageTlv = 0x03;
 constexpr uint8_t kNdefTerminatorTlv = 0xFE;
 constexpr size_t kNdefPrefixBytes = 16;
@@ -152,11 +155,16 @@ bool NfcLane::ReadCapability(String& errorCode) {
     errorCode = "unsupported_tag";
     return false;
   }
-  capacity_ = static_cast<uint16_t>(cc[2]) * 8;
-  if (capacity_ < 32 || capacity_ > GDG_MAX_NDEF_BYTES) {
+  const uint16_t tagBytes = static_cast<uint16_t>(cc[2]) * 8;
+  if (tagBytes < 32 || tagBytes > kLargestTagBytes) {
+    capacity_ = 0;
     errorCode = "tag_capacity_unexpected";
     return false;
   }
+  // A card link needs a fraction of any of them. However large the card, only
+  // as much as the buffers hold is ever read or written, so every bound below
+  // can be checked against capacity_ alone.
+  capacity_ = tagBytes > GDG_MAX_NDEF_BYTES ? GDG_MAX_NDEF_BYTES : tagBytes;
   return true;
 }
 
@@ -335,7 +343,8 @@ bool NfcLane::ReadNdefUri(String& uri, String& errorCode) {
 
   // Read only enough of the TLV header to learn the NDEF message length. The
   // old path read the entire user-memory capacity, which is about 126 page
-  // transactions on an NTAG215 even for a short card URL.
+  // transactions on an NTAG215, and more on an NTAG216, even for a short card
+  // URL.
   size_t prefixRead = 0;
   if (!ReadNtagBytes(buffer_, kNdefPrefixBytes, prefixRead, errorCode)) return false;
 

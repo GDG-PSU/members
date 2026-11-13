@@ -45,7 +45,8 @@ are new entries.
    card for them** opens it with that person chosen.
 2. Find the person by name or GDG number. Members and organizers can both have
    a card.
-3. Select **Write card** and place a blank card on the reader. The page prepares
+3. Select **Write card** and place a blank NTAG213, NTAG215 or NTAG216 card on
+   the reader. The page prepares
    the card, writes it, reads it back and switches it on, and reports success
    only if what it read back is what it wrote. If anything fails, the person's
    old card keeps working.
@@ -98,14 +99,15 @@ In **Reader tools**, with the reader connected:
 
 ### When the reader will not work
 
-| What you see                                | What to do                                                                              |
-| ------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Not in the Bluetooth list                   | Check it has power and the light blinks slowly. Steady means a computer is on its cable |
-| Two quick flashes                           | It has no key. Plug it in at `/admin/cards`; the page gives it one                      |
-| "did not accept this site"                  | It holds a key from somewhere else. Ask a developer to erase and flash it               |
-| "This site does not hold this reader's key" | The same, or the site's record was cleared. Ask a developer to erase and flash it       |
-| Nothing happens on **Connect reader**       | Close other tabs using the reader, then reconnect. Use Chrome or Edge                   |
-| An older reader works by cable only         | Its firmware is older than 2.2.0. Ask a developer to flash it                           |
+| What you see                                | What to do                                                                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Not in the Bluetooth list                   | Check it has power and the light blinks slowly. Steady means a computer is on its cable                                       |
+| Two quick flashes                           | It has no key. Plug it in at `/admin/cards`; the page gives it one                                                            |
+| "did not accept this site"                  | It holds a key from somewhere else. Ask a developer to erase and flash it                                                     |
+| "This site does not hold this reader's key" | The same, or the site's record was cleared. Ask a developer to erase and flash it                                             |
+| Nothing happens on **Connect reader**       | Close other tabs using the reader, then reconnect. Use Chrome or Edge                                                         |
+| An older reader works by cable only         | Its firmware is older than 2.2.0. Ask a developer to flash it                                                                 |
+| "This card type is not supported"           | Use an NTAG213, NTAG215 or NTAG216 card. A reader on firmware before 2.2.1 refuses NTAG216 cards: ask a developer to flash it |
 
 Chrome and Edge on a computer can use the cable and Bluetooth. Chrome on Android
 can use Bluetooth only. Safari and Firefox cannot use a reader.

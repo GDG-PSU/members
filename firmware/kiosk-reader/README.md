@@ -1,9 +1,10 @@
 # GDG@PSU card reader firmware
 
 Firmware for an ESP32 with a PN532. An organizer's browser drives the reader to
-read and write the link on a membership card, over the USB cable (Web Serial)
-or, when no computer is using the cable, over Bluetooth (Web Bluetooth). The
-reader has no WiFi and never reaches the network by itself.
+read and write the link on a membership card (NTAG213, NTAG215 or NTAG216),
+over the USB cable (Web Serial) or, when no computer is using the cable, over
+Bluetooth (Web Bluetooth). The reader has no WiFi and never reaches the network
+by itself.
 
 - Wiring, flashing checklists and troubleshooting:
   [docs/hardware-bringup.md](../../docs/hardware-bringup.md)
@@ -57,7 +58,8 @@ Do not plug a reader with no key into a site still running older pages: they
 would give it a key the current pages cannot use, and it would need erasing.
 
 Bump `GDG_FIRMWARE_VERSION` in `platformio.ini` with any firmware change; `info`
-reports it to the admin pages.
+reports it to the admin pages. Flashing a newer version keeps the reader's key,
+so a reader that is already in use needs only the upload.
 
 ## Check a reader
 

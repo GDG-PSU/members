@@ -34,7 +34,7 @@ function open(key: Buffer, direction: number, line: string): string {
 const OPEN_COMMANDS = new Set(['info', 'ping', 'usb.release']);
 const CABLE_ONLY = new Set(['pair.clear', 'bluetooth.set', 'transport.set', 'usb.release']);
 
-/** Firmware 2.2.0, as far as the browser can tell. */
+/** Firmware 2.2, as far as the browser can tell. */
 class FakeReader {
   key: Buffer | null = null;
   epoch = 0;
@@ -85,7 +85,7 @@ class FakeReader {
       case 'info':
         return ok({
           protocol: 4,
-          firmware: '2.2.0',
+          firmware: '2.2.1',
           deviceId: this.deviceId,
           transport: link === 'usb' ? 'usb-serial' : 'bluetooth',
           mode: this.mode,
@@ -284,7 +284,7 @@ class FakeSerialPort implements SerialPortLike {
       JSON.stringify({
         event: 'ready',
         protocol: 4,
-        firmware: '2.2.0',
+        firmware: '2.2.1',
         deviceId: this.reader.deviceId,
       }),
     );

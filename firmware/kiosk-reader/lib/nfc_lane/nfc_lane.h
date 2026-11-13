@@ -6,7 +6,7 @@
 #include "gdg_config.h"
 
 /**
- * PN532/NTAG lane.
+ * PN532/NTAG lane, for NTAG213, NTAG215 and NTAG216 cards.
  *
  * Read: selects a passive ISO14443A tag, reads the Type 2 capability container,
  * parses the NDEF TLV and returns the URI text. The chip UID is never used as a
@@ -48,6 +48,7 @@ class NfcLane {
   Adafruit_PN532 nfc_;
   bool ready_ = false;
   uint32_t firmware_version_ = 0;
+  /** How much of the selected card is used: its size, or the buffer's if smaller. */
   uint16_t capacity_ = 0;
   uint8_t buffer_[GDG_MAX_NDEF_BYTES];
 };

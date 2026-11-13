@@ -14,7 +14,7 @@ loadTestEnv();
  *
  *   READER_PORT=COM3 pnpm e2e tests/e2e/reader-hardware.spec.ts --project=desktop-chromium
  *
- * It needs a reader with firmware 2.2.0 on that port, a Bluetooth adapter, a
+ * It needs a reader with firmware 2.2 on that port, a Bluetooth adapter, a
  * disposable Supabase stack, and Python with pyserial (READER_PYTHON, default
  * `python`). Close any other tab that is connected to the reader.
  *

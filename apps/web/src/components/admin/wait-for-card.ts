@@ -25,7 +25,7 @@ export function isReaderFault(error: unknown): boolean {
 }
 
 const NOT_READY = 'The NFC module is not responding. Check its connection to the reader.';
-const UNSUPPORTED = 'This card type is not supported. Use an NTAG213 or NTAG215 card.';
+const UNSUPPORTED = 'This card type is not supported. Use an NTAG213, NTAG215 or NTAG216 card.';
 const UNREADABLE = 'The card could not be read. Hold it flat on the reader and try again.';
 const NOT_SAVED = 'The card did not save correctly. Hold it flat on the reader and write it again.';
 const NO_URL = 'This card has no readable URL on it. Write it from the Cards page first.';

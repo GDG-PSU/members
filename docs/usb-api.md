@@ -4,9 +4,10 @@ Each reader is an ESP32 with a PN532. An organizer's browser drives it with a
 small JSON API, over the USB cable or, when no computer is using the cable, over
 Bluetooth. The reader has no WiFi and never reaches the network by itself.
 
-This describes firmware **2.2.0** (protocol 4). Older firmware has no key and no
+This describes firmware **2.2** (protocol 4). Older firmware has no key and no
 session: 2.0.x and 2.1.0 are spoken to in the clear, over the cable only, and
-anyone holding one can use it. Flash them.
+anyone holding one can use it. Flash them. Firmware 2.2.1 added NTAG216 cards;
+2.2.0 accepts NTAG213 and NTAG215 only.
 
 The same messages are built in four places that must agree: the firmware
 (`secure_session.cpp`, `reader_crypto.cpp`), the website
@@ -98,7 +99,9 @@ Newline-delimited JSON. A request carries an `id` and the reply echoes it.
 | `usb.release`                 | The computer is done; ends the cable session           | Anywhere on the cable                      |
 
 `nfc.read` reads only the NDEF TLV and retries transient page-read failures.
-`nfc.write` does not check that the link is a member card link.
+`nfc.write` does not check that the link is a member card link. Both work on
+NTAG213, NTAG215 and NTAG216 cards, and use at most the first 512 bytes of a
+card, which is far more than a link needs.
 
 Errors are stable codes: `{ "id": 4, "ok": false, "error": "no_card" }`. The
 ones about access are `locked` (the cable, outside a session), `not_paired` (the
@@ -114,7 +117,7 @@ command sent over Bluetooth).
   "ok": true,
   "result": {
     "protocol": 4,
-    "firmware": "2.2.0",
+    "firmware": "2.2.1",
     "deviceId": "esp32-…",
     "transport": "usb-serial",
     "mode": "auto",
@@ -144,7 +147,7 @@ The ESP32 DevKit's CP210x appears to browsers as **Web Serial**, so the pages us
 8N1. Boot and status lines are plain text and start with neither `{` nor `#`.
 
 Opening the port resets the board. When it has started the reader prints
-`{"event":"ready","protocol":4,"firmware":"2.2.0","deviceId":"esp32-…"}`.
+`{"event":"ready","protocol":4,"firmware":"2.2.1","deviceId":"esp32-…"}`.
 
 A sealed line the reader cannot open, including one from a session it no longer
 has because it restarted, is answered with `{"event":"locked"}` in the clear. The

@@ -8,7 +8,7 @@ suite is in `AGENTS.md`, section 7.
 
 A production build on `http://localhost:3100` against a local Supabase stack
 with every migration through 0021, and both physical readers on firmware 2.2.0.
-Nothing here ran against production, and none of it is deployed yet.
+Nothing here ran against production. It was deployed afterwards; see Production.
 
 | Check                     | Command                       | Result                                                 |
 | ------------------------- | ----------------------------- | ------------------------------------------------------ |
@@ -18,7 +18,7 @@ Nothing here ran against production, and none of it is deployed yet.
 | Production build          | `pnpm build`                  | Pass                                                   |
 | Database                  | `pnpm db:verify`              | 126 of 126 on the local stack                          |
 | Browser tests             | `pnpm e2e`                    | 57 pass, 39 skipped; 47 of 47 on desktop Chromium      |
-| Firmware build            | `pio run`                     | Pass; 2.2.0, 656 KB of a 1,310 KB slot                 |
+| Firmware build            | `pio run`                     | Pass; 2.2.1, 656 KB of a 1,310 KB slot                 |
 | Readers from outside      | `reader_check.py --bluetooth` | 77 of 77 on both readers; see below for one failed run |
 | Readers through the pages | `reader-hardware.spec.ts`     | Pass on one reader; see below for one timed-out run    |
 
@@ -100,6 +100,21 @@ against a real reader and real radio.
 
 ## Hardware results
 
+### Firmware 2.2.1, 2026-11-13: NTAG216
+
+Both readers were flashed from 2.2.0 to 2.2.1 with their NFC modules attached,
+and each kept its key: a session opened afterwards with the key the live site
+stores.
+
+- On 2.2.0, one reader refused an NTAG216 card with `tag_capacity_unexpected`.
+- On 2.2.1, straight to that reader over the cable, in a session: the same card
+  was read (it held a link of 83 characters), a test link was written and read
+  back by the reader, reading it again gave the test link, and the card's own
+  link was then written back and confirmed.
+- The other reader, on 2.2.1, read the card too. Nothing was written from it.
+- Not covered: an NTAG216 through the Cards page or the kiosk, over Bluetooth,
+  or an NTAG213 or NTAG215 on 2.2.1.
+
 ### Firmware 2.2.0, 2026-11-13
 
 Both readers, `esp32-a4156cc92df4` ("GDG Reader A415") and `esp32-3c1c6cc92df4`
@@ -133,7 +148,7 @@ adapter.
   | Switch back to the cable                   | instant |
   | Fall back to Bluetooth when the cable went | 7.0 s   |
 
-- **No card was written or read on 2.2.0.** The NFC modules were unplugged for
+- **No card was written or read in these runs.** The NFC modules were unplugged for
   most of these runs. Through the page, over Bluetooth, the reader did answer
   "no card" for four seconds, and "unsupported card" for something that was on
   it.
@@ -161,6 +176,18 @@ powered off a read failed in about 1.5 s without hanging.
 Read-only checks after each deploy, signed out. Nothing signed-in has ever been
 run on production by an agent.
 
+- **2026-11-13, `1e9143b` after `1e1f602`:** migration 0021 is applied. The
+  public key is refused on `reader_keys` and on both of its functions. Public
+  pages load, and `/admin/cards` and `/admin/kiosk` send a signed-out visitor to
+  `/login`.
+- **2026-11-13, both readers:** `provision_reader.py` gave
+  `esp32-a4156cc92df4` and `esp32-3c1c6cc92df4` their keys against production.
+  For each, `reader_keys` holds one row, the audit log one `reader.provisioned`
+  entry with no person, and a session opened on the cable with the key read back
+  from the live database. Outside that session each reader refused a card read. Beforehand, this laptop's
+  `CARD_WRITE_ENCRYPTION_KEY` opened five values the live site had sealed, so
+  the tool and the site seal with the same key. No organizer has connected a
+  reader through the live pages.
 - **2026-11-12, `4e963dc`:** public pages load, admin pages send a signed-out
   visitor to `/login`, and the two Vercel addresses redirect to the domain.
 - **2026-11-12, `7655a02`:** the `Permissions-Policy` allows serial and
@@ -173,10 +200,12 @@ run on production by an agent.
 
 **Readers**
 
-- Stored reader keys, the locked cable, Rotate key and the manual writer on
-  production. They are not deployed.
-- A card written or read on firmware 2.2.0, and the kiosk page with a real
-  reader on 2.2.0.
+- Stored reader keys, the locked cable, Rotate key and the manual writer through
+  the live pages, signed in. Both readers hold keys the live site stores, and no
+  organizer has connected one there yet.
+- A card written or read through the pages on firmware 2.2, and the kiosk page
+  with a real reader on 2.2. A card was read and written on 2.2.1 only straight
+  to the reader.
 - The site giving a real reader with no key one. On hardware the key always came
   from `provision_reader.py`; the site's own path ran against the stand-in.
 - The kiosk over Bluetooth on any firmware.

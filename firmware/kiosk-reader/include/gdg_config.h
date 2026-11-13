@@ -33,7 +33,9 @@
 // Status LED. Set to -1 when the board has no usable LED.
 #define GDG_STATUS_LED 2
 
-// NFC timing and bounded-operation limits.
+// NFC timing and bounded-operation limits. GDG_MAX_NDEF_BYTES is the most that
+// is ever read from or written to a card, not the largest card accepted: an
+// NTAG216 holds more, and a card link needs far less.
 #define GDG_NFC_READ_TIMEOUT_MS 300
 #define GDG_MAX_NDEF_BYTES 512
 

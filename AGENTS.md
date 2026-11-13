@@ -209,6 +209,8 @@ own. Times are stored as `timestamptz` and entered and shown in
   the one it wrote.
 - One active card per person. The old card works until `activate_card` replaces
   it, so an abandoned write strands nobody.
+- The reader accepts NTAG213, NTAG215 and NTAG216 cards (216 from firmware
+  2.2.1), and never uses more than the first 512 bytes of one.
 - Only the SHA-256 hash and a sealed copy of a card's token are stored. Never
   store or log a card's token or its full link.
 - A card that was switched off goes to the neutral `/card-unavailable` page.
@@ -523,15 +525,14 @@ Last updated 2026-11-13.
 
 - **App:** on Vercel from `main`, at `https://members.gdgpsu.dev`. The two
   Vercel addresses redirect there.
-- **Database:** Supabase project `potjjlmgnrqxseeendmx`. Migrations through 0020
+- **Database:** Supabase project `potjjlmgnrqxseeendmx`. Migrations through 0021
   are applied; the GitHub integration applies new ones on a push to `main`.
-- **Not deployed yet:** stored reader keys, the locked cable, Rotate key and the
-  manual writer: migration 0021, the app, and firmware 2.2.0. Both readers
-  (`esp32-a4156cc92df4` and `esp32-3c1c6cc92df4`) run 2.2.0 and hold no key.
-  After the deploy, give each its key with
-  `provision_reader.py --confirm potjjlmgnrqxseeendmx`. Until then they must not
-  be plugged into the live site, which would give them a key the new version
-  cannot use.
+- **Readers:** stored reader keys, the locked cable, Rotate key and the manual
+  writer are deployed in `1e9143b`, after their schema in `1e1f602`. Both
+  readers, `esp32-a4156cc92df4` ("GDG Reader A415") and `esp32-3c1c6cc92df4`
+  ("GDG Reader 3C1C"), were given their keys by `provision_reader.py` on
+  2026-11-13, so both are registered with the live site. Both now run firmware
+  2.2.1, which also accepts NTAG216 cards.
 
 ### Waiting on a person
 

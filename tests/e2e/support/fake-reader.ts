@@ -18,7 +18,7 @@ export type FakeReaderAction =
   | 'openChooser';
 
 /**
- * A stand-in for a reader with firmware 2.2.0, whose card contents the test
+ * A stand-in for a reader with firmware 2.2, whose card contents the test
  * controls through `window.__cardUri`. It has a cable (Web Serial) and a radio
  * (Web Bluetooth), obeys only a session opened with its key on either, follows
  * the firmware's rule for when the radio is on, and does the real handshake and
@@ -129,7 +129,7 @@ export async function installFakeReader(page: Page) {
           case 'info':
             return ok({
               protocol: 4,
-              firmware: '2.2.0',
+              firmware: '2.2.1',
               deviceId,
               transport: link === 'usb' ? 'usb-serial' : 'bluetooth',
               mode: reader.mode,
@@ -344,7 +344,7 @@ export async function installFakeReader(page: Page) {
         cableSession.end();
         reader.mode = 'auto';
         radio.end();
-        this.say(JSON.stringify({ event: 'ready', protocol: 4, firmware: '2.2.0', deviceId }));
+        this.say(JSON.stringify({ event: 'ready', protocol: 4, firmware: '2.2.1', deviceId }));
       }
 
       getInfo() {

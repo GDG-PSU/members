@@ -4,17 +4,32 @@ How to wire, flash, set up and check a reader. What has been tested on real
 hardware, and what has not, is recorded in [test-plan.md](test-plan.md); claim
 only what it lists. The protocol is in [usb-api.md](usb-api.md).
 
+## Adding a reader
+
+Any number of readers can be in use; each is its own lane at an event.
+
+1. Wire an ESP32 to a PN532 (section 2).
+2. Flash it and give it its key (section 4). That is two commands, and the only
+   step that needs a developer's computer.
+3. Check it (section 5).
+
+Nothing is registered in the admin pages. From then on every organizer can
+connect it at `/admin/cards` or `/admin/kiosk`, by cable or Bluetooth, and it
+shows up under its own name, `GDG Reader` and four characters of its ID. A browser tab
+connects to one reader at a time, so two lanes need two computers, or two tabs
+on one. Two readers in use at once has not been tried yet.
+
 ## 1. Parts
 
-| Item                    | Needed                      | Notes                                            |
-| ----------------------- | --------------------------- | ------------------------------------------------ |
-| ESP32 dev board         | One per reader              | With a CP210x USB serial bridge                  |
-| PN532 NFC breakout      | One per reader              | 8-pin SPI module; set `SEL0 = OFF, SEL1 = ON`    |
-| NTAG213 or NTAG215 card | Test cards, then the batch  | Measure a batch before trusting it (section 6)   |
-| USB data cable          | One, for flashing and setup | A charge-only cable works for power afterwards   |
-| Chrome or Edge          | On the organizer's computer | Web Serial and Web Bluetooth; HTTPS or localhost |
-| Bluetooth adapter       | Optional                    | Only for using a reader without a data cable     |
-| Charger or power bank   | Optional                    | Powers a reader that is used over Bluetooth      |
+| Item                  | Needed                      | Notes                                            |
+| --------------------- | --------------------------- | ------------------------------------------------ |
+| ESP32 dev board       | One per reader              | With a CP210x USB serial bridge                  |
+| PN532 NFC breakout    | One per reader              | 8-pin SPI module; set `SEL0 = OFF, SEL1 = ON`    |
+| NTAG213, 215 or 216   | Test cards, then the batch  | Measure a batch before trusting it (section 6)   |
+| USB data cable        | One, for flashing and setup | A charge-only cable works for power afterwards   |
+| Chrome or Edge        | On the organizer's computer | Web Serial and Web Bluetooth; HTTPS or localhost |
+| Bluetooth adapter     | Optional                    | Only for using a reader without a data cable     |
+| Charger or power bank | Optional                    | Powers a reader that is used over Bluetooth      |
 
 Cheap PN532 breakouts differ in wiring, power and logic levels. Check the
 silkscreen, the DIP switches and the datasheet for your batch before connecting
@@ -65,12 +80,12 @@ serial reset can leave the PN532's radio unresponsive.
 On start-up the serial monitor (`pio device monitor -b 115200`) shows:
 
 ```text
-[boot] GDG@PSU reader firmware 2.2.0
+[boot] GDG@PSU reader firmware 2.2.1
 [nfc] PN532 SPI firmware 0x... ready
 [usb] JSON control API ready
 [usb] device id esp32-...
 [boot] key set; Bluetooth allowed; no WiFi or server connection
-{"event":"ready","protocol":4,"firmware":"2.2.0","deviceId":"esp32-..."}
+{"event":"ready","protocol":4,"firmware":"2.2.1","deviceId":"esp32-..."}
 ```
 
 With the PN532 absent, `info` reports `nfcReady: false` and the reader retries
@@ -98,7 +113,7 @@ Then, from the pages, on a reader that has been set up:
 
 - [ ] `/admin/cards` in Chrome or Edge: **Connect reader** shows **Reader
       connected** with a **USB** badge.
-- [ ] **Reader tools** shows the reader's ID, firmware 2.2.0 and **NFC ready**,
+- [ ] **Reader tools** shows the reader's ID, firmware 2.2.1 and **NFC ready**,
       and says Bluetooth is ready under a name such as `GDG Reader A415`.
 - [ ] **Read a card** on a blank card says it has no readable URL on it.
 - [ ] **Write a link by hand** writes a test link to a spare card and reads it
@@ -128,20 +143,20 @@ Measure capacity; do not trust the listing.
 
 ## 7. Troubleshooting
 
-| Symptom                                     | Likely cause                                         | What to do                                                             |
-| ------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
-| `PN532 SPI did not respond`                 | DIP switches, wiring, power, or no RSTC              | `SEL0=OFF, SEL1=ON`; check SCK, MISO, MOSI, SS, RSTC→15, VCC, GND      |
-| `no_card`                                   | No card, or one held too briefly or off-centre       | Centre an NTAG21x card on the antenna for about a second               |
-| `unsupported_tag`                           | Not an NTAG21x card                                  | Use an NTAG213 or NTAG215                                              |
-| `tag_too_small`                             | The link does not fit                                | Use a larger card                                                      |
-| `read_back_mismatch`                        | The card moved or is locked                          | Re-seat it and retry; discard the card if it repeats                   |
-| `ndef_record_missing`                       | A blank card                                         | Write it first                                                         |
-| Repeated restarts                           | Power dips                                           | A powered hub or a better cable                                        |
-| `Could not open COM3`, "Access is denied"   | A browser tab holds the port, or the PN532 on reset  | Disconnect or close the tab; unplug the PN532 for the flash            |
-| Two quick flashes                           | The reader has no key                                | Run `provision_reader.py`, or plug it in at `/admin/cards`             |
-| Not in the Bluetooth list                   | No key, a computer on its cable, or Bluetooth off    | The light should blink slowly; steady means a computer is on the cable |
-| "did not accept this site"                  | The reader holds a key from another site or database | Erase it (`pio run --target erase`), flash it, and provision it again  |
-| "This site does not hold this reader's key" | The same, seen from the site's side                  | The same                                                               |
+| Symptom                                     | Likely cause                                                 | What to do                                                             |
+| ------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `PN532 SPI did not respond`                 | DIP switches, wiring, power, or no RSTC                      | `SEL0=OFF, SEL1=ON`; check SCK, MISO, MOSI, SS, RSTC→15, VCC, GND      |
+| `no_card`                                   | No card, or one held too briefly or off-centre               | Centre an NTAG21x card on the antenna for about a second               |
+| `unsupported_tag`                           | Not an NTAG21x card, or firmware before 2.2.1 and an NTAG216 | Use an NTAG213, 215 or 216; flash the reader                           |
+| `tag_too_small`                             | The link does not fit                                        | Use a larger card                                                      |
+| `read_back_mismatch`                        | The card moved or is locked                                  | Re-seat it and retry; discard the card if it repeats                   |
+| `ndef_record_missing`                       | A blank card                                                 | Write it first                                                         |
+| Repeated restarts                           | Power dips                                                   | A powered hub or a better cable                                        |
+| `Could not open COM3`, "Access is denied"   | A browser tab holds the port, or the PN532 on reset          | Disconnect or close the tab; unplug the PN532 for the flash            |
+| Two quick flashes                           | The reader has no key                                        | Run `provision_reader.py`, or plug it in at `/admin/cards`             |
+| Not in the Bluetooth list                   | No key, a computer on its cable, or Bluetooth off            | The light should blink slowly; steady means a computer is on the cable |
+| "did not accept this site"                  | The reader holds a key from another site or database         | Erase it (`pio run --target erase`), flash it, and provision it again  |
+| "This site does not hold this reader's key" | The same, seen from the site's side                          | The same                                                               |
 
 The ESP32 cannot tell a charger from a computer by the cable, so a reader offers
 Bluetooth whenever no computer has spoken over the cable for 6 seconds.
